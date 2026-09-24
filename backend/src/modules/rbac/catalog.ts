@@ -211,7 +211,7 @@ export const DEFAULT_ROLES: DefaultRole[] = [
     scope: 'branch',
     permissions: [
       ...clinicalCore,
-      ...P('opd.', 'consultation.', 'inpatient.view', 'inpatient.admit', 'inpatient.transfer', 'inpatient.discharge', 'nursing.view', 'lab.view', 'lab.order', 'radiology.view', 'radiology.order', 'dental.view', 'mortuary.view'),
+      ...P('opd.', 'consultation.view', 'consultation.create', 'consultation.finalize', 'inpatient.view', 'inpatient.admit', 'inpatient.transfer', 'inpatient.discharge', 'nursing.view', 'lab.view', 'lab.order', 'radiology.view', 'radiology.order', 'dental.view', 'mortuary.view'),
       ...P('prescription.create', 'pharmacy.view', 'maternity.', 'mch.view', 'sha.view', 'sha.eligibility', 'sha.authorization', 'sha.preauthorization', 'dha.shr', 'dha.terminology', 'dha.consent', 'documents.upload'),
     ],
   },
@@ -219,7 +219,7 @@ export const DEFAULT_ROLES: DefaultRole[] = [
     key: 'clinical_officer',
     name: 'Clinical Officer',
     scope: 'branch',
-    permissions: [...clinicalCore, ...P('opd.', 'consultation.', 'lab.view', 'lab.order', 'radiology.view', 'radiology.order', 'prescription.create', 'sha.view', 'sha.eligibility', 'dha.terminology')],
+    permissions: [...clinicalCore, ...P('opd.', 'consultation.view', 'consultation.create', 'consultation.finalize', 'lab.view', 'lab.order', 'radiology.view', 'radiology.order', 'prescription.create', 'sha.view', 'sha.eligibility', 'dha.terminology')],
   },
   { key: 'nurse', name: 'Nurse', scope: 'branch', permissions: [...clinicalCore, ...P('opd.', 'inpatient.view', 'nursing.', 'consultation.view')] },
   {

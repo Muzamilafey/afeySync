@@ -4,8 +4,8 @@ const { ObjectId } = Schema.Types;
 
 const pregnancySchema = new Schema(
   {
-    patientId: { type: ObjectId, required: true, index: true },
-    branchId: { type: ObjectId, required: true, index: true },
+    patientId: { type: ObjectId, ref: 'Patient', required: true, index: true },
+    branchId: { type: ObjectId, ref: 'Branch', required: true, index: true },
     ancNumber: { type: String, required: true, unique: true },
     lmp: Date,
     edd: Date,
@@ -27,10 +27,10 @@ const pregnancySchema = new Schema(
 
 const ancVisitSchema = new Schema(
   {
-    pregnancyId: { type: ObjectId, required: true, index: true },
-    patientId: { type: ObjectId, required: true },
-    branchId: { type: ObjectId, required: true },
-    visitId: ObjectId,
+    pregnancyId: { type: ObjectId, ref: 'Pregnancy', required: true, index: true },
+    patientId: { type: ObjectId, ref: 'Patient', required: true },
+    branchId: { type: ObjectId, ref: 'Branch', required: true },
+    visitId: { type: ObjectId, ref: 'Visit' },
     contactNumber: Number,
     gestationWeeks: Number,
     weightKg: Number,
@@ -53,10 +53,10 @@ const ancVisitSchema = new Schema(
 
 const labourSchema = new Schema(
   {
-    pregnancyId: { type: ObjectId, required: true, index: true },
-    patientId: { type: ObjectId, required: true },
-    branchId: { type: ObjectId, required: true },
-    admissionId: ObjectId,
+    pregnancyId: { type: ObjectId, ref: 'Pregnancy', required: true, index: true },
+    patientId: { type: ObjectId, ref: 'Patient', required: true },
+    branchId: { type: ObjectId, ref: 'Branch', required: true },
+    admissionId: { type: ObjectId, ref: 'Admission' },
     startedAt: { type: Date, default: Date.now },
     activePhaseAt: Date,
     membranesRupturedAt: Date,
@@ -89,10 +89,10 @@ const labourSchema = new Schema(
 
 const deliverySchema = new Schema(
   {
-    pregnancyId: { type: ObjectId, required: true, index: true },
-    motherId: { type: ObjectId, required: true, index: true },
-    branchId: { type: ObjectId, required: true, index: true },
-    admissionId: ObjectId,
+    pregnancyId: { type: ObjectId, ref: 'Pregnancy', required: true, index: true },
+    motherId: { type: ObjectId, ref: 'Patient', required: true, index: true },
+    branchId: { type: ObjectId, ref: 'Branch', required: true, index: true },
+    admissionId: { type: ObjectId, ref: 'Admission' },
     deliveredAt: { type: Date, required: true },
     mode: { type: String, enum: ['SVD', 'assisted_vacuum', 'assisted_forceps', 'breech', 'c_section'], required: true },
     cSection: { indication: String, type: { type: String, enum: ['elective', 'emergency'] }, surgeon: String, anaesthesia: String },
@@ -106,7 +106,7 @@ const deliverySchema = new Schema(
     babies: [
       {
         _id: false,
-        newbornPatientId: ObjectId,
+        newbornPatientId: { type: ObjectId, ref: 'Patient' },
         sex: { type: String, enum: ['male', 'female', 'unknown'] },
         birthWeightGrams: Number,
         apgar1: Number,
@@ -124,9 +124,9 @@ const deliverySchema = new Schema(
 
 const pncVisitSchema = new Schema(
   {
-    motherId: { type: ObjectId, required: true, index: true },
-    deliveryId: ObjectId,
-    branchId: { type: ObjectId, required: true },
+    motherId: { type: ObjectId, ref: 'Patient', required: true, index: true },
+    deliveryId: { type: ObjectId, ref: 'Delivery' },
+    branchId: { type: ObjectId, ref: 'Branch', required: true },
     daysPostpartum: Number,
     motherFindings: String,
     babyFindings: String,
@@ -140,8 +140,8 @@ const pncVisitSchema = new Schema(
 
 const immunizationSchema = new Schema(
   {
-    patientId: { type: ObjectId, required: true, index: true },
-    branchId: { type: ObjectId, required: true },
+    patientId: { type: ObjectId, ref: 'Patient', required: true, index: true },
+    branchId: { type: ObjectId, ref: 'Branch', required: true },
     vaccine: { type: String, required: true },
     dose: { type: Number, default: 1 },
     givenAt: { type: Date, default: Date.now },
@@ -156,8 +156,8 @@ const immunizationSchema = new Schema(
 
 const growthSchema = new Schema(
   {
-    patientId: { type: ObjectId, required: true, index: true },
-    branchId: { type: ObjectId, required: true },
+    patientId: { type: ObjectId, ref: 'Patient', required: true, index: true },
+    branchId: { type: ObjectId, ref: 'Branch', required: true },
     measuredAt: { type: Date, default: Date.now },
     ageMonths: Number,
     weightKg: Number,
@@ -173,8 +173,8 @@ const growthSchema = new Schema(
 
 const fpVisitSchema = new Schema(
   {
-    patientId: { type: ObjectId, required: true, index: true },
-    branchId: { type: ObjectId, required: true },
+    patientId: { type: ObjectId, ref: 'Patient', required: true, index: true },
+    branchId: { type: ObjectId, ref: 'Branch', required: true },
     visitType: { type: String, enum: ['new', 'revisit', 'removal', 'switch'], default: 'new' },
     method: { type: String, enum: ['coc_pills', 'pop_pills', 'injectable_dmpa', 'implant', 'iucd', 'condoms', 'emergency_pill', 'btl', 'vasectomy', 'lam', 'natural', 'counselling_only'], required: true },
     counselling: String,

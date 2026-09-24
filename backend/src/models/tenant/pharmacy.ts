@@ -24,7 +24,7 @@ itemSchema.index({ name: 1 });
 const locationSchema = new Schema(
   {
     name: { type: String, required: true },
-    branchId: { type: ObjectId, required: true, index: true },
+    branchId: { type: ObjectId, ref: 'Branch', required: true, index: true },
     type: { type: String, enum: ['store', 'pharmacy', 'ward', 'lab', 'theatre'], default: 'pharmacy' },
     active: { type: Boolean, default: true },
   },
@@ -33,14 +33,14 @@ const locationSchema = new Schema(
 
 const batchSchema = new Schema(
   {
-    itemId: { type: ObjectId, required: true, index: true },
-    locationId: { type: ObjectId, required: true, index: true },
-    branchId: { type: ObjectId, required: true, index: true },
+    itemId: { type: ObjectId, ref: 'Item', required: true, index: true },
+    locationId: { type: ObjectId, ref: 'StockLocation', required: true, index: true },
+    branchId: { type: ObjectId, ref: 'Branch', required: true, index: true },
     batchNumber: { type: String, required: true },
     expiryDate: { type: Date, required: true, index: true },
     quantity: { type: Number, required: true, min: 0 },
     unitCost: { type: Number, default: 0 },
-    supplierId: ObjectId,
+    supplierId: { type: ObjectId, ref: 'Supplier' },
     receivedAt: { type: Date, default: Date.now },
   },
   { timestamps: true },
@@ -50,10 +50,10 @@ batchSchema.index({ itemId: 1, locationId: 1, expiryDate: 1 });
 /** Immutable stock ledger: every change to a batch is recorded here. */
 const stockMovementSchema = new Schema(
   {
-    itemId: { type: ObjectId, required: true, index: true },
+    itemId: { type: ObjectId, ref: 'Item', required: true, index: true },
     batchId: ObjectId,
-    locationId: ObjectId,
-    branchId: { type: ObjectId, required: true, index: true },
+    locationId: { type: ObjectId, ref: 'StockLocation' },
+    branchId: { type: ObjectId, ref: 'Branch', required: true, index: true },
     type: { type: String, enum: ['receipt', 'dispense', 'return', 'transfer_out', 'transfer_in', 'adjustment', 'expiry_writeoff'], required: true },
     quantity: { type: Number, required: true },
     reference: String,
@@ -67,15 +67,15 @@ stockMovementSchema.index({ createdAt: -1 });
 const prescriptionSchema = new Schema(
   {
     rxNumber: { type: String, required: true, unique: true },
-    visitId: { type: ObjectId, index: true },
-    admissionId: ObjectId,
-    patientId: { type: ObjectId, required: true, index: true },
-    branchId: { type: ObjectId, required: true, index: true },
+    visitId: { type: ObjectId, ref: 'Visit', index: true },
+    admissionId: { type: ObjectId, ref: 'Admission' },
+    patientId: { type: ObjectId, ref: 'Patient', required: true, index: true },
+    branchId: { type: ObjectId, ref: 'Branch', required: true, index: true },
     prescriberId: ObjectId,
     prescriberName: String,
     items: [
       {
-        itemId: ObjectId,
+        itemId: { type: ObjectId, ref: 'Item' },
         drugName: { type: String, required: true },
         dose: String,
         frequency: String,
@@ -95,7 +95,7 @@ const prescriptionSchema = new Schema(
         at: Date,
         by: ObjectId,
         byName: String,
-        lines: [{ _id: false, rxItemId: ObjectId, itemId: ObjectId, batchId: ObjectId, batchNumber: String, quantity: Number }],
+        lines: [{ _id: false, rxItemId: ObjectId, itemId: { type: ObjectId, ref: 'Item' }, batchId: ObjectId, batchNumber: String, quantity: Number }],
       },
     ],
     ePrescription: { externalId: String, status: String },
@@ -120,12 +120,12 @@ const supplierSchema = new Schema(
 const purchaseOrderSchema = new Schema(
   {
     poNumber: { type: String, required: true, unique: true },
-    supplierId: { type: ObjectId, required: true },
-    branchId: { type: ObjectId, required: true, index: true },
-    locationId: { type: ObjectId, required: true },
+    supplierId: { type: ObjectId, ref: 'Supplier', required: true },
+    branchId: { type: ObjectId, ref: 'Branch', required: true, index: true },
+    locationId: { type: ObjectId, ref: 'StockLocation', required: true },
     items: [
       {
-        itemId: { type: ObjectId, required: true },
+        itemId: { type: ObjectId, ref: 'Item', required: true },
         itemName: String,
         quantity: { type: Number, required: true, min: 1 },
         unitCost: { type: Number, required: true, min: 0 },
@@ -138,7 +138,7 @@ const purchaseOrderSchema = new Schema(
     createdBy: ObjectId,
     approvedBy: ObjectId,
     approvedAt: Date,
-    receipts: [{ _id: false, at: Date, by: ObjectId, deliveryNote: String, lines: [{ _id: false, itemId: ObjectId, batchNumber: String, expiryDate: Date, quantity: Number }] }],
+    receipts: [{ _id: false, at: Date, by: ObjectId, deliveryNote: String, lines: [{ _id: false, itemId: { type: ObjectId, ref: 'Item' }, batchNumber: String, expiryDate: Date, quantity: Number }] }],
   },
   { timestamps: true },
 );

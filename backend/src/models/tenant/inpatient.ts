@@ -8,7 +8,7 @@ const wardSchema = new Schema(
   {
     name: { type: String, required: true },
     code: { type: String, required: true, uppercase: true },
-    branchId: { type: ObjectId, required: true, index: true },
+    branchId: { type: ObjectId, ref: 'Branch', required: true, index: true },
     type: { type: String, enum: ['general', 'maternity', 'pediatric', 'surgical', 'icu', 'hdu', 'newborn', 'dialysis', 'isolation'], default: 'general' },
     gender: { type: String, enum: ['any', 'male', 'female'], default: 'any' },
     bedChargeServiceCode: String,
@@ -20,12 +20,12 @@ wardSchema.index({ branchId: 1, code: 1 }, { unique: true });
 
 const bedSchema = new Schema(
   {
-    wardId: { type: ObjectId, required: true, index: true },
-    branchId: { type: ObjectId, required: true, index: true },
+    wardId: { type: ObjectId, ref: 'Ward', required: true, index: true },
+    branchId: { type: ObjectId, ref: 'Branch', required: true, index: true },
     number: { type: String, required: true },
     category: { type: String, enum: BED_CATEGORIES, default: 'normal' },
     status: { type: String, enum: ['available', 'occupied', 'cleaning', 'maintenance'], default: 'available', index: true },
-    admissionId: ObjectId,
+    admissionId: { type: ObjectId, ref: 'Admission' },
   },
   { timestamps: true },
 );
@@ -34,11 +34,11 @@ bedSchema.index({ wardId: 1, number: 1 }, { unique: true });
 const admissionSchema = new Schema(
   {
     admissionNumber: { type: String, required: true, unique: true },
-    visitId: { type: ObjectId, index: true },
-    patientId: { type: ObjectId, required: true, index: true },
-    branchId: { type: ObjectId, required: true, index: true },
-    wardId: { type: ObjectId, required: true },
-    bedId: { type: ObjectId, required: true },
+    visitId: { type: ObjectId, ref: 'Visit', index: true },
+    patientId: { type: ObjectId, ref: 'Patient', required: true, index: true },
+    branchId: { type: ObjectId, ref: 'Branch', required: true, index: true },
+    wardId: { type: ObjectId, ref: 'Ward', required: true },
+    bedId: { type: ObjectId, ref: 'Bed', required: true },
     admittingDoctorId: ObjectId,
     admittingDoctorName: String,
     admissionDiagnosis: String,
@@ -64,9 +64,9 @@ const admissionSchema = new Schema(
 /** Nursing notes, doctor rounds and progress notes share one append-only structure. */
 const clinicalNoteSchema = new Schema(
   {
-    admissionId: { type: ObjectId, required: true, index: true },
-    patientId: { type: ObjectId, required: true },
-    branchId: { type: ObjectId, required: true },
+    admissionId: { type: ObjectId, ref: 'Admission', required: true, index: true },
+    patientId: { type: ObjectId, ref: 'Patient', required: true },
+    branchId: { type: ObjectId, ref: 'Branch', required: true },
     kind: { type: String, enum: ['nursing', 'doctor_round', 'progress', 'handover'], required: true },
     text: { type: String, required: true },
     by: ObjectId,
@@ -77,10 +77,10 @@ const clinicalNoteSchema = new Schema(
 
 const medicationAdministrationSchema = new Schema(
   {
-    admissionId: { type: ObjectId, required: true, index: true },
-    patientId: { type: ObjectId, required: true },
-    branchId: { type: ObjectId, required: true },
-    prescriptionId: ObjectId,
+    admissionId: { type: ObjectId, ref: 'Admission', required: true, index: true },
+    patientId: { type: ObjectId, ref: 'Patient', required: true },
+    branchId: { type: ObjectId, ref: 'Branch', required: true },
+    prescriptionId: { type: ObjectId, ref: 'Prescription' },
     drugName: { type: String, required: true },
     dose: String,
     route: String,
@@ -96,8 +96,8 @@ const medicationAdministrationSchema = new Schema(
 
 const fluidEntrySchema = new Schema(
   {
-    admissionId: { type: ObjectId, required: true, index: true },
-    branchId: { type: ObjectId, required: true },
+    admissionId: { type: ObjectId, ref: 'Admission', required: true, index: true },
+    branchId: { type: ObjectId, ref: 'Branch', required: true },
     direction: { type: String, enum: ['intake', 'output'], required: true },
     route: { type: String, required: true },
     volumeMl: { type: Number, required: true, min: 0 },

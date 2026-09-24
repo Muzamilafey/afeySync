@@ -8,8 +8,8 @@ export const QUEUE_STAGES = ['triage', 'consultation', 'laboratory', 'radiology'
 const appointmentSchema = new Schema(
   {
     appointmentNumber: { type: String, required: true, unique: true },
-    patientId: { type: ObjectId, required: true, index: true },
-    branchId: { type: ObjectId, required: true, index: true },
+    patientId: { type: ObjectId, ref: 'Patient', required: true, index: true },
+    branchId: { type: ObjectId, ref: 'Branch', required: true, index: true },
     department: String,
     providerId: ObjectId,
     providerName: String,
@@ -17,7 +17,7 @@ const appointmentSchema = new Schema(
     durationMinutes: { type: Number, default: 15 },
     reason: String,
     status: { type: String, enum: ['booked', 'checked_in', 'completed', 'cancelled', 'no_show'], default: 'booked', index: true },
-    visitId: ObjectId,
+    visitId: { type: ObjectId, ref: 'Visit' },
     cancelReason: String,
     reminderSent: { type: Boolean, default: false },
     createdBy: ObjectId,
@@ -28,8 +28,8 @@ const appointmentSchema = new Schema(
 const visitSchema = new Schema(
   {
     visitNumber: { type: String, required: true, unique: true },
-    patientId: { type: ObjectId, required: true, index: true },
-    branchId: { type: ObjectId, required: true, index: true },
+    patientId: { type: ObjectId, ref: 'Patient', required: true, index: true },
+    branchId: { type: ObjectId, ref: 'Branch', required: true, index: true },
     type: { type: String, enum: VISIT_TYPES, default: 'opd' },
     status: { type: String, enum: ['open', 'in_progress', 'admitted', 'closed', 'cancelled'], default: 'open', index: true },
     priority: { type: String, enum: ['normal', 'urgent', 'emergency'], default: 'normal' },
@@ -47,7 +47,7 @@ const visitSchema = new Schema(
     complaint: String,
     arrivedAt: { type: Date, default: Date.now },
     closedAt: Date,
-    invoiceId: ObjectId,
+    invoiceId: { type: ObjectId, ref: 'Invoice' },
     createdBy: ObjectId,
   },
   { timestamps: true },
@@ -56,9 +56,9 @@ visitSchema.index({ createdAt: -1 });
 
 const queueEntrySchema = new Schema(
   {
-    visitId: { type: ObjectId, required: true, index: true },
-    patientId: { type: ObjectId, required: true },
-    branchId: { type: ObjectId, required: true, index: true },
+    visitId: { type: ObjectId, ref: 'Visit', required: true, index: true },
+    patientId: { type: ObjectId, ref: 'Patient', required: true },
+    branchId: { type: ObjectId, ref: 'Branch', required: true, index: true },
     stage: { type: String, enum: QUEUE_STAGES, required: true, index: true },
     ticket: { type: String, required: true },
     priority: { type: String, enum: ['normal', 'urgent', 'emergency'], default: 'normal' },
@@ -78,10 +78,10 @@ queueEntrySchema.index({ branchId: 1, stage: 1, status: 1, createdAt: 1 });
 
 const vitalsSchema = new Schema(
   {
-    visitId: { type: ObjectId, index: true },
-    admissionId: { type: ObjectId, index: true },
-    patientId: { type: ObjectId, required: true, index: true },
-    branchId: { type: ObjectId, required: true },
+    visitId: { type: ObjectId, ref: 'Visit', index: true },
+    admissionId: { type: ObjectId, ref: 'Admission', index: true },
+    patientId: { type: ObjectId, ref: 'Patient', required: true, index: true },
+    branchId: { type: ObjectId, ref: 'Branch', required: true },
     temperatureC: Number,
     pulse: Number,
     respiratoryRate: Number,
@@ -115,9 +115,9 @@ const diagnosisSchema = new Schema(
  */
 const consultationSchema = new Schema(
   {
-    visitId: { type: ObjectId, required: true, index: true },
-    patientId: { type: ObjectId, required: true, index: true },
-    branchId: { type: ObjectId, required: true, index: true },
+    visitId: { type: ObjectId, ref: 'Visit', required: true, index: true },
+    patientId: { type: ObjectId, ref: 'Patient', required: true, index: true },
+    branchId: { type: ObjectId, ref: 'Branch', required: true, index: true },
     providerId: { type: ObjectId, required: true },
     providerName: String,
     chiefComplaint: String,
@@ -140,10 +140,10 @@ const consultationSchema = new Schema(
 
 const procedureSchema = new Schema(
   {
-    visitId: { type: ObjectId, index: true },
-    admissionId: ObjectId,
-    patientId: { type: ObjectId, required: true, index: true },
-    branchId: { type: ObjectId, required: true },
+    visitId: { type: ObjectId, ref: 'Visit', index: true },
+    admissionId: { type: ObjectId, ref: 'Admission' },
+    patientId: { type: ObjectId, ref: 'Patient', required: true, index: true },
+    branchId: { type: ObjectId, ref: 'Branch', required: true },
     serviceCode: String,
     name: { type: String, required: true },
     status: { type: String, enum: ['ordered', 'done', 'cancelled'], default: 'ordered' },
@@ -158,9 +158,9 @@ const procedureSchema = new Schema(
 const referralSchema = new Schema(
   {
     referralNumber: { type: String, required: true, unique: true },
-    visitId: ObjectId,
-    patientId: { type: ObjectId, required: true, index: true },
-    branchId: { type: ObjectId, required: true },
+    visitId: { type: ObjectId, ref: 'Visit' },
+    patientId: { type: ObjectId, ref: 'Patient', required: true, index: true },
+    branchId: { type: ObjectId, ref: 'Branch', required: true },
     direction: { type: String, enum: ['out', 'in', 'internal'], required: true },
     toFacility: String,
     toFacilityCode: String,

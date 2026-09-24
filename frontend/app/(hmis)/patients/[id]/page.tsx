@@ -9,11 +9,15 @@ import { useCan } from '@/hooks/useMe';
 import { Alert, Badge, Button, Card, ErrorText, Field, Input, KV, Loading, Tabs, statusTone } from '@/components/ui';
 import { EligibilityResultCard, type EligibilityResult } from '@/features/sha/EligibilityChecker';
 import { BenefitsPanel } from '@/features/sha/BenefitsPanel';
+import { CheckInForm } from '@/features/frontdesk/CheckInForm';
+import { Modal, Table, Td, statusTone as tone } from '@/components/ui';
+import Link from 'next/link';
+import type { Visit } from '@/features/frontdesk/types';
 import { age, fmtDate, fmtDateTime, fullName } from '@/lib/utils';
 import type { Patient } from '@/types/api';
 
 type Full = Patient & { lastEligibility?: { status: string; createdAt: string; summary?: { scheme?: string } } };
-type TabKey = 'overview' | 'sha' | 'insurance' | 'edit';
+type TabKey = 'overview' | 'visits' | 'sha' | 'insurance' | 'edit';
 
 function EditPatient({ p }: { p: Full }) {
   const qc = useQueryClient();
@@ -44,6 +48,8 @@ function Profile({ id }: { id: string }) {
   const can = useCan();
   const qc = useQueryClient();
   const [tab, setTab] = useState<TabKey>((params.get('tab') as TabKey) || 'overview');
+  const [checkIn, setCheckIn] = useState(false);
+  const visits = useQuery({ queryKey: ['patient-visits', id], queryFn: async () => (await api<Visit[]>('/visits', { query: { patientId: id, limit: 50 } })).data, enabled: tab === 'visits' && can('queue.view', 'opd.view', 'consultation.view') });
   const { data: p, isLoading, error } = useQuery({ queryKey: ['patient', id], queryFn: async () => (await api<Full>(`/patients/${id}`)).data });
   const timeline = useQuery({ queryKey: ['patient-timeline', id], queryFn: async () => (await api<Array<{ at: string; title: string; type: string; by?: string }>>(`/patients/${id}/timeline`)).data, enabled: !!p });
   const elig = useMutation({
@@ -77,9 +83,10 @@ function Profile({ id }: { id: string }) {
           <div className="text-right">
             <p className="font-mono text-lg font-semibold">{p.patientNumber}</p>
             <p className="muted text-xs">Registered {fmtDate(p.createdAt)}</p>
-            {can('sha.eligibility') && (
-              <Button className="mt-2" size="sm" onClick={() => elig.mutate()} loading={elig.isPending}><ShieldCheck className="h-4 w-4" /> Check SHA eligibility</Button>
-            )}
+            <div className="mt-2 flex flex-wrap justify-end gap-2">
+              {can('queue.manage') && <Button size="sm" variant="outline" onClick={() => setCheckIn(true)}>Check in</Button>}
+              {can('sha.eligibility') && <Button size="sm" onClick={() => elig.mutate()} loading={elig.isPending}><ShieldCheck className="h-4 w-4" /> Check SHA eligibility</Button>}
+            </div>
           </div>
         </div>
       </section>
@@ -91,6 +98,7 @@ function Profile({ id }: { id: string }) {
         onChange={setTab}
         tabs={[
           { key: 'overview', label: 'Overview' },
+          ...(can('queue.view', 'opd.view', 'consultation.view') ? [{ key: 'visits' as const, label: 'Visits' }] : []),
           ...(can('sha.eligibility') ? [{ key: 'sha' as const, label: 'SHA Benefits' }] : []),
           { key: 'insurance', label: 'Insurance' },
           ...(can('patients.edit') ? [{ key: 'edit' as const, label: 'Edit' }] : []),
@@ -136,6 +144,18 @@ function Profile({ id }: { id: string }) {
         </Card>
       )}
       {tab === 'edit' && <EditPatient p={p} />}
+      {tab === 'visits' && (
+        <Card title="Visits">
+          <Table head={['Visit', 'Type', 'Payer', 'Status', 'Date']} empty={(visits.data ?? []).length === 0}>
+            {visits.data?.map((v) => (
+              <tr key={v._id}><Td><Link href={`/visits/${v._id}`} className="font-mono text-xs font-semibold text-brand-600">{v.visitNumber}</Link></Td><Td className="capitalize">{v.type.replace(/_/g, ' ')}</Td><Td className="uppercase">{v.payer?.type}</Td><Td><Badge tone={tone(v.status === 'closed' ? 'completed' : 'pending')}>{v.status}</Badge></Td><Td>{fmtDateTime(v.createdAt)}</Td></tr>
+            ))}
+          </Table>
+        </Card>
+      )}
+      <Modal open={checkIn} onClose={() => setCheckIn(false)} title="Check in patient" wide>
+        <CheckInForm preset={p} onDone={() => setCheckIn(false)} />
+      </Modal>
     </div>
   );
 }

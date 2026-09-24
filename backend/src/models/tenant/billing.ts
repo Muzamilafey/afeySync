@@ -44,9 +44,9 @@ const invoiceLineSchema = new Schema(
 const invoiceSchema = new Schema(
   {
     invoiceNumber: { type: String, required: true, unique: true },
-    patientId: { type: ObjectId, required: true, index: true },
-    visitId: { type: ObjectId, index: true },
-    branchId: { type: ObjectId, required: true, index: true },
+    patientId: { type: ObjectId, ref: 'Patient', required: true, index: true },
+    visitId: { type: ObjectId, ref: 'Visit', index: true },
+    branchId: { type: ObjectId, ref: 'Branch', required: true, index: true },
     payer: {
       type: { type: String, enum: ['cash', 'sha', 'insurance', 'corporate'], default: 'cash' },
       priceList: { type: String, default: 'cash' },
@@ -86,9 +86,9 @@ invoiceSchema.index({ 'lines.source': 1, 'lines.sourceId': 1 });
 const paymentSchema = new Schema(
   {
     receiptNumber: { type: String, unique: true, sparse: true },
-    invoiceId: { type: ObjectId, index: true },
-    patientId: { type: ObjectId, index: true },
-    branchId: { type: ObjectId, required: true, index: true },
+    invoiceId: { type: ObjectId, ref: 'Invoice', index: true },
+    patientId: { type: ObjectId, ref: 'Patient', index: true },
+    branchId: { type: ObjectId, ref: 'Branch', required: true, index: true },
     method: { type: String, enum: PAYMENT_METHODS, required: true },
     amount: { type: Number, required: true, min: 0 },
     reference: { type: String, index: true },
@@ -118,10 +118,10 @@ paymentSchema.index({ createdAt: -1 });
 const creditNoteSchema = new Schema(
   {
     creditNoteNumber: { type: String, required: true, unique: true },
-    invoiceId: { type: ObjectId, required: true, index: true },
-    paymentId: ObjectId,
-    patientId: ObjectId,
-    branchId: { type: ObjectId, required: true, index: true },
+    invoiceId: { type: ObjectId, ref: 'Invoice', required: true, index: true },
+    paymentId: { type: ObjectId, ref: 'Payment' },
+    patientId: { type: ObjectId, ref: 'Patient' },
+    branchId: { type: ObjectId, ref: 'Branch', required: true, index: true },
     type: { type: String, enum: ['refund', 'credit'], required: true },
     amount: { type: Number, required: true, min: 0.01 },
     method: { type: String, enum: PAYMENT_METHODS },
@@ -135,7 +135,7 @@ const creditNoteSchema = new Schema(
 const expenseSchema = new Schema(
   {
     expenseNumber: { type: String, required: true, unique: true },
-    branchId: { type: ObjectId, required: true, index: true },
+    branchId: { type: ObjectId, ref: 'Branch', required: true, index: true },
     category: { type: String, required: true },
     description: String,
     amount: { type: Number, required: true, min: 0 },

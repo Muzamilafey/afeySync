@@ -4,7 +4,7 @@ import Link from 'next/link';
 import { usePathname, useRouter } from 'next/navigation';
 import { useEffect, useRef, useState, type ReactNode } from 'react';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
-import { Activity, Banknote, Bell, Receipt, Building2, ChevronDown, ClipboardList, FileSearch, HeartPulse, LayoutDashboard, LogOut, Menu, Network, Search, Settings, ShieldCheck, UserPlus, Users, X } from 'lucide-react';
+import { Activity, Banknote, Bell, CalendarDays, ListOrdered, Stethoscope, Receipt, Building2, ChevronDown, ClipboardList, FileSearch, HeartPulse, LayoutDashboard, LogOut, Menu, Network, Search, Settings, ShieldCheck, UserPlus, Users, X } from 'lucide-react';
 import { useMe } from '@/hooks/useMe';
 import { api } from '@/services/api';
 import { useSessionStore } from '@/stores/session';
@@ -24,7 +24,10 @@ const NAV: Array<{ section: string; items: NavItem[] }> = [
   { section: 'Clinical', items: [
     { href: '/dashboard', label: 'Dashboard', icon: LayoutDashboard },
     { href: '/frontdesk', label: 'Front Desk', icon: UserPlus, any: ['patients.create', 'frontdesk.view'] },
+    { href: '/appointments', label: 'Appointments', icon: CalendarDays, any: ['appointments.view'] },
     { href: '/patients', label: 'Patients', icon: Users, any: ['patients.search', 'patients.view'] },
+    { href: '/queue/triage', label: 'Triage Queue', icon: ListOrdered, any: ['opd.create'] },
+    { href: '/queue/consultation', label: 'OPD Consultation', icon: Stethoscope, any: ['consultation.create'] },
   ] },
   { section: 'SHA / DHA', items: [
     { href: '/sha', label: 'SHA', icon: ShieldCheck, any: ['sha.view', 'sha.eligibility'] },

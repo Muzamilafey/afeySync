@@ -4,7 +4,7 @@ const { ObjectId, Mixed } = Schema.Types;
 
 const dentalChartSchema = new Schema(
   {
-    patientId: { type: ObjectId, required: true, unique: true },
+    patientId: { type: ObjectId, ref: 'Patient', required: true, unique: true },
     /** FDI tooth number → condition */
     teeth: { type: Map, of: new Schema({ status: String, surfaces: [String], notes: String, updatedAt: Date }, { _id: false }), default: {} },
     updatedBy: ObjectId,
@@ -14,9 +14,9 @@ const dentalChartSchema = new Schema(
 
 const dentalVisitSchema = new Schema(
   {
-    patientId: { type: ObjectId, required: true, index: true },
-    visitId: ObjectId,
-    branchId: { type: ObjectId, required: true },
+    patientId: { type: ObjectId, ref: 'Patient', required: true, index: true },
+    visitId: { type: ObjectId, ref: 'Visit' },
+    branchId: { type: ObjectId, ref: 'Branch', required: true },
     examination: String,
     diagnosis: String,
     treatmentPlan: [{ tooth: String, procedure: String, serviceCode: String, status: { type: String, enum: ['planned', 'done', 'cancelled'], default: 'planned' }, doneAt: Date }],
@@ -30,8 +30,8 @@ const dentalVisitSchema = new Schema(
 const mortuaryCaseSchema = new Schema(
   {
     mortuaryNumber: { type: String, required: true, unique: true },
-    branchId: { type: ObjectId, required: true, index: true },
-    patientId: ObjectId,
+    branchId: { type: ObjectId, ref: 'Branch', required: true, index: true },
+    patientId: { type: ObjectId, ref: 'Patient' },
     deceased: { name: { type: String, required: true }, sex: String, age: String, idType: String, idNumber: String },
     dateOfDeath: { type: Date, required: true },
     placeOfDeath: { type: String, enum: ['in_facility', 'brought_in_dead', 'other'], default: 'in_facility' },
@@ -54,8 +54,8 @@ const mortuaryCaseSchema = new Schema(
 
 const documentSchema = new Schema(
   {
-    patientId: { type: ObjectId, index: true },
-    branchId: { type: ObjectId, index: true },
+    patientId: { type: ObjectId, ref: 'Patient', index: true },
+    branchId: { type: ObjectId, ref: 'Branch', index: true },
     category: { type: String, enum: ['identification', 'lab_report', 'radiology_report', 'discharge_summary', 'consent', 'insurance', 'sha', 'dha', 'referral', 'other'], required: true },
     title: { type: String, required: true },
     fileName: String,
@@ -76,7 +76,7 @@ const staffProfileSchema = new Schema(
     userId: { type: ObjectId, unique: true, sparse: true },
     employeeNumber: { type: String, required: true, unique: true },
     fullName: { type: String, required: true },
-    branchId: ObjectId,
+    branchId: { type: ObjectId, ref: 'Branch' },
     department: String,
     cadre: String,
     jobTitle: String,
@@ -97,7 +97,7 @@ const staffProfileSchema = new Schema(
 
 const leaveRequestSchema = new Schema(
   {
-    staffId: { type: ObjectId, required: true, index: true },
+    staffId: { type: ObjectId, ref: 'StaffProfile', required: true, index: true },
     type: { type: String, enum: ['annual', 'sick', 'maternity', 'paternity', 'compassionate', 'study', 'unpaid'], required: true },
     startDate: { type: Date, required: true },
     endDate: { type: Date, required: true },
@@ -112,8 +112,8 @@ const leaveRequestSchema = new Schema(
 
 const shiftSchema = new Schema(
   {
-    staffId: { type: ObjectId, required: true, index: true },
-    branchId: { type: ObjectId, required: true },
+    staffId: { type: ObjectId, ref: 'StaffProfile', required: true, index: true },
+    branchId: { type: ObjectId, ref: 'Branch', required: true },
     department: String,
     date: { type: Date, required: true, index: true },
     shift: { type: String, enum: ['day', 'night', 'morning', 'afternoon', 'on_call'], required: true },

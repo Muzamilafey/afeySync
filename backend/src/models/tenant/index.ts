@@ -200,8 +200,8 @@ const counterSchema = new Schema({ _id: { type: String, required: true }, seq: {
 /* ---------------------------------------------------------------- SHA / DHA tracking */
 const shaEligibilitySchema = new Schema(
   {
-    patientId: { type: ObjectId, index: true },
-    branchId: { type: ObjectId, index: true },
+    patientId: { type: ObjectId, ref: 'Patient', index: true },
+    branchId: { type: ObjectId, ref: 'Branch', index: true },
     identificationType: String,
     identificationNumberMasked: String,
     eligible: Boolean,
@@ -222,9 +222,9 @@ const shaTransactionSchema = new Schema(
     reference: { type: String, required: true, unique: true },
     externalReference: { type: String, index: true, sparse: true },
     idempotencyKey: { type: String, required: true, unique: true },
-    patientId: { type: ObjectId, required: true, index: true },
-    branchId: { type: ObjectId, required: true, index: true },
-    visitId: ObjectId,
+    patientId: { type: ObjectId, ref: 'Patient', required: true, index: true },
+    branchId: { type: ObjectId, ref: 'Branch', required: true, index: true },
+    visitId: { type: ObjectId, ref: 'Visit' },
     benefitCode: String,
     interventionCode: String,
     accessPoint: String,
@@ -252,7 +252,7 @@ const auditLogSchema = new Schema(
     userId: ObjectId,
     userName: String,
     actorType: { type: String, enum: ['user', 'support', 'system', 'integration'], default: 'user' },
-    branchId: ObjectId,
+    branchId: { type: ObjectId, ref: 'Branch' },
     action: { type: String, required: true, index: true },
     resource: { type: String, index: true },
     resourceId: { type: String, index: true },
@@ -275,7 +275,7 @@ for (const op of ['updateOne', 'updateMany', 'findOneAndUpdate', 'deleteOne', 'd
 const notificationSchema = new Schema(
   {
     userId: { type: ObjectId, index: true },
-    branchId: ObjectId,
+    branchId: { type: ObjectId, ref: 'Branch' },
     event: String,
     title: String,
     body: String,

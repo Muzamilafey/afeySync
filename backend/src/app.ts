@@ -25,6 +25,9 @@ import callbackRoutes from './modules/callbacks/callbacks.routes';
 import notificationRoutes from './modules/notifications/notifications.routes';
 import dashboardRoutes from './modules/dashboard/dashboard.routes';
 import billingRoutes from './modules/billing/billing.routes';
+import { queuesRouter, referralsRouter, visitsRouter } from './modules/frontdesk/visits.routes';
+import appointmentRoutes from './modules/frontdesk/appointments.routes';
+import { consultationsRouter, opdRouter } from './modules/opd/opd.routes';
 import { mpesaPublicRouter, mpesaRouter } from './modules/billing/mpesa.routes';
 import { openApiSpec } from './openapi';
 import { h } from './utils/asyncHandler';
@@ -85,6 +88,12 @@ export function createApp() {
   api.use('/notifications', notificationRoutes);
   api.use('/dashboard', dashboardRoutes);
   api.use('/billing', billingRoutes);
+  api.use('/visits', visitsRouter);
+  api.use('/queues', queuesRouter);
+  api.use('/referrals', referralsRouter);
+  api.use('/appointments', appointmentRoutes);
+  api.use('/opd', opdRouter);
+  api.use('/consultations', consultationsRouter);
   api.use('/payments/mpesa', mpesaRouter);
   app.use('/api/v1', api);
 
