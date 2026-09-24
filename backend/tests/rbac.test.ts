@@ -72,6 +72,17 @@ describe('RBAC', () => {
     expect((await t('rbac', tok).get('/api/v1/auth/me')).status).toBe(401);
   });
 
+  it('shapes the dashboard by permission', async () => {
+    const adminDash = await t('rbac', admin).get('/api/v1/dashboard');
+    expect(adminDash.status).toBe(200);
+    expect(adminDash.body.data.patients.total).toBeGreaterThan(0);
+    expect(adminDash.body.data.patients.trend.length).toBeGreaterThan(0);
+    expect(adminDash.body.data.admin).toBeDefined();
+    const cashDash = await t('rbac', cashier).get('/api/v1/dashboard');
+    expect(cashDash.body.data.admin).toBeUndefined();
+    expect(cashDash.body.data.sha).toBeUndefined();
+  });
+
   it('writes an append-only audit trail', async () => {
     const res = await t('rbac', admin).get('/api/v1/admin/audit?action=patient.create');
     expect(res.status).toBe(200);

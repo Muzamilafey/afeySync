@@ -246,6 +246,13 @@ router.post(
   }),
 );
 
+const TIMELINE_LABELS: Record<string, string> = {
+  'patient.create': 'Registered in AfeySync',
+  'patient.import_dha': 'Imported from DHA Client Registry',
+  'patient.update': 'Demographics updated',
+  'patient.link_branch': 'Linked to another branch',
+};
+
 router.get(
   '/:id/timeline',
   requirePermission('patients.view'),
@@ -260,7 +267,7 @@ router.get(
     const timeline = [
       ...checks.map((c) => ({ at: c.createdAt, type: 'sha_eligibility', title: `SHA eligibility: ${c.status}` })),
       ...txs.map((t) => ({ at: t.createdAt, type: `sha_${t.kind}`, title: `SHA ${t.kind.replace('_', ' ')} ${t.reference} (${t.status})` })),
-      ...events.map((e) => ({ at: e.createdAt, type: e.action, title: e.action.replace('patient.', '').replace('_', ' '), by: e.userName })),
+      ...events.map((e) => ({ at: e.createdAt, type: e.action, title: TIMELINE_LABELS[e.action] ?? e.action, by: e.userName })),
     ].sort((a, b) => +new Date(b.at!) - +new Date(a.at!));
     res.json({ success: true, data: timeline });
   }),

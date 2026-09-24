@@ -61,6 +61,7 @@ const routes: Record<string, Record<string, Op>> = {
   '/api/v1/sha/transactions': { get: { summary: 'Authorizations/preauths/claims', permission: 'sha.view', tag: 'SHA' }, post: { summary: 'Create draft (idempotent)', permission: 'sha.authorization|sha.preauthorization|sha.claim', tag: 'SHA' } },
   '/api/v1/sha/callback-endpoints': { get: { summary: 'Callback endpoints', permission: 'admin.integrations', tag: 'SHA' }, post: { summary: 'Create callback endpoint (URL shown once)', permission: 'admin.integrations', tag: 'SHA' } },
   '/api/v1/sha/callbacks/{token}': { post: { summary: 'HIE status callback receiver (verified)', public: true, tag: 'Callbacks' } },
+  '/api/v1/dashboard': { get: { summary: 'Facility dashboard (sections by permission)', tag: 'Dashboard' } },
   '/api/v1/notifications': { get: { summary: 'My notifications', tag: 'Notifications' } },
 };
 

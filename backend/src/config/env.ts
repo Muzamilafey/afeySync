@@ -1,5 +1,7 @@
-import 'dotenv/config';
+import dotenv from 'dotenv';
 import { z } from 'zod';
+
+dotenv.config({ quiet: true });
 
 const bool = (def: boolean) =>
   z

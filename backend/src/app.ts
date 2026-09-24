@@ -23,6 +23,7 @@ import dhaRoutes from './modules/dha/dha.routes';
 import shaRoutes from './modules/sha/sha.routes';
 import callbackRoutes from './modules/callbacks/callbacks.routes';
 import notificationRoutes from './modules/notifications/notifications.routes';
+import dashboardRoutes from './modules/dashboard/dashboard.routes';
 import { openApiSpec } from './openapi';
 import { h } from './utils/asyncHandler';
 
@@ -79,6 +80,7 @@ export function createApp() {
   api.use('/dha', dhaRoutes);
   api.use('/sha', shaRoutes);
   api.use('/notifications', notificationRoutes);
+  api.use('/dashboard', dashboardRoutes);
   app.use('/api/v1', api);
 
   app.get('/api/docs/openapi.json', (_req, res) => res.json(openApiSpec));
