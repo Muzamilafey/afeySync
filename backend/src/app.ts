@@ -1,0 +1,90 @@
+import express, { type Request } from 'express';
+import helmet from 'helmet';
+import cors from 'cors';
+import cookieParser from 'cookie-parser';
+import rateLimit from 'express-rate-limit';
+import pinoHttp from 'pino-http';
+import swaggerUi from 'swagger-ui-express';
+import { env, isProd } from './config/env';
+import { logger } from './utils/logger';
+import { requestId } from './middleware/requestContext';
+import { sanitizeInput } from './middleware/sanitize';
+import { resolveTenantHost } from './middleware/tenantResolver';
+import { errorHandler, notFoundHandler } from './middleware/errorHandler';
+import healthRoutes from './modules/health/health.routes';
+import tenantAuthRoutes from './modules/auth/tenantAuth.routes';
+import ownerAuthRoutes from './modules/auth/ownerAuth.routes';
+import ownerRoutes from './modules/owner/owner.routes';
+import branchRoutes from './modules/branches/branches.routes';
+import { permissionsRouter, rolesRouter, usersRouter } from './modules/users/users.routes';
+import adminRoutes from './modules/admin/admin.routes';
+import patientRoutes from './modules/patients/patients.routes';
+import dhaRoutes from './modules/dha/dha.routes';
+import shaRoutes from './modules/sha/sha.routes';
+import callbackRoutes from './modules/callbacks/callbacks.routes';
+import notificationRoutes from './modules/notifications/notifications.routes';
+import { openApiSpec } from './openapi';
+import { h } from './utils/asyncHandler';
+
+export function createApp() {
+  const app = express();
+  app.disable('x-powered-by');
+  // Trust only the configured proxy chain (nginx/Cloudflare) for req.ip / req.hostname.
+  app.set('trust proxy', env.TRUST_PROXY === 'false' ? false : env.TRUST_PROXY);
+
+  app.use(requestId);
+  app.use(pinoHttp({ logger, genReqId: (req) => (req as Request).requestId, autoLogging: env.NODE_ENV !== 'test' }));
+  app.use(helmet({ contentSecurityPolicy: isProd ? undefined : false, crossOriginResourcePolicy: { policy: 'same-site' } }));
+
+  const allowed = new Set([env.FRONTEND_URL, env.OWNER_URL, ...env.CORS_ORIGINS.split(',').map((o) => o.trim()).filter(Boolean)]);
+  const platformRe = new RegExp(`^https?://([a-z0-9-]+\\.)?${env.PLATFORM_DOMAIN.replace(/\./g, '\\.')}(:\\d+)?$`);
+  app.use(
+    cors({
+      credentials: true,
+      origin: (origin, cb) => {
+        // Same-origin/non-browser requests have no Origin header.
+        if (!origin || allowed.has(origin) || platformRe.test(origin)) return cb(null, true);
+        // Verified custom domains are served through the same-origin /api proxy and need no CORS.
+        return cb(null, false);
+      },
+    }),
+  );
+
+  // Keep the raw body for callback signature verification.
+  app.use(express.json({ limit: '2mb', verify: (req, _res, buf) => ((req as Request & { rawBody?: Buffer }).rawBody = buf) }));
+  app.use(express.urlencoded({ extended: false, limit: '1mb' }));
+  app.use(cookieParser());
+  app.use(sanitizeInput);
+
+  app.use('/health', healthRoutes);
+  app.use(h(resolveTenantHost));
+
+  const api = express.Router();
+  const authLimiter = rateLimit({ windowMs: 15 * 60_000, limit: env.NODE_ENV === 'test' ? 10_000 : 30, standardHeaders: true, legacyHeaders: false, message: { success: false, error: { code: 'RATE_LIMITED', message: 'Too many attempts. Try again later.' } } });
+  const apiLimiter = rateLimit({ windowMs: 60_000, limit: env.NODE_ENV === 'test' ? 100_000 : 600, standardHeaders: true, legacyHeaders: false, message: { success: false, error: { code: 'RATE_LIMITED', message: 'Too many requests' } } });
+
+  api.use(callbackRoutes); // public, verified per-endpoint (mounted before the generic limiter)
+  api.use(apiLimiter);
+  api.use('/auth/login', authLimiter);
+  api.use('/owner/auth/login', authLimiter);
+  api.use('/auth', tenantAuthRoutes);
+  api.use('/owner/auth', ownerAuthRoutes);
+  api.use('/owner', ownerRoutes);
+  api.use('/branches', branchRoutes);
+  api.use('/users', usersRouter);
+  api.use('/roles', rolesRouter);
+  api.use('/permissions', permissionsRouter);
+  api.use('/admin', adminRoutes);
+  api.use('/patients', patientRoutes);
+  api.use('/dha', dhaRoutes);
+  api.use('/sha', shaRoutes);
+  api.use('/notifications', notificationRoutes);
+  app.use('/api/v1', api);
+
+  app.get('/api/docs/openapi.json', (_req, res) => res.json(openApiSpec));
+  app.use('/api/docs', swaggerUi.serve, swaggerUi.setup(openApiSpec, { customSiteTitle: 'AfeySync API' }));
+
+  app.use(notFoundHandler);
+  app.use(errorHandler);
+  return app;
+}
