@@ -4,7 +4,7 @@ import Link from 'next/link';
 import { usePathname, useRouter } from 'next/navigation';
 import { useEffect, useRef, useState, type ReactNode } from 'react';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
-import { Activity, Banknote, Bell, FlaskConical, ScanLine, CalendarDays, ListOrdered, Stethoscope, Receipt, Building2, ChevronDown, ClipboardList, FileSearch, HeartPulse, LayoutDashboard, LogOut, Menu, Network, Search, Settings, ShieldCheck, UserPlus, Users, X } from 'lucide-react';
+import { Activity, Banknote, Bell, Boxes, Pill, ShoppingCart, FlaskConical, ScanLine, CalendarDays, ListOrdered, Stethoscope, Receipt, Building2, ChevronDown, ClipboardList, FileSearch, HeartPulse, LayoutDashboard, LogOut, Menu, Network, Search, Settings, ShieldCheck, UserPlus, Users, X } from 'lucide-react';
 import { useMe } from '@/hooks/useMe';
 import { api } from '@/services/api';
 import { useSessionStore } from '@/stores/session';
@@ -30,6 +30,7 @@ const NAV: Array<{ section: string; items: NavItem[] }> = [
     { href: '/queue/consultation', label: 'OPD Consultation', icon: Stethoscope, any: ['consultation.create'] },
     { href: '/laboratory', label: 'Laboratory', icon: FlaskConical, any: ['lab.view'] },
     { href: '/radiology', label: 'Radiology', icon: ScanLine, any: ['radiology.view'] },
+    { href: '/pharmacy', label: 'Pharmacy', icon: Pill, any: ['pharmacy.view'] },
   ] },
   { section: 'SHA / DHA', items: [
     { href: '/sha', label: 'SHA', icon: ShieldCheck, any: ['sha.view', 'sha.eligibility'] },
@@ -39,6 +40,8 @@ const NAV: Array<{ section: string; items: NavItem[] }> = [
   { section: 'Finance', items: [
     { href: '/billing', label: 'Billing & Cashier', icon: Banknote, any: ['billing.view'] },
     { href: '/billing/services', label: 'Services & Prices', icon: Receipt, any: ['billing.prices'] },
+    { href: '/inventory', label: 'Inventory', icon: Boxes, any: ['inventory.view', 'pharmacy.stock', 'pharmacy.view'] },
+    { href: '/procurement', label: 'Procurement', icon: ShoppingCart, any: ['procurement.view'] },
   ] },
   { section: 'Administration', items: [
     { href: '/admin/branches', label: 'Branches', icon: Building2, any: ['admin.branches'] },
