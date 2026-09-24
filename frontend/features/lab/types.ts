@@ -1,0 +1,15 @@
+export interface LabResult { parameter: string; name: string; value: string; unit?: string; referenceRange?: string; flag?: string; critical?: boolean }
+export interface LabItem { _id: string; testCode: string; testName: string; specimen?: string; accessionNumber?: string; status: string; results: LabResult[]; comment?: string; critical?: boolean; resultedByName?: string; verifiedByName?: string; approvedByName?: string; resultedAt?: string; releasedAt?: string; rejectionReason?: string; collectedAt?: string }
+export interface LabOrder { _id: string; orderNumber: string; priority: string; status: string; clinicalNotes?: string; orderedByName?: string; createdAt: string; visitId?: string; items: LabItem[]; patientId: string | { _id: string; patientNumber: string; firstName: string; lastName: string; gender: string; dateOfBirth?: string } }
+export interface LabTest { _id: string; code: string; name: string; department: string; specimen: string; container?: string; turnaroundMinutes: number; serviceCode?: string; active: boolean; parameters: Array<{ code: string; name: string; unit?: string; type: 'numeric' | 'text' | 'option'; options?: string[]; ranges: Array<{ sex: string; ageMinDays: number; ageMaxDays: number; low?: number; high?: number; criticalLow?: number; criticalHigh?: number; text?: string }> }> }
+export interface RadRequest { _id: string; requestNumber: string; accessionNumber: string; studyInstanceUid?: string; examCode: string; examName: string; modality: string; clinicalIndication?: string; priority: string; status: string; scheduledAt?: string; room?: string; requestedByName?: string; createdAt: string; visitId?: string; pacsViewerUrl?: string; report?: { findings?: string; impression?: string; reportedByName?: string; reportedAt?: string; verifiedByName?: string; verifiedAt?: string }; patientId: string | { _id: string; patientNumber: string; firstName: string; lastName: string; gender: string; dateOfBirth?: string }; patient?: { patientNumber: string; firstName: string; lastName: string; gender: string; dateOfBirth?: string }; attachments?: Array<{ _id: string; title: string; mimeType: string }> }
+export const FLAG_TONE: Record<string, 'red' | 'amber' | 'green' | 'gray'> = { LL: 'red', HH: 'red', L: 'amber', H: 'amber', A: 'amber', N: 'green', '': 'gray' };
+export const ITEM_STEPS: Array<{ status: string; label: string; step: string; perm: string }> = [
+  { status: 'ordered', label: 'To collect', step: 'collect', perm: 'lab.sample' },
+  { status: 'rejected', label: 'Rejected (recollect)', step: 'collect', perm: 'lab.sample' },
+  { status: 'collected', label: 'To receive', step: 'receive', perm: 'lab.sample' },
+  { status: 'received', label: 'Result entry', step: 'result', perm: 'lab.result' },
+  { status: 'processing', label: 'Processing', step: 'result', perm: 'lab.result' },
+  { status: 'resulted', label: 'To verify', step: 'verify', perm: 'lab.verify' },
+  { status: 'verified', label: 'To approve', step: 'approve', perm: 'lab.approve' },
+];

@@ -28,6 +28,8 @@ import billingRoutes from './modules/billing/billing.routes';
 import { queuesRouter, referralsRouter, visitsRouter } from './modules/frontdesk/visits.routes';
 import appointmentRoutes from './modules/frontdesk/appointments.routes';
 import { consultationsRouter, opdRouter } from './modules/opd/opd.routes';
+import labRoutes from './modules/laboratory/lab.routes';
+import radiologyRoutes from './modules/radiology/radiology.routes';
 import { mpesaPublicRouter, mpesaRouter } from './modules/billing/mpesa.routes';
 import { openApiSpec } from './openapi';
 import { h } from './utils/asyncHandler';
@@ -94,6 +96,8 @@ export function createApp() {
   api.use('/appointments', appointmentRoutes);
   api.use('/opd', opdRouter);
   api.use('/consultations', consultationsRouter);
+  api.use('/laboratory', labRoutes);
+  api.use('/radiology', radiologyRoutes);
   api.use('/payments/mpesa', mpesaRouter);
   app.use('/api/v1', api);
 
