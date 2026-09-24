@@ -24,6 +24,8 @@ import shaRoutes from './modules/sha/sha.routes';
 import callbackRoutes from './modules/callbacks/callbacks.routes';
 import notificationRoutes from './modules/notifications/notifications.routes';
 import dashboardRoutes from './modules/dashboard/dashboard.routes';
+import billingRoutes from './modules/billing/billing.routes';
+import { mpesaPublicRouter, mpesaRouter } from './modules/billing/mpesa.routes';
 import { openApiSpec } from './openapi';
 import { h } from './utils/asyncHandler';
 
@@ -65,6 +67,7 @@ export function createApp() {
   const apiLimiter = rateLimit({ windowMs: 60_000, limit: env.NODE_ENV === 'test' ? 100_000 : 600, standardHeaders: true, legacyHeaders: false, message: { success: false, error: { code: 'RATE_LIMITED', message: 'Too many requests' } } });
 
   api.use(callbackRoutes); // public, verified per-endpoint (mounted before the generic limiter)
+  api.use(mpesaPublicRouter); // public Safaricom callbacks, verified by secret per-tenant URL token
   api.use(apiLimiter);
   api.use('/auth/login', authLimiter);
   api.use('/owner/auth/login', authLimiter);
@@ -81,6 +84,8 @@ export function createApp() {
   api.use('/sha', shaRoutes);
   api.use('/notifications', notificationRoutes);
   api.use('/dashboard', dashboardRoutes);
+  api.use('/billing', billingRoutes);
+  api.use('/payments/mpesa', mpesaRouter);
   app.use('/api/v1', api);
 
   app.get('/api/docs/openapi.json', (_req, res) => res.json(openApiSpec));

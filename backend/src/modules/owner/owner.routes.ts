@@ -228,6 +228,7 @@ router.post(
     const sub = await meta().TenantSubscription.findOne({ tenantId: id }).sort({ createdAt: -1 }).lean();
     if (sub && (await m.Branch.countDocuments({})) >= (sub.maxBranches ?? 1)) throw forbidden('Subscription branch limit reached', 'SUBSCRIPTION_LIMIT');
     const branch = await m.Branch.create({ ...body, email: body.email || undefined, branchCode: body.branchCode.toUpperCase() });
+    await m.StockLocation.create([{ name: `${branch.branchName} Pharmacy`, branchId: branch._id, type: 'pharmacy' }, { name: `${branch.branchName} Main Store`, branchId: branch._id, type: 'store' }]);
     await refreshTenantStats(id, m);
     await platformAudit(req, { action: 'branch.create', resource: 'branch', resourceId: String(branch._id), tenantId: id, newValue: body });
     res.status(201).json({ success: true, data: branch });
@@ -326,7 +327,8 @@ router.put(
     if (!before) throw notFound('Facility not found');
     const set: Record<string, boolean> = {};
     for (const [k, v] of Object.entries(body)) set[`integrations.${k}`] = v;
-    const after = await Tenant.findByIdAndUpdate(id, { $set: set }, { returnDocument: 'after' }).select('integrations').lean();
+    await Tenant.updateOne({ _id: id }, { $set: set });
+    const after = await Tenant.findById(id).select('integrations').lean();
     await platformAudit(req, { action: 'tenant.integrations', resource: 'tenant', resourceId: id, tenantId: id, oldValue: before.integrations, newValue: after?.integrations });
     res.json({ success: true, data: after?.integrations });
   }),

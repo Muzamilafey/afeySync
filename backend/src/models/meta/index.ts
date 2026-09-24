@@ -234,6 +234,8 @@ const callbackEndpointSchema = new Schema(
     provider: { type: String, required: true },
     tenantId: { type: Schema.Types.ObjectId, index: true, default: null },
     tokenHash: { type: String, required: true, unique: true },
+    /** Only for providers that need the URL rebuilt server-side (e.g. M-Pesa CallBackURL per request). */
+    tokenEncrypted: encrypted,
     hmacSecret: encrypted,
     hmacHeader: String,
     active: { type: Boolean, default: true },

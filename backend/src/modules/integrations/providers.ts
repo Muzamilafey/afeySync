@@ -55,7 +55,7 @@ export const PROVIDER_DEFINITIONS: Record<Provider, ProviderDefinition> = {
       { key: 'till', label: 'Till Number' },
       { key: 'paybill', label: 'Paybill Number' },
       { key: 'transactionType', label: 'STK Transaction Type', default: 'CustomerPayBillOnline' },
-      { key: 'callbackUrl', label: 'Callback URL' },
+      { key: 'baseUrl', label: 'API base URL (defaults per environment)' },
     ],
     secrets: [
       { key: 'consumerKey', label: 'Consumer Key', required: true },

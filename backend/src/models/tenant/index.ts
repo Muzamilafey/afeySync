@@ -1,4 +1,11 @@
 import { Schema, type Connection, type InferSchemaType, type Model } from 'mongoose';
+import { billingSchemas } from './billing';
+import { clinicalSchemas } from './clinical';
+import { labSchemas } from './lab';
+import { pharmacySchemas } from './pharmacy';
+import { inpatientSchemas } from './inpatient';
+import { maternitySchemas } from './maternity';
+import { miscSchemas } from './misc';
 
 const { ObjectId, Mixed } = Schema.Types;
 
@@ -283,7 +290,7 @@ const facilitySettingsSchema = new Schema(
   { timestamps: true },
 );
 
-const schemas = {
+const coreSchemas = {
   Branch: branchSchema,
   Department: departmentSchema,
   Role: roleSchema,
@@ -297,6 +304,8 @@ const schemas = {
   Notification: notificationSchema,
   FacilitySetting: facilitySettingsSchema,
 };
+
+const schemas = { ...coreSchemas, ...billingSchemas, ...clinicalSchemas, ...labSchemas, ...pharmacySchemas, ...inpatientSchemas, ...maternitySchemas, ...miscSchemas };
 
 type Schemas = typeof schemas;
 export type TenantModels = { [K in keyof Schemas]: Model<InferSchemaType<Schemas[K]>> };

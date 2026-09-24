@@ -40,6 +40,7 @@ export const PERMISSION_GROUPS: Record<string, { label: string; permissions: Rec
       'inpatient.admit': 'Admit patients',
       'inpatient.transfer': 'Transfer patients',
       'inpatient.discharge': 'Discharge patients',
+      'inpatient.manage': 'Configure wards and beds',
       'nursing.view': 'View nursing records',
       'nursing.record': 'Record nursing notes, vitals, medication administration',
     },
@@ -64,6 +65,7 @@ export const PERMISSION_GROUPS: Record<string, { label: string; permissions: Rec
       'lab.result': 'Enter results',
       'lab.verify': 'Verify results',
       'lab.approve': 'Approve and release results',
+      'lab.manage': 'Manage lab test catalog and reference ranges',
     },
   },
   radiology: {
@@ -72,6 +74,7 @@ export const PERMISSION_GROUPS: Record<string, { label: string; permissions: Rec
       'radiology.view': 'View radiology',
       'radiology.order': 'Order imaging',
       'radiology.report': 'Report imaging studies',
+      'radiology.manage': 'Manage imaging catalog and scheduling',
     },
   },
   pharmacy: {
@@ -84,7 +87,7 @@ export const PERMISSION_GROUPS: Record<string, { label: string; permissions: Rec
     },
   },
   dental: { label: 'Dental', permissions: { 'dental.view': 'View dental', 'dental.manage': 'Manage dental records' } },
-  mortuary: { label: 'Mortuary', permissions: { 'mortuary.view': 'View mortuary', 'mortuary.manage': 'Manage mortuary' } },
+  mortuary: { label: 'Mortuary', permissions: { 'mortuary.view': 'View mortuary', 'mortuary.manage': 'Manage mortuary', 'mortuary.release': 'Authorize body release' } },
   billing: {
     label: 'Billing',
     permissions: {
@@ -208,7 +211,7 @@ export const DEFAULT_ROLES: DefaultRole[] = [
     scope: 'branch',
     permissions: [
       ...clinicalCore,
-      ...P('opd.', 'consultation.', 'inpatient.', 'nursing.view', 'lab.view', 'lab.order', 'radiology.view', 'radiology.order'),
+      ...P('opd.', 'consultation.', 'inpatient.view', 'inpatient.admit', 'inpatient.transfer', 'inpatient.discharge', 'nursing.view', 'lab.view', 'lab.order', 'radiology.view', 'radiology.order', 'dental.view', 'mortuary.view'),
       ...P('prescription.create', 'pharmacy.view', 'maternity.', 'mch.view', 'sha.view', 'sha.eligibility', 'sha.authorization', 'sha.preauthorization', 'dha.shr', 'dha.terminology', 'dha.consent', 'documents.upload'),
     ],
   },
@@ -232,14 +235,14 @@ export const DEFAULT_ROLES: DefaultRole[] = [
   { key: 'pharmacy_manager', name: 'Pharmacy Manager', scope: 'branch', permissions: [...clinicalCore, ...P('pharmacy.', 'inventory.', 'procurement.view', 'reports.view')] },
   { key: 'lab_technologist', name: 'Lab Technologist', scope: 'branch', permissions: [...clinicalCore, ...P('lab.view', 'lab.sample', 'lab.result')] },
   { key: 'lab_manager', name: 'Lab Manager', scope: 'branch', permissions: [...clinicalCore, ...P('lab.', 'inventory.view', 'reports.view')] },
-  { key: 'radiographer', name: 'Radiographer', scope: 'branch', permissions: [...clinicalCore, ...P('radiology.view')] },
-  { key: 'radiologist', name: 'Radiologist', scope: 'branch', permissions: [...clinicalCore, ...P('radiology.')] },
+  { key: 'radiographer', name: 'Radiographer', scope: 'branch', permissions: [...clinicalCore, ...P('radiology.view', 'radiology.manage', 'documents.upload')] },
+  { key: 'radiologist', name: 'Radiologist', scope: 'branch', permissions: [...clinicalCore, ...P('radiology.', 'documents.upload')] },
   { key: 'dentist', name: 'Dentist', scope: 'branch', permissions: [...clinicalCore, ...P('dental.', 'prescription.create', 'lab.order', 'radiology.order')] },
   { key: 'dental_assistant', name: 'Dental Assistant', scope: 'branch', permissions: [...clinicalCore, ...P('dental.view')] },
   { key: 'mch_nurse', name: 'MCH Nurse', scope: 'branch', permissions: [...clinicalCore, ...P('mch.', 'fp.', 'nursing.')] },
   { key: 'maternity_nurse', name: 'Maternity Nurse', scope: 'branch', permissions: [...clinicalCore, ...P('maternity.', 'nursing.', 'inpatient.view')] },
   { key: 'theatre_staff', name: 'Theatre Staff', scope: 'branch', permissions: [...clinicalCore, ...P('inpatient.view', 'nursing.')] },
-  { key: 'mortuary_officer', name: 'Mortuary Officer', scope: 'branch', permissions: P('mortuary.', 'documents.view') },
+  { key: 'mortuary_officer', name: 'Mortuary Officer', scope: 'branch', permissions: [...P('mortuary.view', 'mortuary.manage', 'documents.view'), 'billing.view'] },
   { key: 'records_officer', name: 'Records Officer', scope: 'tenant', permissions: [...P('patients.', 'documents.', 'reports.view', 'dha.registry')] },
   { key: 'insurance_officer', name: 'Insurance Officer', scope: 'tenant', permissions: [...P('patients.view', 'patients.search', 'insurance.', 'billing.view', 'sha.view', 'sha.eligibility')] },
   { key: 'sha_officer', name: 'SHA Officer', scope: 'tenant', permissions: [...P('patients.view', 'patients.search', 'sha.', 'dha.view', 'dha.registry', 'billing.view', 'documents.')] },
@@ -247,3 +250,8 @@ export const DEFAULT_ROLES: DefaultRole[] = [
   { key: 'hr_officer', name: 'HR Officer', scope: 'tenant', permissions: P('hr.') },
   { key: 'it_admin', name: 'IT Administrator', scope: 'tenant', permissions: P('admin.users', 'admin.settings', 'admin.audit', 'admin.integrations') },
 ];
+
+/** Permissions introduced after the initial release, keyed by the tenant schema version that added them. */
+export const PERMISSIONS_ADDED_IN: Record<number, string[]> = {
+  2: ['lab.manage', 'radiology.manage', 'inpatient.manage', 'mortuary.release'],
+};

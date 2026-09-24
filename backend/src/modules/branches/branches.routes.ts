@@ -52,6 +52,7 @@ router.post(
     const code = body.branchCode.toUpperCase();
     if (await Branch.exists({ branchCode: code })) throw conflict('Branch code already exists');
     const b = await Branch.create({ ...body, email: body.email || undefined, branchCode: code, isMain: false });
+    await req.tenant!.models.StockLocation.create([{ name: `${b.branchName} Pharmacy`, branchId: b._id, type: 'pharmacy' }, { name: `${b.branchName} Main Store`, branchId: b._id, type: 'store' }]);
     await refreshTenantStats(req.tenant!.id, req.tenant!.models);
     await audit(req, { action: 'branch.create', resource: 'branch', resourceId: String(b._id), newValue: b });
     res.status(201).json({ success: true, data: b });

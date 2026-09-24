@@ -1,7 +1,7 @@
 import type { ResolvedIntegration } from '../../modules/integrations/integrationConfigService';
 import { AppError } from '../../utils/errors';
 
-const baseUrl = (cfg: ResolvedIntegration) => (cfg.environment === 'production' ? 'https://api.safaricom.co.ke' : 'https://sandbox.safaricom.co.ke');
+const baseUrl = (cfg: ResolvedIntegration) => (cfg.settings.baseUrl || (cfg.environment === 'production' ? 'https://api.safaricom.co.ke' : 'https://sandbox.safaricom.co.ke')).replace(/\/+$/, '');
 const tokens = new Map<string, { token: string; exp: number }>();
 
 /** Daraja OAuth: GET /oauth/v1/generate?grant_type=client_credentials with Basic auth. */
@@ -55,4 +55,42 @@ export async function stkPush(cfg: ResolvedIntegration, input: { phone: string; 
   const data = (await res.json().catch(() => ({}))) as Record<string, string>;
   if (!res.ok || data.ResponseCode !== '0') throw new AppError(502, 'MPESA_STK_FAILED', data.errorMessage || data.ResponseDescription || 'STK push failed');
   return { merchantRequestId: data.MerchantRequestID, checkoutRequestId: data.CheckoutRequestID, customerMessage: data.CustomerMessage };
+}
+
+/** STK Push status query: POST /mpesa/stkpushquery/v1/query */
+export async function stkQuery(cfg: ResolvedIntegration, checkoutRequestId: string) {
+  const token = await darajaToken(cfg);
+  const timestamp = darajaTimestamp();
+  const res = await fetch(`${baseUrl(cfg)}/mpesa/stkpushquery/v1/query`, {
+    method: 'POST',
+    headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' },
+    body: JSON.stringify({ BusinessShortCode: cfg.settings.shortcode, Password: stkPassword(cfg.settings.shortcode, cfg.secrets.passkey, timestamp), Timestamp: timestamp, CheckoutRequestID: checkoutRequestId }),
+    signal: AbortSignal.timeout(30_000),
+  });
+  const data = (await res.json().catch(() => ({}))) as Record<string, string>;
+  if (!res.ok && !data.ResultCode) throw new AppError(502, 'MPESA_QUERY_FAILED', data.errorMessage || 'STK query failed');
+  return { resultCode: data.ResultCode !== undefined ? Number(data.ResultCode) : undefined, resultDesc: data.ResultDesc };
+}
+
+/** C2B URL registration: POST /mpesa/c2b/v1/registerurl */
+export async function registerC2BUrls(cfg: ResolvedIntegration, confirmationUrl: string, validationUrl: string) {
+  const token = await darajaToken(cfg);
+  const res = await fetch(`${baseUrl(cfg)}/mpesa/c2b/v1/registerurl`, {
+    method: 'POST',
+    headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' },
+    body: JSON.stringify({ ShortCode: cfg.settings.paybill || cfg.settings.till || cfg.settings.shortcode, ResponseType: 'Completed', ConfirmationURL: confirmationUrl, ValidationURL: validationUrl }),
+    signal: AbortSignal.timeout(30_000),
+  });
+  const data = (await res.json().catch(() => ({}))) as Record<string, string>;
+  if (!res.ok) throw new AppError(502, 'MPESA_C2B_REGISTER_FAILED', data.errorMessage || `HTTP ${res.status}`);
+  return data;
+}
+
+/** Normalize a Kenyan MSISDN to 2547XXXXXXXX / 2541XXXXXXXX as Daraja expects. */
+export function toMsisdn(phone: string) {
+  const d = phone.replace(/\D/g, '');
+  if (/^0[17]\d{8}$/.test(d)) return `254${d.slice(1)}`;
+  if (/^254[17]\d{8}$/.test(d)) return d;
+  if (/^[17]\d{8}$/.test(d)) return `254${d}`;
+  throw new AppError(400, 'VALIDATION_ERROR', 'Enter a valid Safaricom phone number');
 }

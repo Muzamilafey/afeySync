@@ -4,7 +4,7 @@ import Link from 'next/link';
 import { usePathname, useRouter } from 'next/navigation';
 import { useEffect, useRef, useState, type ReactNode } from 'react';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
-import { Activity, Bell, Building2, ChevronDown, ClipboardList, FileSearch, HeartPulse, LayoutDashboard, LogOut, Menu, Network, Search, Settings, ShieldCheck, UserPlus, Users, X } from 'lucide-react';
+import { Activity, Banknote, Bell, Receipt, Building2, ChevronDown, ClipboardList, FileSearch, HeartPulse, LayoutDashboard, LogOut, Menu, Network, Search, Settings, ShieldCheck, UserPlus, Users, X } from 'lucide-react';
 import { useMe } from '@/hooks/useMe';
 import { api } from '@/services/api';
 import { useSessionStore } from '@/stores/session';
@@ -30,6 +30,10 @@ const NAV: Array<{ section: string; items: NavItem[] }> = [
     { href: '/sha', label: 'SHA', icon: ShieldCheck, any: ['sha.view', 'sha.eligibility'] },
     { href: '/sha/claims', label: 'SHA Claims', icon: ClipboardList, any: ['sha.view'] },
     { href: '/interop', label: 'Interoperability', icon: Network, any: ['dha.view', 'sha.view'] },
+  ] },
+  { section: 'Finance', items: [
+    { href: '/billing', label: 'Billing & Cashier', icon: Banknote, any: ['billing.view'] },
+    { href: '/billing/services', label: 'Services & Prices', icon: Receipt, any: ['billing.prices'] },
   ] },
   { section: 'Administration', items: [
     { href: '/admin/branches', label: 'Branches', icon: Building2, any: ['admin.branches'] },
@@ -205,7 +209,7 @@ export function AppShell({ children }: { children: ReactNode }) {
         <div key={s.section}>
           <p className="muted px-2 pb-1 text-[11px] font-semibold tracking-wider uppercase">{s.section}</p>
           {s.items.map((i) => {
-            const active = pathname === i.href || (i.href !== '/dashboard' && i.href !== '/sha' && pathname.startsWith(i.href)) || (i.href === '/sha' && pathname === '/sha');
+            const active = pathname === i.href || (!['/dashboard', '/sha', '/billing'].includes(i.href) && pathname.startsWith(i.href)) || (['/sha', '/billing'].includes(i.href) && (pathname === i.href || (i.href === '/billing' && pathname.startsWith('/billing/invoices'))));
             return (
               <Link key={i.href} href={i.href} onClick={() => setMobileOpen(false)} className={cn('flex items-center gap-2.5 rounded-md px-2 py-2 text-sm font-medium transition', active ? 'bg-brand-600 text-white' : 'hover:bg-[var(--surface-2)]')}>
                 <i.icon className="h-4 w-4" />

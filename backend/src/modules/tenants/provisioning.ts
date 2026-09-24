@@ -8,6 +8,8 @@ import { conflict } from '../../utils/errors';
 import { randomToken } from '../../utils/crypto';
 import { platformSubdomain, clearDomainCache } from '../../middleware/tenantResolver';
 import { logger } from '../../utils/logger';
+import { seedTenantCatalogs } from './seedCatalogs';
+import { TENANT_SCHEMA_VERSION } from './migrations';
 
 const hostname = z
   .string()
@@ -180,7 +182,8 @@ export async function provisionFacility(input: CreateFacilityInput, actorId?: st
     ]);
     await m.AuditLog.create({ actorType: 'system', action: 'tenant.provisioned', resource: 'tenant', resourceId: String(tenantId), newValue: { slug, branches: branches.length } });
 
-    await TenantDatabase.updateOne({ tenantId }, { status: 'ready' });
+    await seedTenantCatalogs(m);
+    await TenantDatabase.updateOne({ tenantId }, { status: 'ready', schemaVersion: TENANT_SCHEMA_VERSION });
     tenant.status = 'active';
     tenant.stats = { branches: branches.length, users: 1, patients: 0, lastActivityAt: new Date() };
     await tenant.save();

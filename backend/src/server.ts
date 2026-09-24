@@ -6,6 +6,7 @@ import { bootstrapPlatformConfigsFromEnv } from './modules/integrations/integrat
 import { registerJobHandlers } from './jobs/handlers';
 import { startWorker, stopWorker } from './jobs/queue';
 import { createApp } from './app';
+import { runTenantMigrations } from './modules/tenants/migrations';
 import { logger } from './utils/logger';
 
 async function main() {
@@ -13,6 +14,7 @@ async function main() {
   await ensureMetaIndexes();
   await seedHieContracts();
   await bootstrapPlatformConfigsFromEnv();
+  await runTenantMigrations();
   registerJobHandlers();
   if (env.RUN_WORKERS) startWorker();
 

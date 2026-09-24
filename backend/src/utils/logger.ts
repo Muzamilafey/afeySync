@@ -2,7 +2,7 @@ import pino from 'pino';
 import { env } from '../config/env';
 
 export const logger = pino({
-  level: env.NODE_ENV === 'test' ? 'silent' : env.LOG_LEVEL,
+  level: env.NODE_ENV === 'test' ? (process.env.TEST_LOG ? 'error' : 'silent') : env.LOG_LEVEL,
   redact: {
     paths: [
       'req.headers.authorization',
