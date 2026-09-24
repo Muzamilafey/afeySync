@@ -4,7 +4,7 @@ import Link from 'next/link';
 import { usePathname, useRouter } from 'next/navigation';
 import { useEffect, useRef, useState, type ReactNode } from 'react';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
-import { Activity, Banknote, Bell, Boxes, Pill, ShoppingCart, FlaskConical, ScanLine, CalendarDays, ListOrdered, Stethoscope, Receipt, Building2, ChevronDown, ClipboardList, FileSearch, HeartPulse, LayoutDashboard, LogOut, Menu, Network, Search, Settings, ShieldCheck, UserPlus, Users, X } from 'lucide-react';
+import { Activity, Baby, Banknote, BedDouble, Bell, Cross, HeartHandshake, Smile, Boxes, Pill, ShoppingCart, FlaskConical, ScanLine, CalendarDays, ListOrdered, Stethoscope, Receipt, Building2, ChevronDown, ClipboardList, FileSearch, HeartPulse, LayoutDashboard, LogOut, Menu, Network, Search, Settings, ShieldCheck, UserPlus, Users, X } from 'lucide-react';
 import { useMe } from '@/hooks/useMe';
 import { api } from '@/services/api';
 import { useSessionStore } from '@/stores/session';
@@ -31,6 +31,11 @@ const NAV: Array<{ section: string; items: NavItem[] }> = [
     { href: '/laboratory', label: 'Laboratory', icon: FlaskConical, any: ['lab.view'] },
     { href: '/radiology', label: 'Radiology', icon: ScanLine, any: ['radiology.view'] },
     { href: '/pharmacy', label: 'Pharmacy', icon: Pill, any: ['pharmacy.view'] },
+    { href: '/inpatient', label: 'Inpatient', icon: BedDouble, any: ['inpatient.view', 'nursing.view'] },
+    { href: '/maternity', label: 'Maternity', icon: Baby, any: ['maternity.view'] },
+    { href: '/mch', label: 'MCH / FP', icon: HeartHandshake, any: ['mch.view', 'fp.view'] },
+    { href: '/dental', label: 'Dental', icon: Smile, any: ['dental.view'] },
+    { href: '/mortuary', label: 'Mortuary', icon: Cross, any: ['mortuary.view'] },
   ] },
   { section: 'SHA / DHA', items: [
     { href: '/sha', label: 'SHA', icon: ShieldCheck, any: ['sha.view', 'sha.eligibility'] },
