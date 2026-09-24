@@ -32,6 +32,10 @@ import labRoutes from './modules/laboratory/lab.routes';
 import radiologyRoutes from './modules/radiology/radiology.routes';
 import pharmacyRoutes from './modules/pharmacy/pharmacy.routes';
 import procurementRoutes from './modules/procurement/procurement.routes';
+import inpatientRoutes from './modules/inpatient/inpatient.routes';
+import { fpRouter, maternityRouter, mchRouter } from './modules/maternity/maternity.routes';
+import dentalRoutes from './modules/dental/dental.routes';
+import mortuaryRoutes from './modules/mortuary/mortuary.routes';
 import { mpesaPublicRouter, mpesaRouter } from './modules/billing/mpesa.routes';
 import { openApiSpec } from './openapi';
 import { h } from './utils/asyncHandler';
@@ -103,6 +107,12 @@ export function createApp() {
   api.use('/pharmacy', pharmacyRoutes);
   api.use('/inventory', pharmacyRoutes);
   api.use('/procurement', procurementRoutes);
+  api.use('/inpatient', inpatientRoutes);
+  api.use('/maternity', maternityRouter);
+  api.use('/mch', mchRouter);
+  api.use('/family-planning', fpRouter);
+  api.use('/dental', dentalRoutes);
+  api.use('/mortuary', mortuaryRoutes);
   api.use('/payments/mpesa', mpesaRouter);
   app.use('/api/v1', api);
 

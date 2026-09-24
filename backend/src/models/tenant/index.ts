@@ -175,6 +175,9 @@ const patientSchema = new Schema(
     },
     allergies: [{ _id: false, substance: String, reaction: String, severity: String, recordedAt: Date }],
     registeredBranchId: { type: ObjectId, required: true },
+    /** Mother–baby linkage for newborns registered at delivery. */
+    motherId: { type: ObjectId, ref: 'Patient', index: true, sparse: true },
+    deceasedAt: Date,
     branchIds: [{ type: ObjectId, index: true }],
     dha: {
       source: { type: String, enum: ['local', 'client_registry'], default: 'local' },
