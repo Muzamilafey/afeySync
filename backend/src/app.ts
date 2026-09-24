@@ -36,6 +36,11 @@ import inpatientRoutes from './modules/inpatient/inpatient.routes';
 import { fpRouter, maternityRouter, mchRouter } from './modules/maternity/maternity.routes';
 import dentalRoutes from './modules/dental/dental.routes';
 import mortuaryRoutes from './modules/mortuary/mortuary.routes';
+import documentRoutes from './modules/documents/documents.routes';
+import financeRoutes from './modules/finance/finance.routes';
+import hrRoutes from './modules/hr/hr.routes';
+import reportRoutes from './modules/reports/reports.routes';
+import fhirRoutes from './modules/fhir/fhir.routes';
 import { mpesaPublicRouter, mpesaRouter } from './modules/billing/mpesa.routes';
 import { openApiSpec } from './openapi';
 import { h } from './utils/asyncHandler';
@@ -82,6 +87,8 @@ export function createApp() {
   api.use(apiLimiter);
   api.use('/auth/login', authLimiter);
   api.use('/owner/auth/login', authLimiter);
+  api.use('/auth/forgot-password', authLimiter);
+  api.use('/auth/reset-password', authLimiter);
   api.use('/auth', tenantAuthRoutes);
   api.use('/owner/auth', ownerAuthRoutes);
   api.use('/owner', ownerRoutes);
@@ -113,6 +120,11 @@ export function createApp() {
   api.use('/family-planning', fpRouter);
   api.use('/dental', dentalRoutes);
   api.use('/mortuary', mortuaryRoutes);
+  api.use('/documents', documentRoutes);
+  api.use('/finance', financeRoutes);
+  api.use('/hr', hrRoutes);
+  api.use('/reports', reportRoutes);
+  api.use('/fhir', fhirRoutes);
   api.use('/payments/mpesa', mpesaRouter);
   app.use('/api/v1', api);
 

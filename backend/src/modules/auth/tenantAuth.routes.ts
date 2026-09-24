@@ -11,6 +11,9 @@ import { authenticateTenant } from '../../middleware/auth';
 import { audit } from '../audit/auditService';
 import { meta } from '../../models/meta';
 import { integrationStatusForTenant } from '../integrations/integrationConfigService';
+import { randomToken, sha256 } from '../../utils/crypto';
+import { notifyEmail } from '../notifications/notify';
+import { revokeAllForSubject } from './tokens';
 
 const COOKIE_PATH = '/api/v1/auth';
 const router = Router();
@@ -120,6 +123,56 @@ router.post(
     user.passwordChangedAt = new Date();
     await user.save();
     await audit(req, { action: 'auth.password_changed', resource: 'user', resourceId: req.user!.id });
+    await notifyEmail(req.tenant!.id, `pwchanged:${req.user!.id}:${Date.now()}`, user.email, `${req.tenant!.name}: your password was changed`, 'Your AfeySync password was just changed. If this was not you, contact your administrator immediately.');
+    res.json({ success: true });
+  }),
+);
+
+/**
+ * Password reset by email. The response never reveals whether an account exists. Tokens are single-use,
+ * stored hashed, expire in 30 minutes, and a successful reset signs the user out everywhere.
+ */
+router.post(
+  '/forgot-password',
+  h(async (req, res) => {
+    const { email } = parse(z.object({ email: z.string().email().max(200) }), req.body);
+    if (!req.hostTenantId) throw badRequest('Facility could not be determined from this address. Use your facility URL.', undefined, 'TENANT_NOT_RESOLVED');
+    const tenant = await loadTenant(req.hostTenantId);
+    req.tenant = tenant;
+    const user = await tenant.models.User.findOne({ email: email.toLowerCase(), status: 'active' }).lean();
+    if (user) {
+      const token = randomToken(32);
+      await tenant.models.PasswordReset.create({ userId: user._id, tokenHash: sha256(token), expiresAt: new Date(Date.now() + 30 * 60_000) });
+      const link = `${req.protocol}://${req.get('host')}/reset-password?token=${token}`;
+      await notifyEmail(tenant.id, `pwreset:${user._id}:${sha256(token).slice(0, 12)}`, user.email, `${tenant.name}: reset your AfeySync password`, `A password reset was requested for your account.\n\nOpen this link within 30 minutes to set a new password:\n${link}\n\nIf you did not request this, ignore this email.`);
+      await audit(req, { action: 'auth.password_reset_requested', resource: 'user', resourceId: String(user._id) });
+    }
+    res.json({ success: true, message: 'If the account exists, a reset link has been sent to its email address.' });
+  }),
+);
+
+router.post(
+  '/reset-password',
+  h(async (req, res) => {
+    const body = parse(z.object({ token: z.string().min(20).max(200), newPassword: passwordPolicy }), req.body);
+    if (!req.hostTenantId) throw badRequest('Facility could not be determined from this address.', undefined, 'TENANT_NOT_RESOLVED');
+    const tenant = await loadTenant(req.hostTenantId);
+    req.tenant = tenant;
+    const reset = await tenant.models.PasswordReset.findOne({ tokenHash: sha256(body.token) });
+    if (!reset || reset.usedAt || reset.expiresAt < new Date()) throw unauthorized('This reset link is invalid or has expired', 'RESET_TOKEN_INVALID');
+    const user = await tenant.models.User.findById(reset.userId).select('+passwordHash');
+    if (!user || user.status !== 'active') throw unauthorized('This reset link is invalid or has expired', 'RESET_TOKEN_INVALID');
+    user.passwordHash = await hashPassword(body.newPassword);
+    user.mustChangePassword = false;
+    user.passwordChangedAt = new Date();
+    user.failedLogins = 0;
+    user.lockedUntil = undefined;
+    await user.save();
+    reset.usedAt = new Date();
+    await reset.save();
+    await tenant.models.PasswordReset.updateMany({ userId: user._id, usedAt: null }, { usedAt: new Date() });
+    await revokeAllForSubject(String(user._id), 'password_reset');
+    await audit(req, { action: 'auth.password_reset_completed', resource: 'user', resourceId: String(user._id) });
     res.json({ success: true });
   }),
 );
