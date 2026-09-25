@@ -12,6 +12,8 @@ export interface AccessClaims {
   sid: string;
   tid?: string;
   gid?: string;
+  /** Restricted session (e.g. 'mfa_enroll'): only enrollment endpoints are allowed. */
+  rst?: string;
 }
 
 const ISSUER = 'afeysync';
@@ -41,6 +43,8 @@ interface SessionInput {
   userAgent?: string;
   familyId?: string;
   expiresAt?: Date;
+  restricted?: string;
+  amr?: string[];
 }
 
 /** Creates a refresh session. The raw refresh token is returned once and only its hash is stored. */
@@ -55,6 +59,8 @@ export async function createSession(input: SessionInput) {
     ip: input.ip,
     userAgent: input.userAgent?.slice(0, 300),
     lastUsedAt: new Date(),
+    restricted: input.restricted,
+    amr: input.amr,
     expiresAt: input.expiresAt ?? new Date(Date.now() + env.REFRESH_TOKEN_TTL_DAYS * 86400_000),
   });
   return { refreshToken: raw, session };
@@ -91,6 +97,8 @@ export async function rotateSession(raw: string, expectedScope: TokenScope, meta
     ip: meta_.ip,
     userAgent: meta_.userAgent,
     expiresAt: current.expiresAt,
+    restricted: current.restricted ?? undefined,
+    amr: current.amr ?? undefined,
   });
   current.revokedAt = new Date();
   current.revokedReason = 'rotated';

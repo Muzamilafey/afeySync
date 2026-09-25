@@ -12,6 +12,7 @@ import { refreshTenantStats } from '../tenants/provisioning';
 import { ALL_TENANT_PERMISSIONS, PERMISSION_GROUPS } from '../rbac/catalog';
 import { meta } from '../../models/meta';
 import { randomToken } from '../../utils/crypto';
+import { notifyEmail } from '../notifications/notify';
 import type { Request } from 'express';
 
 export const usersRouter = Router();
@@ -140,6 +141,27 @@ for (const action of ['suspend', 'activate'] as const) {
     }),
   );
 }
+
+/** Clears a user's two-factor methods (lost phone). The user must re-enroll if policy requires it. */
+usersRouter.post(
+  '/:id/mfa/reset',
+  requirePermission('admin.users'),
+  h(async (req, res) => {
+    const id = oid(req.params.id as string);
+    const { reason } = parse(z.object({ reason: z.string().min(5).max(300) }), req.body);
+    if (id === req.user!.id) throw forbidden('Ask another administrator to reset your two-factor authentication');
+    const { User } = req.tenant!.models;
+    const user = await User.findById(id);
+    if (!user) throw notFound('User not found');
+    await assertCanManageUser(req, user);
+    user.set('mfa', { totp: { lastStep: -1 }, recoveryCodes: [] });
+    await user.save();
+    await revokeAllForSubject(id, 'mfa_reset');
+    await audit(req, { action: 'user.mfa_reset', resource: 'user', resourceId: id, newValue: { reason } });
+    await notifyEmail(req.tenant!.id, `mfa-reset:${id}:${Date.now()}`, user.email, `${req.tenant!.name}: two-factor authentication reset`, `An administrator reset two-factor authentication on your account (${reason}). You may need to set it up again at your next sign-in. If you did not request this, contact your administrator.`);
+    res.json({ success: true });
+  }),
+);
 
 usersRouter.post(
   '/:id/reset-password',

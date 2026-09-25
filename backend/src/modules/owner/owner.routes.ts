@@ -1,4 +1,6 @@
 import { env } from '../../config/env';
+import { platformMfaPolicy } from '../auth/ownerAuth.routes';
+import { policySchema } from '../auth/mfa/mfaService';
 import { Router } from 'express';
 import os from 'node:os';
 import fs from 'node:fs/promises';
@@ -209,6 +211,8 @@ router.post(
     user.lockedUntil = undefined;
     user.failedLogins = 0;
     user.status = 'active';
+    // An administrator locked out by a lost second factor is recovered by the same reset.
+    user.set('mfa', { totp: { lastStep: -1 }, recoveryCodes: [] });
     await user.save();
     await revokeAllForSubject(String(user._id), 'admin_reset');
     await m.AuditLog.create({ actorType: 'system', action: 'user.admin_reset_by_platform', resource: 'user', resourceId: String(user._id), newValue: { by: req.platformUser!.email } });
@@ -490,6 +494,42 @@ router.patch(
     invalidateContractCache();
     await platformAudit(req, { action: 'integration.contract_update', resource: 'integration_contract', resourceId: provider, oldValue: { version: before.contractVersion }, newValue: { version: body.contractVersion, operations: body.operations } });
     res.json({ success: true, data: contract });
+  }),
+);
+
+/* ------------------------------------------------------------------ Platform two-factor policy */
+router.get(
+  '/security/mfa-policy',
+  requirePermission('owner.platform'),
+  h(async (_req, res) => {
+    res.json({ success: true, data: await platformMfaPolicy() });
+  }),
+);
+
+router.put(
+  '/security/mfa-policy',
+  requirePermission('owner.platform'),
+  h(async (req, res) => {
+    const policy = parse(policySchema, req.body);
+    await meta().PlatformSettings.updateOne({ key: 'security.mfa' }, { $set: { value: policy } }, { upsert: true });
+    await platformAudit(req, { action: 'platform.mfa_policy', resource: 'setting', resourceId: 'security.mfa', newValue: policy });
+    res.json({ success: true, data: await platformMfaPolicy() });
+  }),
+);
+
+router.post(
+  '/users/:id/mfa/reset',
+  requirePermission('owner.platform'),
+  h(async (req, res) => {
+    const id = oid(req.params.id as string);
+    if (String(id) === req.platformUser!.id) throw forbidden('Ask another platform administrator to reset your two-factor authentication');
+    const u = await meta().PlatformUser.findById(id);
+    if (!u) throw notFound('User not found');
+    u.set('mfa', { totp: { lastStep: -1 }, recoveryCodes: [] });
+    await u.save();
+    await revokeAllForSubject(String(u._id), 'mfa_reset');
+    await platformAudit(req, { action: 'platform_user.mfa_reset', resource: 'platform_user', resourceId: String(u._id) });
+    res.json({ success: true });
   }),
 );
 

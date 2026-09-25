@@ -100,9 +100,25 @@ const userSchema = new Schema(
     lockedUntil: Date,
     lastLoginAt: Date,
     passwordChangedAt: Date,
+    /** Two-factor authentication. Secrets are AES-256-GCM encrypted; recovery codes are stored hashed. */
+    mfa: {
+      totp: {
+        secret: { type: { ciphertext: String, keyId: String }, select: false },
+        pendingSecret: { type: { ciphertext: String, keyId: String }, select: false },
+        confirmedAt: Date,
+        lastStep: { type: Number, default: -1 },
+      },
+      email: { enabledAt: Date },
+      sms: { enabledAt: Date, phone: String },
+      recoveryCodes: { type: [{ _id: false, hash: String, usedAt: Date }], select: false },
+      preferred: { type: String, enum: ['totp', 'email', 'sms'] },
+    },
+    /** Linked Google account (OpenID Connect subject). Sign-in with Google works only for linked accounts. */
+    google: { sub: String, email: String, linkedAt: Date },
   },
   { timestamps: true },
 );
+userSchema.index({ 'google.sub': 1 }, { unique: true, partialFilterExpression: { 'google.sub': { $type: 'string' } } });
 
 /* ---------------------------------------------------------------- Patients */
 export const IDENTIFICATION_TYPES = [

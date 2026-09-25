@@ -1,4 +1,5 @@
-import { Router } from 'express';
+import { Router, type Request, type Response } from 'express';
+import { MFA_SELECT, beginLoginChallenge, buildMfaRouter, enabledMethods, policySchema, type MfaAdapter, type MfaDoc, type MfaMethod, type MfaPolicy } from './mfa/mfaService';
 import { z } from 'zod';
 import { h } from '../../utils/asyncHandler';
 import { parse } from '../../utils/validate';
@@ -19,7 +20,7 @@ router.post(
     if (req.hostTenantId) throw forbidden('The owner portal is not available on facility domains', 'WRONG_PORTAL');
     const body = parse(z.object({ email: z.string().email(), password: z.string().min(1).max(200) }), req.body);
     const { PlatformUser } = meta();
-    const user = await PlatformUser.findOne({ email: body.email.toLowerCase() }).select('+passwordHash');
+    const user = await PlatformUser.findOne({ email: body.email.toLowerCase() }).select(MFA_SELECT);
     const fail = async (reason: string) => {
       await platformAudit(req, { action: 'owner.login', resource: 'platform_user', resourceId: user ? String(user._id) : null, newValue: { email: body.email, reason }, result: 'failure' });
       throw unauthorized('Invalid email or password', 'INVALID_CREDENTIALS');
@@ -38,16 +39,66 @@ router.post(
     if (user.status !== 'active') return fail('inactive');
     user.failedLogins = 0;
     user.lockedUntil = undefined;
-    user.lastLoginAt = new Date();
     await user.save();
-    const { refreshToken, session } = await createSession({ subjectType: 'platform', subjectId: String(user._id), ip: req.ip, userAgent: req.get('user-agent') });
-    const accessToken = signAccessToken({ sub: String(user._id), scope: 'platform', sid: String(session._id) });
-    setRefreshCookie(res, OWNER_RT_COOKIE, refreshToken, COOKIE_PATH, session.expiresAt);
-    req.platformUser = { id: String(user._id), email: user.email, name: user.name, role: user.role, permissions: new Set(), sessionId: String(session._id) };
-    await platformAudit(req, { action: 'owner.login', resource: 'platform_user', resourceId: String(user._id) });
-    res.json({ success: true, data: { accessToken } });
+    res.json({ success: true, data: await afterOwnerPrimaryAuth(req, res, user, 'password') });
   }),
 );
+
+
+type PlatformUserDoc = NonNullable<Awaited<ReturnType<ReturnType<typeof meta>['PlatformUser']['findOne']>>>;
+const OWNER_METHODS: MfaMethod[] = ['totp', 'email'];
+
+export async function platformMfaPolicy(): Promise<MfaPolicy> {
+  const s = await meta().PlatformSettings.findOne({ key: 'security.mfa' }).lean();
+  const parsed = policySchema.safeParse(s?.value);
+  return parsed.success ? { ...parsed.data, methods: parsed.data.methods.filter((m) => OWNER_METHODS.includes(m)) } : { mode: 'optional', methods: OWNER_METHODS };
+}
+const ownerMfaRequired = (user: { role?: string | null }, policy: MfaPolicy) => policy.mode === 'all' || (policy.mode === 'admins' && ['super_owner', 'platform_admin'].includes(user.role ?? ''));
+
+async function issueOwnerSession(req: Request, res: Response, user: PlatformUserDoc, opts: { restricted?: string; amr: string[] }) {
+  user.lastLoginAt = new Date();
+  await user.save();
+  const { refreshToken, session } = await createSession({ subjectType: 'platform', subjectId: String(user._id), ip: req.ip, userAgent: req.get('user-agent'), restricted: opts.restricted, amr: opts.amr });
+  const accessToken = signAccessToken({ sub: String(user._id), scope: 'platform', sid: String(session._id), ...(opts.restricted ? { rst: opts.restricted } : {}) });
+  setRefreshCookie(res, OWNER_RT_COOKIE, refreshToken, COOKIE_PATH, session.expiresAt);
+  req.platformUser = { id: String(user._id), email: user.email, name: user.name, role: user.role, permissions: new Set(), sessionId: String(session._id) };
+  await platformAudit(req, { action: 'owner.login', resource: 'platform_user', resourceId: String(user._id), newValue: { amr: opts.amr, restricted: opts.restricted } });
+  return { accessToken, ...(opts.restricted === 'mfa_enroll' ? { mfaEnrollmentRequired: true } : {}) };
+}
+
+export async function afterOwnerPrimaryAuth(req: Request, res: Response, user: PlatformUserDoc, via: string) {
+  const policy = await platformMfaPolicy();
+  if (enabledMethods(user as unknown as MfaDoc).some((m) => OWNER_METHODS.includes(m))) return beginLoginChallenge(req, ownerMfa, user as unknown as MfaDoc, null, policy, via);
+  if (ownerMfaRequired(user, policy)) return issueOwnerSession(req, res, user, { restricted: 'mfa_enroll', amr: [via] });
+  return issueOwnerSession(req, res, user, { amr: [via] });
+}
+
+const ownerMfa: MfaAdapter = {
+  kind: 'platform',
+  supported: OWNER_METHODS,
+  authenticate: authenticatePlatform,
+  brand: () => 'AfeySync Platform',
+  tenantId: () => null,
+  userId: (req) => req.platformUser!.id,
+  loadUser: async (_req, id) => (await meta().PlatformUser.findById(id).select(MFA_SELECT)) as unknown as MfaDoc | null,
+  loadChallengeUser: async (req, ch) => {
+    if (req.hostTenantId || ch.subjectType !== 'platform') return null;
+    const u = await meta().PlatformUser.findById(ch.subjectId).select(MFA_SELECT);
+    return u && u.status === 'active' ? (u as unknown as MfaDoc) : null;
+  },
+  policy: () => platformMfaPolicy(),
+  isRequired: async (_req, doc, policy) => ownerMfaRequired(doc as unknown as { role?: string }, policy),
+  completeLogin: async (req, res, doc, amr) => issueOwnerSession(req, res, doc as unknown as PlatformUserDoc, { amr }),
+  liftRestriction: async (req) => {
+    const s = await meta().Session.findById(req.platformUser!.sessionId);
+    if (!s?.restricted) return undefined;
+    await meta().Session.updateMany({ familyId: s.familyId }, { $unset: { restricted: 1 } });
+    return signAccessToken({ sub: req.platformUser!.id, scope: 'platform', sid: String(s._id) });
+  },
+  audit: async (req, action, resourceId, extra, failed) => platformAudit(req, { action: action.replace(/^auth\./, 'owner.'), resource: 'platform_user', resourceId, newValue: extra, result: failed ? 'failure' : 'success' }),
+};
+
+router.use(buildMfaRouter(ownerMfa));
 
 router.post(
   '/refresh',
@@ -58,7 +109,7 @@ router.post(
     const rotated = await rotateSession(raw, 'platform', { ip: req.ip, userAgent: req.get('user-agent') });
     const user = await meta().PlatformUser.findById(rotated.session.subjectId).lean();
     if (!user || user.status !== 'active') throw unauthorized('User account is not active', 'USER_INACTIVE');
-    const accessToken = signAccessToken({ sub: String(user._id), scope: 'platform', sid: String(rotated.session._id) });
+    const accessToken = signAccessToken({ sub: String(user._id), scope: 'platform', sid: String(rotated.session._id), ...(rotated.session.restricted ? { rst: rotated.session.restricted } : {}) });
     setRefreshCookie(res, OWNER_RT_COOKIE, rotated.refreshToken, COOKIE_PATH, rotated.session.expiresAt);
     res.json({ success: true, data: { accessToken } });
   }),

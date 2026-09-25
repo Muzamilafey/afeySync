@@ -6,6 +6,13 @@ import { isSessionActive, verifyAccessToken } from '../modules/auth/tokens';
 import { PLATFORM_ROLE_PERMISSIONS } from '../modules/rbac/catalog';
 import { forbidden, unauthorized } from '../utils/errors';
 
+/** A session restricted to MFA enrollment may only reach the enrollment endpoints (enforced server-side). */
+function assertNotRestricted(req: Request, restriction: string | undefined, allowed: RegExp) {
+  if (restriction === 'mfa_enroll' && !allowed.test(req.originalUrl)) {
+    throw forbidden('Set up two-factor authentication to continue', 'MFA_ENROLLMENT_REQUIRED');
+  }
+}
+
 function bearer(req: Request): string {
   const header = req.get('authorization') ?? '';
   const [scheme, token] = header.split(' ');
@@ -34,6 +41,7 @@ export async function authenticateTenant(req: Request, _res: Response, next: Nex
   // When the hostname maps to a tenant, the token must belong to that same tenant.
   if (req.hostTenantId && req.hostTenantId !== claims.tid) throw forbidden('Session does not belong to this facility', 'TENANT_MISMATCH');
   if (!(await isSessionActive(claims.sid))) throw unauthorized('Session has ended', 'SESSION_REVOKED');
+  assertNotRestricted(req, claims.rst, /^\/api\/v1\/auth\/(me|logout|mfa)(\/|\?|$)/);
 
   req.tenant = await loadTenant(claims.tid);
   const { Branch } = req.tenant.models;
@@ -98,6 +106,7 @@ export async function authenticatePlatform(req: Request, _res: Response, next: N
   const claims = verifyAccessToken(bearer(req), ['platform']);
   if (req.hostTenantId) throw forbidden('Owner sessions are not valid on facility domains', 'WRONG_PORTAL');
   if (!(await isSessionActive(claims.sid))) throw unauthorized('Session has ended', 'SESSION_REVOKED');
+  assertNotRestricted(req, claims.rst, /^\/api\/v1\/owner\/auth\/(me|logout|mfa)(\/|\?|$)/);
   const user = await meta().PlatformUser.findById(claims.sub).lean();
   if (!user || user.status !== 'active') throw unauthorized('User account is not active', 'USER_INACTIVE');
   const permissions = new Set(PLATFORM_ROLE_PERMISSIONS[user.role] ?? []);

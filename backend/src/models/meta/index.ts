@@ -18,9 +18,47 @@ const platformUserSchema = new Schema(
     lastLoginAt: Date,
     failedLogins: { type: Number, default: 0 },
     lockedUntil: Date,
+    passwordChangedAt: Date,
+    /** Two-factor authentication. Secrets are AES-256-GCM encrypted; recovery codes are stored hashed. */
+    mfa: {
+      totp: {
+        secret: { type: { ciphertext: String, keyId: String }, select: false },
+        pendingSecret: { type: { ciphertext: String, keyId: String }, select: false },
+        confirmedAt: Date,
+        lastStep: { type: Number, default: -1 },
+      },
+      email: { enabledAt: Date },
+      sms: { enabledAt: Date, phone: String },
+      recoveryCodes: { type: [{ _id: false, hash: String, usedAt: Date }], select: false },
+      preferred: { type: String, enum: ['totp', 'email', 'sms'] },
+    },
+    /** Linked Google account (OpenID Connect subject). Sign-in with Google works only for linked accounts. */
+    google: { sub: String, email: String, linkedAt: Date },
   },
   { timestamps: true },
 );
+platformUserSchema.index({ 'google.sub': 1 }, { unique: true, partialFilterExpression: { 'google.sub': { $type: 'string' } } });
+
+/** Short-lived second-factor challenge (login or enrollment). Only a hash of the token and code is stored. */
+const mfaChallengeSchema = new Schema(
+  {
+    subjectType: { type: String, enum: ['tenant', 'platform'], required: true },
+    subjectId: { type: Schema.Types.ObjectId, required: true, index: true },
+    tenantId: Schema.Types.ObjectId,
+    purpose: { type: String, enum: ['login', 'enroll_email', 'enroll_sms'], required: true },
+    tokenHash: { type: String, required: true, unique: true },
+    methods: [String],
+    otp: { method: String, hash: String, sentAt: Date, sends: { type: Number, default: 0 }, target: String },
+    attempts: { type: Number, default: 0 },
+    consumedAt: Date,
+    ip: String,
+    userAgent: String,
+    via: String,
+    expiresAt: { type: Date, required: true },
+  },
+  { timestamps: true },
+);
+mfaChallengeSchema.index({ expiresAt: 1 }, { expireAfterSeconds: 0 });
 
 /* ---------------------------------------------------------------- Tenants */
 const tenantSchema = new Schema(
@@ -299,6 +337,10 @@ const sessionSchema = new Schema(
     ip: String,
     userAgent: String,
     lastUsedAt: Date,
+    /** 'mfa_enroll': the user must enroll a second factor before anything else is allowed. */
+    restricted: String,
+    /** How the session was established (password, password+totp, google, …). */
+    amr: [String],
     expiresAt: { type: Date, required: true },
   },
   { timestamps: true },
@@ -369,6 +411,7 @@ const schemas = {
   SupportAccessGrant: supportAccessSchema,
   Job: jobSchema,
   BackupRun: backupRunSchema,
+  MfaChallenge: mfaChallengeSchema,
 };
 
 type Schemas = typeof schemas;

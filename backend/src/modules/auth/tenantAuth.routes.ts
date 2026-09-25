@@ -1,8 +1,9 @@
-import { Router } from 'express';
+import { Router, type Request, type Response } from 'express';
 import { z } from 'zod';
 import { h } from '../../utils/asyncHandler';
 import { parse } from '../../utils/validate';
-import { badRequest, unauthorized } from '../../utils/errors';
+import { badRequest, forbidden, unauthorized } from '../../utils/errors';
+import { ALL_METHODS, MFA_SELECT, beginLoginChallenge, buildMfaRouter, DEFAULT_POLICY, enabledMethods, policySchema, type MfaAdapter, type MfaDoc, type MfaPolicy } from './mfa/mfaService';
 import { loadTenant } from '../tenants/tenantLoader';
 import { createSession, revokeFamily, rotateSession, signAccessToken } from './tokens';
 import { hashPassword, LOCK_MINUTES, MAX_FAILED_LOGINS, passwordPolicy, verifyPassword } from './password';
@@ -26,7 +27,7 @@ router.post(
     const tenant = await loadTenant(req.hostTenantId);
     req.tenant = tenant;
     const { User } = tenant.models;
-    const user = await User.findOne({ email: body.email.toLowerCase() }).select('+passwordHash');
+    const user = await User.findOne({ email: body.email.toLowerCase() }).select(MFA_SELECT);
     const fail = async (reason: string) => {
       await audit(req, { action: 'auth.login', resource: 'user', resourceId: user ? String(user._id) : null, newValue: { email: body.email, reason }, result: 'failure' });
       throw unauthorized('Invalid email or password', 'INVALID_CREDENTIALS');
@@ -45,18 +46,82 @@ router.post(
     if (user.status !== 'active') return fail('inactive');
     user.failedLogins = 0;
     user.lockedUntil = undefined;
-    user.lastLoginAt = new Date();
     await user.save();
-
-    const { refreshToken, session } = await createSession({ subjectType: 'tenant', subjectId: String(user._id), tenantId: tenant.id, ip: req.ip, userAgent: req.get('user-agent') });
-    const accessToken = signAccessToken({ sub: String(user._id), scope: 'tenant', sid: String(session._id), tid: tenant.id });
-    setRefreshCookie(res, TENANT_RT_COOKIE, refreshToken, COOKIE_PATH, session.expiresAt);
-    req.user = { kind: 'tenant', id: String(user._id), name: user.name, email: user.email, permissions: new Set(), roleKeys: [], branchAccess: 'all', branchIds: [], sessionId: String(session._id) };
-    await audit(req, { action: 'auth.login', resource: 'user', resourceId: String(user._id) });
-    await meta().Tenant.updateOne({ _id: tenant.id }, { 'stats.lastActivityAt': new Date() });
-    res.json({ success: true, data: { accessToken, expiresIn: Number(process.env.ACCESS_TOKEN_TTL_SECONDS) || 900, mustChangePassword: user.mustChangePassword } });
+    res.json({ success: true, data: await afterPrimaryAuth(req, res, tenant, user, 'password') });
   }),
 );
+
+
+type Tenant = Awaited<ReturnType<typeof loadTenant>>;
+type UserDoc = NonNullable<Awaited<ReturnType<Tenant['models']['User']['findOne']>>>;
+
+export async function tenantMfaPolicy(tenant: Tenant): Promise<MfaPolicy> {
+  const s = await tenant.models.FacilitySetting.findOne({ key: 'security.mfa' }).lean();
+  const parsed = policySchema.safeParse(s?.value);
+  return parsed.success ? parsed.data : DEFAULT_POLICY;
+}
+
+async function mfaRequiredFor(tenant: Tenant, user: { roleIds?: unknown[] }, policy: MfaPolicy) {
+  if (policy.mode === 'all') return true;
+  if (policy.mode === 'optional') return false;
+  const roles = await tenant.models.Role.find({ _id: { $in: user.roleIds ?? [] } }).select('permissions').lean();
+  return roles.some((r) => (r.permissions ?? []).some((p: string) => p.startsWith('admin.')));
+}
+
+/** Issues the refresh session + access token (optionally restricted to MFA enrollment). */
+async function issueTenantSession(req: Request, res: Response, tenant: Tenant, user: UserDoc, opts: { restricted?: string; amr: string[] }) {
+  user.lastLoginAt = new Date();
+  await user.save();
+  const { refreshToken, session } = await createSession({ subjectType: 'tenant', subjectId: String(user._id), tenantId: tenant.id, ip: req.ip, userAgent: req.get('user-agent'), restricted: opts.restricted, amr: opts.amr });
+  const accessToken = signAccessToken({ sub: String(user._id), scope: 'tenant', sid: String(session._id), tid: tenant.id, ...(opts.restricted ? { rst: opts.restricted } : {}) });
+  setRefreshCookie(res, TENANT_RT_COOKIE, refreshToken, COOKIE_PATH, session.expiresAt);
+  req.user = { kind: 'tenant', id: String(user._id), name: user.name, email: user.email, permissions: new Set(), roleKeys: [], branchAccess: 'all', branchIds: [], sessionId: String(session._id) };
+  await audit(req, { action: 'auth.login', resource: 'user', resourceId: String(user._id), newValue: { amr: opts.amr, restricted: opts.restricted } });
+  await meta().Tenant.updateOne({ _id: tenant.id }, { 'stats.lastActivityAt': new Date() });
+  return { accessToken, expiresIn: Number(process.env.ACCESS_TOKEN_TTL_SECONDS) || 900, mustChangePassword: user.mustChangePassword, ...(opts.restricted === 'mfa_enroll' ? { mfaEnrollmentRequired: true } : {}) };
+}
+
+/** After a successful first factor (password or Google): second factor, forced enrollment, or a full session. */
+export async function afterPrimaryAuth(req: Request, res: Response, tenant: Tenant, user: UserDoc, via: string) {
+  const policy = await tenantMfaPolicy(tenant);
+  if (enabledMethods(user as unknown as MfaDoc).length) return beginLoginChallenge(req, tenantMfa, user as unknown as MfaDoc, tenant.id, policy, via);
+  if (await mfaRequiredFor(tenant, user, policy)) return issueTenantSession(req, res, tenant, user, { restricted: 'mfa_enroll', amr: [via] });
+  return issueTenantSession(req, res, tenant, user, { amr: [via] });
+}
+
+const tenantMfa: MfaAdapter = {
+  kind: 'tenant',
+  supported: ALL_METHODS,
+  authenticate: authenticateTenant,
+  brand: (req) => `AfeySync ${req.tenant?.name ?? ''}`.trim(),
+  tenantId: (req) => req.tenant?.id ?? null,
+  userId: (req) => {
+    if (req.user?.kind !== 'tenant') throw forbidden('Support sessions cannot manage two-factor settings');
+    return req.user.id;
+  },
+  loadUser: async (req, id) => (await req.tenant!.models.User.findById(id).select(MFA_SELECT)) as unknown as MfaDoc | null,
+  loadChallengeUser: async (req, ch) => {
+    if (!ch.tenantId || (req.hostTenantId && req.hostTenantId !== String(ch.tenantId))) return null;
+    const tenant = await loadTenant(String(ch.tenantId));
+    req.tenant = tenant;
+    const u = await tenant.models.User.findById(ch.subjectId).select(MFA_SELECT);
+    return u && u.status === 'active' ? (u as unknown as MfaDoc) : null;
+  },
+  policy: (req) => tenantMfaPolicy(req.tenant!),
+  isRequired: (req, doc, policy) => mfaRequiredFor(req.tenant!, doc as unknown as { roleIds?: unknown[] }, policy),
+  completeLogin: async (req, res, doc, amr) => issueTenantSession(req, res, req.tenant!, doc as unknown as UserDoc, { amr }),
+  liftRestriction: async (req) => {
+    const s = await meta().Session.findById(req.user!.sessionId);
+    if (!s?.restricted) return undefined;
+    s.restricted = undefined;
+    await s.save();
+    await meta().Session.updateMany({ familyId: s.familyId }, { $unset: { restricted: 1 } });
+    return signAccessToken({ sub: req.user!.id, scope: 'tenant', sid: String(s._id), tid: req.tenant!.id });
+  },
+  audit: async (req, action, resourceId, extra, failed) => audit(req, { action, resource: 'user', resourceId, newValue: extra, result: failed ? 'failure' : 'success' }),
+};
+
+router.use(buildMfaRouter(tenantMfa));
 
 router.post(
   '/refresh',
@@ -70,7 +135,7 @@ router.post(
     const tenant = await loadTenant(tid);
     const user = await tenant.models.User.findById(rotated.session.subjectId).lean();
     if (!user || user.status !== 'active') throw unauthorized('User account is not active', 'USER_INACTIVE');
-    const accessToken = signAccessToken({ sub: String(user._id), scope: 'tenant', sid: String(rotated.session._id), tid });
+    const accessToken = signAccessToken({ sub: String(user._id), scope: 'tenant', sid: String(rotated.session._id), tid, ...(rotated.session.restricted ? { rst: rotated.session.restricted } : {}) });
     setRefreshCookie(res, TENANT_RT_COOKIE, rotated.refreshToken, COOKIE_PATH, rotated.session.expiresAt);
     res.json({ success: true, data: { accessToken } });
   }),

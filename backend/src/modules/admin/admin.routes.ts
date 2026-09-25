@@ -1,3 +1,5 @@
+import { tenantMfaPolicy } from '../auth/tenantAuth.routes';
+import { policySchema } from '../auth/mfa/mfaService';
 import { Router } from 'express';
 import { isValidObjectId } from 'mongoose';
 import { z } from 'zod';
@@ -144,6 +146,28 @@ router.put(
     await FacilitySetting.updateOne({ key }, { $set: { value } }, { upsert: true });
     await audit(req, { action: 'settings.update', resource: 'setting', resourceId: key, oldValue: before?.value, newValue: value });
     res.json({ success: true });
+  }),
+);
+
+/* Two-factor authentication policy */
+router.get(
+  '/security/mfa-policy',
+  requirePermission('admin.settings'),
+  h(async (req, res) => {
+    res.json({ success: true, data: await tenantMfaPolicy(req.tenant!) });
+  }),
+);
+
+router.put(
+  '/security/mfa-policy',
+  requirePermission('admin.settings'),
+  h(async (req, res) => {
+    const policy = parse(policySchema, req.body);
+    const { FacilitySetting } = req.tenant!.models;
+    const before = await tenantMfaPolicy(req.tenant!);
+    await FacilitySetting.updateOne({ key: 'security.mfa' }, { $set: { value: policy } }, { upsert: true });
+    await audit(req, { action: 'settings.mfa_policy', resource: 'setting', resourceId: 'security.mfa', oldValue: before, newValue: policy });
+    res.json({ success: true, data: policy });
   }),
 );
 
