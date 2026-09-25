@@ -94,6 +94,14 @@ router.post('/leave', h(async (req, res) => {
   res.status(201).json({ success: true, data: l });
 }));
 
+/** Self-service: the caller's own staff record and leave requests (no HR permission needed). */
+router.get('/leave/mine', h(async (req, res) => {
+  const m = req.tenant!.models;
+  const staff = await m.StaffProfile.findOne({ userId: req.user!.id }).select('fullName employeeNumber').lean();
+  const items = staff ? await m.LeaveRequest.find({ staffId: staff._id }).sort({ startDate: -1 }).limit(50).lean() : [];
+  res.json({ success: true, data: { staff, items } });
+}));
+
 router.get('/leave', requirePermission('hr.view'), h(async (req, res) => {
   const filter: Record<string, unknown> = {};
   if (req.query.status) filter.status = String(req.query.status);

@@ -545,6 +545,12 @@ export const generatedRoutes: Record<string, Record<string, RouteDoc>> = {
       "permission": "hr.manage"
     }
   },
+  "/api/v1/hr/leave/mine": {
+    "get": {
+      "summary": "Get hr leave mine",
+      "tag": "HR"
+    }
+  },
   "/api/v1/hr/shifts": {
     "post": {
       "summary": "Create/perform hr shifts",

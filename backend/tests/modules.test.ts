@@ -135,6 +135,10 @@ describe('HR', () => {
     expect((await t(S, doctor).post('/api/v1/hr/leave').send({ type: 'sick', startDate: '2030-01-08', endDate: '2030-01-08' })).status).toBe(409);
     expect((await t(S, doctor).post('/api/v1/hr/leave').send({ staffId, type: 'sick', startDate: '2030-02-01', endDate: '2030-02-01' })).status).toBe(403);
     expect((await t(S, hr).post(`/api/v1/hr/leave/${l.body.data._id}/approve`)).status).toBe(200);
+    expect((await t(S, doctor).get('/api/v1/hr/leave')).status).toBe(403);
+    const mine = await t(S, doctor).get('/api/v1/hr/leave/mine');
+    expect(mine.body.data.items).toHaveLength(1);
+    expect(mine.body.data.items[0].status).toBe('approved');
   });
 
   it('blocks rostering staff who are on approved leave', async () => {
