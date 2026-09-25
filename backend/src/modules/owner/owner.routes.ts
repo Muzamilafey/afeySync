@@ -1,3 +1,4 @@
+import { env } from '../../config/env';
 import { Router } from 'express';
 import os from 'node:os';
 import fs from 'node:fs/promises';
@@ -489,6 +490,31 @@ router.patch(
     invalidateContractCache();
     await platformAudit(req, { action: 'integration.contract_update', resource: 'integration_contract', resourceId: provider, oldValue: { version: before.contractVersion }, newValue: { version: body.contractVersion, operations: body.operations } });
     res.json({ success: true, data: contract });
+  }),
+);
+
+/* ------------------------------------------------------------------ Backups (written by deploy/backup.sh) */
+const BACKUP_STALE_HOURS = 26;
+router.get(
+  '/backups',
+  requirePermission('owner.platform'),
+  h(async (_req, res) => {
+    const { Tenant, TenantDatabase, BackupRun } = meta();
+    const [tenants, dbs, runs, metaRun] = await Promise.all([
+      Tenant.find().select('name slug status').lean(),
+      TenantDatabase.find().select('tenantId dbName status lastBackupAt').lean(),
+      BackupRun.find().sort({ createdAt: -1 }).limit(100).lean(),
+      BackupRun.findOne({ dbName: { $not: new RegExp(`^${env.TENANT_DB_PREFIX}`) }, status: 'success' }).sort({ createdAt: -1 }).lean(),
+    ]);
+    const byTenant = new Map(dbs.map((d) => [String(d.tenantId), d]));
+    const cutoff = Date.now() - BACKUP_STALE_HOURS * 3600_000;
+    const facilities = tenants.map((t) => {
+      const d = byTenant.get(String(t._id));
+      const last = d?.lastBackupAt ?? null;
+      const lastRun = runs.find((r) => r.dbName === d?.dbName);
+      return { tenantId: t._id, name: t.name, slug: t.slug, status: t.status, dbName: d?.dbName, lastBackupAt: last, stale: !last || new Date(last).getTime() < cutoff, lastRunFailed: lastRun?.status === 'failure' };
+    });
+    res.json({ success: true, data: { staleAfterHours: BACKUP_STALE_HOURS, metaLastBackupAt: metaRun?.createdAt ?? null, facilities, recentRuns: runs } });
   }),
 );
 

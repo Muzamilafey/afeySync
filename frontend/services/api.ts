@@ -74,3 +74,42 @@ export async function api<T = unknown>(path: string, opts: ApiOptions = {}): Pro
 }
 
 export const ownerApi = <T = unknown>(path: string, opts: Omit<ApiOptions, 'realm'> = {}) => api<T>(`/owner${path}`, { ...opts, realm: 'owner' });
+
+/** Authenticated request that is not JSON: multipart uploads and file downloads (CSV, documents). */
+export async function apiRaw(path: string, opts: { method?: string; form?: FormData; query?: Record<string, string | undefined> } = {}): Promise<Response> {
+  const url = new URL(path.startsWith('/api') ? path : `/api/v1${path}`, window.location.origin);
+  for (const [k, v] of Object.entries(opts.query ?? {})) if (v) url.searchParams.set(k, v);
+  const doFetch = (token: string | null) => {
+    const headers: Record<string, string> = {};
+    if (token) headers.Authorization = `Bearer ${token}`;
+    const branch = useSessionStore.getState().branchId;
+    if (branch) headers['X-Branch-Id'] = branch;
+    return fetch(url, { method: opts.method ?? (opts.form ? 'POST' : 'GET'), headers, body: opts.form, credentials: 'same-origin' });
+  };
+  let token = useSessionStore.getState().tokens.tenant ?? (await refreshAccessToken('tenant'));
+  let res = await doFetch(token);
+  if (res.status === 401) {
+    token = await refreshAccessToken('tenant');
+    if (token) res = await doFetch(token);
+  }
+  if (!res.ok) {
+    const body = await res.json().catch(() => ({}));
+    throw new ApiError(res.status, body?.error?.code ?? 'ERROR', body?.error?.message ?? `Request failed (${res.status})`, body?.error?.details);
+  }
+  return res;
+}
+
+/** Download (or open) an authenticated file without exposing the token in a URL. */
+export async function downloadFile(path: string, fileName: string, opts: { query?: Record<string, string | undefined>; open?: boolean } = {}) {
+  const res = await apiRaw(path, { query: opts.query });
+  const blob = await res.blob();
+  const href = URL.createObjectURL(blob);
+  if (opts.open) window.open(href, '_blank', 'noopener');
+  else {
+    const a = document.createElement('a');
+    a.href = href;
+    a.download = fileName;
+    a.click();
+  }
+  setTimeout(() => URL.revokeObjectURL(href), 60_000);
+}

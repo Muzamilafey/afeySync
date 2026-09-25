@@ -4,7 +4,7 @@ import Link from 'next/link';
 import { usePathname, useRouter } from 'next/navigation';
 import { useEffect, useState, type ReactNode } from 'react';
 import { useQuery } from '@tanstack/react-query';
-import { Activity, Boxes, Building2, Cable, FileCode2, HeartPulse, LayoutDashboard, LifeBuoy, ListChecks, LogOut, Menu, ScrollText, Settings2, Users, X } from 'lucide-react';
+import { Activity, Boxes, Building2, Cable, FileCode2, HeartPulse, LayoutDashboard, LifeBuoy, ListChecks, LogOut, Menu, ScrollText, Settings2, Users, X, DatabaseBackup } from 'lucide-react';
 import { ownerApi } from '@/services/api';
 import { useSessionStore } from '@/stores/session';
 import { cn } from '@/lib/utils';
@@ -21,6 +21,7 @@ const NAV = [
   { href: '/owner/logs', label: 'Integration Logs', icon: ScrollText, perm: 'owner.logs' },
   { href: '/owner/jobs', label: 'Jobs & Queues', icon: ListChecks, perm: 'owner.logs' },
   { href: '/owner/health', label: 'System Health', icon: HeartPulse },
+  { href: '/owner/backups', label: 'Backups', icon: DatabaseBackup, perm: 'owner.platform' },
   { href: '/owner/support', label: 'Support Access', icon: LifeBuoy, perm: 'owner.support' },
   { href: '/owner/audit', label: 'Platform Audit', icon: Boxes, perm: 'owner.logs' },
   { href: '/owner/users', label: 'Platform Users', icon: Users, perm: 'owner.platform' },

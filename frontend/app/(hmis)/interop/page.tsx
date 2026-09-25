@@ -6,6 +6,7 @@ import { api } from '@/services/api';
 import { useCan } from '@/hooks/useMe';
 import { Alert, Badge, Button, Card, ErrorText, Input, KV, Loading, PageHeader, Stat, StatusDot, statusTone, Table, Tabs, Td } from '@/components/ui';
 import { fmtDateTime } from '@/lib/utils';
+import { FhirOutbox } from '@/features/fhir/FhirOutbox';
 
 interface Health { provider: string; enabled: boolean; message?: string; lastSuccess?: string; lastFailure?: string; latencyMs?: number; requestsToday: number; failuresToday: number }
 interface CbEvent { _id: string; provider: string; eventType?: string; externalReference?: string; status?: string; verificationMethod?: string; processing: { state: string; error?: string }; createdAt: string }
@@ -16,7 +17,7 @@ const LABEL: Record<string, string> = { sha: 'SHA', dha: 'DHA HIE', mpesa: 'M-Pe
 export default function InteropPage() {
   const can = useCan();
   const qc = useQueryClient();
-  const [tab, setTab] = useState<'overview' | 'callbacks' | 'dha'>('overview');
+  const [tab, setTab] = useState<'overview' | 'callbacks' | 'dha' | 'fhir'>('overview');
   const [newUrl, setNewUrl] = useState<string | null>(null);
   const [hmac, setHmac] = useState('');
   const health = useQuery({ queryKey: ['int-health'], queryFn: async () => (await api<Health[]>('/admin/system-health/integrations')).data, enabled: can('admin.integrations') });
@@ -36,7 +37,7 @@ export default function InteropPage() {
   return (
     <>
       <PageHeader title="Interoperability Center" crumbs={['SHA / DHA', 'Interoperability']} />
-      <Tabs value={tab} onChange={setTab} tabs={[{ key: 'overview', label: 'Overview' }, { key: 'callbacks', label: 'Callbacks' }, { key: 'dha', label: 'DHA' }]} />
+      <Tabs value={tab} onChange={setTab} tabs={[{ key: 'overview', label: 'Overview' }, { key: 'callbacks', label: 'Callbacks' }, { key: 'dha', label: 'DHA' }, ...(can('dha.fhir') ? [{ key: 'fhir' as const, label: 'FHIR outbox' }] : [])]} />
       {tab === 'overview' && (
         <div className="space-y-5">
           <div className="grid grid-cols-2 gap-4 md:grid-cols-4">
@@ -102,6 +103,7 @@ export default function InteropPage() {
           )}
         </div>
       )}
+      {tab === 'fhir' && <FhirOutbox />}
       {tab === 'dha' && (
         <Card title="DHA HIE">
           {dha.isLoading && <Loading />}

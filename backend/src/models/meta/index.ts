@@ -95,6 +95,20 @@ const tenantDatabaseSchema = new Schema(
   { timestamps: true },
 );
 
+/** Written by deploy/backup.sh after each dump (success or failure). */
+const backupRunSchema = new Schema(
+  {
+    dbName: { type: String, required: true, index: true },
+    status: { type: String, enum: ['success', 'failure'], required: true },
+    file: String,
+    sizeBytes: Number,
+    sha256: String,
+    host: String,
+  },
+  { timestamps: { createdAt: true, updatedAt: false } },
+);
+backupRunSchema.index({ createdAt: -1 });
+
 const tenantSubscriptionSchema = new Schema(
   {
     tenantId: { type: Schema.Types.ObjectId, ref: 'Tenant', required: true, index: true },
@@ -354,6 +368,7 @@ const schemas = {
   PlatformSettings: platformSettingsSchema,
   SupportAccessGrant: supportAccessSchema,
   Job: jobSchema,
+  BackupRun: backupRunSchema,
 };
 
 type Schemas = typeof schemas;

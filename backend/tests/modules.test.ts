@@ -1,5 +1,5 @@
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
-import { api, createFacility, createUser, hostOf, ownerToken, PASSWORD, setupApp, t, teardown, tenantLogin } from './helpers';
+import { api, createFacility, OWNER_HOST, createUser, hostOf, ownerToken, PASSWORD, setupApp, t, teardown, tenantLogin } from './helpers';
 import { meta } from '../src/models/meta';
 import { runNextJob } from '../src/jobs/queue';
 import { registerJobHandlers } from '../src/jobs/handlers';
@@ -214,5 +214,22 @@ describe('FHIR', () => {
     const ev = await t(S, admin).get(`/api/v1/fhir/Patient/${patientId}/$everything`);
     expect(ev.body.resourceType).toBe('Bundle');
     expect(ev.body.entry.some((e: { resource: { resourceType: string } }) => e.resource.resourceType === 'Condition')).toBe(true);
+  });
+});
+
+describe('owner backups', () => {
+  it('flags facilities without a recent backup and records runs from backup.sh', async () => {
+    const owner = await ownerToken();
+    const before = await api().get('/api/v1/owner/backups').set('Host', OWNER_HOST).set('Authorization', `Bearer ${owner}`);
+    expect(before.status).toBe(200);
+    const fac = before.body.data.facilities.find((f: { slug: string }) => f.slug === S);
+    expect(fac.stale).toBe(true);
+    // Simulate what deploy/backup.sh writes after a successful dump.
+    await meta().BackupRun.create({ dbName: fac.dbName, status: 'success', file: 'x.enc', sizeBytes: 10 });
+    await meta().TenantDatabase.updateOne({ dbName: fac.dbName }, { lastBackupAt: new Date() });
+    const after = await api().get('/api/v1/owner/backups').set('Host', OWNER_HOST).set('Authorization', `Bearer ${owner}`);
+    expect(after.body.data.facilities.find((f: { slug: string }) => f.slug === S).stale).toBe(false);
+    expect(after.body.data.recentRuns).toHaveLength(1);
+    expect((await t(S, admin).get('/api/v1/owner/backups')).status).not.toBe(200);
   });
 });

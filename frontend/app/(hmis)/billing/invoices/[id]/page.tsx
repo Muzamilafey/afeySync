@@ -9,6 +9,7 @@ import { useCan, useMe } from '@/hooks/useMe';
 import { Alert, Badge, Button, Card, ErrorText, Field, Input, KV, Loading, Modal, PageHeader, Select, statusTone, Table, Td } from '@/components/ui';
 import { fmtDateTime, money } from '@/lib/utils';
 import { ServicePicker } from '@/features/billing/ServicePicker';
+import { CreateClaimButton } from '@/features/sha/CreateClaimButton';
 import type { Invoice, Payment } from '@/features/billing/types';
 
 const key = () => (typeof crypto !== 'undefined' && 'randomUUID' in crypto ? crypto.randomUUID() : `${Date.now()}-${Math.random()}`);
@@ -117,6 +118,7 @@ export default function InvoicePage({ params }: { params: Promise<{ id: string }
         actions={
           <>
             {inv.status === 'open' && can('billing.create') && <Button variant="outline" onClick={() => issue.mutate()}>Issue invoice</Button>}
+            {inv.payer.type === 'sha' && inv.status !== 'void' && can('sha.claim') && <CreateClaimButton invoiceId={inv._id} />}
             <Link href={`/print/invoice/${inv._id}`} target="_blank"><Button variant="outline"><Printer className="h-4 w-4" /> Print</Button></Link>
           </>
         }

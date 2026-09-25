@@ -19,12 +19,30 @@ STAMP="$(date -u +%Y%m%dT%H%M%SZ)"
 mkdir -p "$DEST"
 chmod 700 "$DEST"
 
+# Record the run in the meta DB so the owner portal (Owner → Backups) can flag stale or failed backups.
+record_run() {
+  local db="$1" status="$2" file="${3:-}" size="${4:-0}" sum="${5:-}"
+  mongosh "$MONGO_URI" --quiet --eval "
+    const m = db.getSiblingDB('$META_DB');
+    const now = new Date();
+    m.backupruns.insertOne({ dbName: '$db', status: '$status', file: '$(basename "$file")', sizeBytes: $size, sha256: '$sum', host: '$(hostname)', createdAt: now });
+    if ('$status' === 'success') m.tenantdatabases.updateOne({ dbName: '$db' }, { \$set: { lastBackupAt: now } });
+  " >/dev/null || echo "warning: could not record backup run for $db" >&2
+}
+
 dump_db() {
   local db="$1" out="$DEST/${db}_${STAMP}.archive.gz.enc"
-  mongodump --uri="$MONGO_URI" --db="$db" --archive --gzip --quiet \
-    | openssl enc -aes-256-cbc -pbkdf2 -iter 200000 -salt -pass "file:$KEY_FILE" -out "$out"
-  sha256sum "$out" > "$out.sha256"
-  echo "backup ok: $out"
+  if mongodump --uri="$MONGO_URI" --db="$db" --archive --gzip --quiet \
+    | openssl enc -aes-256-cbc -pbkdf2 -iter 200000 -salt -pass "file:$KEY_FILE" -out "$out"; then
+    sha256sum "$out" > "$out.sha256"
+    record_run "$db" success "$out" "$(stat -c %s "$out")" "$(cut -d' ' -f1 "$out.sha256")"
+    echo "backup ok: $out"
+  else
+    rm -f "$out"
+    record_run "$db" failure
+    echo "backup FAILED: $db" >&2
+    return 1
+  fi
 }
 
 verify() {
@@ -38,9 +56,11 @@ verify() {
 case "${1:-}" in
   all)
     dump_db "$META_DB"
+    failed=0
     for db in $(mongosh "$MONGO_URI" --quiet --eval "db.adminCommand({listDatabases:1,nameOnly:true}).databases.map(d=>d.name).filter(n=>n.startsWith('$PREFIX')).join(' ')"); do
-      dump_db "$db"
+      dump_db "$db" || failed=1
     done
+    [ "$failed" = 0 ] || { echo "one or more tenant backups failed" >&2; exit 1; }
     find "$DEST" -name '*.enc*' -mtime +"$RETENTION_DAYS" -delete
     ;;
   tenant)

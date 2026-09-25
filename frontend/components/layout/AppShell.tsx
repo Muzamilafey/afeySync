@@ -4,7 +4,7 @@ import Link from 'next/link';
 import { usePathname, useRouter } from 'next/navigation';
 import { useEffect, useRef, useState, type ReactNode } from 'react';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
-import { Activity, Baby, Banknote, BedDouble, Bell, Cross, HeartHandshake, Smile, Boxes, Pill, ShoppingCart, FlaskConical, ScanLine, CalendarDays, ListOrdered, Stethoscope, Receipt, Building2, ChevronDown, ClipboardList, FileSearch, HeartPulse, LayoutDashboard, LogOut, Menu, Network, Search, Settings, ShieldCheck, UserPlus, Users, X } from 'lucide-react';
+import { Activity, Baby, Banknote, BedDouble, Bell, Cross, HeartHandshake, Smile, Boxes, Pill, ShoppingCart, FlaskConical, ScanLine, CalendarDays, ListOrdered, Stethoscope, Receipt, Building2, ChevronDown, ClipboardList, FileSearch, HeartPulse, LayoutDashboard, LogOut, Menu, Network, Search, Settings, ShieldCheck, UserPlus, Users, X, Wallet, BarChart3, IdCard } from 'lucide-react';
 import { useMe } from '@/hooks/useMe';
 import { api } from '@/services/api';
 import { useSessionStore } from '@/stores/session';
@@ -47,8 +47,11 @@ const NAV: Array<{ section: string; items: NavItem[] }> = [
     { href: '/billing/services', label: 'Services & Prices', icon: Receipt, any: ['billing.prices'] },
     { href: '/inventory', label: 'Inventory', icon: Boxes, any: ['inventory.view', 'pharmacy.stock', 'pharmacy.view'] },
     { href: '/procurement', label: 'Procurement', icon: ShoppingCart, any: ['procurement.view'] },
+    { href: '/finance', label: 'Finance', icon: Wallet, any: ['finance.view'] },
+    { href: '/reports', label: 'Reports', icon: BarChart3, any: ['reports.view'] },
   ] },
   { section: 'Administration', items: [
+    { href: '/hr', label: 'HR & Roster', icon: IdCard, any: ['hr.view'] },
     { href: '/admin/branches', label: 'Branches', icon: Building2, any: ['admin.branches'] },
     { href: '/admin/users', label: 'Users & Roles', icon: Users, any: ['admin.users', 'admin.roles'] },
     { href: '/admin/integrations', label: 'Integrations', icon: HeartPulse, any: ['admin.integrations'] },

@@ -56,6 +56,7 @@ router.post(
       uploadedByName: req.user!.name,
     });
     if (body.relatedResource === 'radiology_request' && body.relatedId) await req.tenant!.models.RadiologyRequest.updateOne({ _id: oid(body.relatedId, 'Request') }, { $addToSet: { attachmentIds: doc._id } });
+    if (body.relatedResource === 'sha_transaction' && body.relatedId) await req.tenant!.models.ShaTransaction.updateOne({ _id: oid(body.relatedId, 'Transaction'), patientId: body.patientId }, { $addToSet: { attachmentIds: doc._id } });
     await audit(req, { action: 'document.upload', resource: 'document', resourceId: String(doc._id), newValue: { category: body.category, title: body.title, sizeBytes: file.size, sha256 } });
     const out = doc.toObject() as unknown as Record<string, unknown>;
     delete out.storageKey;

@@ -46,6 +46,7 @@ function LoginForm() {
       <Button type="submit" className="w-full" loading={formState.isSubmitting}>
         Sign in
       </Button>
+      <p className="text-center text-sm"><a className="text-brand-600" href="/forgot-password">Forgot password?</a></p>
     </form>
   );
 }

@@ -6,6 +6,7 @@ import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { ShieldCheck } from 'lucide-react';
 import { api } from '@/services/api';
 import { useCan } from '@/hooks/useMe';
+import { DocumentsPanel } from '@/features/documents/DocumentsPanel';
 import { Alert, Badge, Button, Card, ErrorText, Field, Input, KV, Loading, Tabs, statusTone } from '@/components/ui';
 import { EligibilityResultCard, type EligibilityResult } from '@/features/sha/EligibilityChecker';
 import { BenefitsPanel } from '@/features/sha/BenefitsPanel';
@@ -17,7 +18,7 @@ import { age, fmtDate, fmtDateTime, fullName } from '@/lib/utils';
 import type { Patient } from '@/types/api';
 
 type Full = Patient & { lastEligibility?: { status: string; createdAt: string; summary?: { scheme?: string } } };
-type TabKey = 'overview' | 'visits' | 'sha' | 'insurance' | 'edit';
+type TabKey = 'overview' | 'visits' | 'sha' | 'insurance' | 'documents' | 'edit';
 
 function EditPatient({ p }: { p: Full }) {
   const qc = useQueryClient();
@@ -101,6 +102,7 @@ function Profile({ id }: { id: string }) {
           ...(can('queue.view', 'opd.view', 'consultation.view') ? [{ key: 'visits' as const, label: 'Visits' }] : []),
           ...(can('sha.eligibility') ? [{ key: 'sha' as const, label: 'SHA Benefits' }] : []),
           { key: 'insurance', label: 'Insurance' },
+          ...(can('documents.view') ? [{ key: 'documents' as const, label: 'Documents' }] : []),
           ...(can('patients.edit') ? [{ key: 'edit' as const, label: 'Edit' }] : []),
         ]}
       />
@@ -143,6 +145,7 @@ function Profile({ id }: { id: string }) {
           <div className="mt-4"><KV items={[['SHA status', shaStatus], ['Last SHA check', fmtDateTime(p.sha?.lastCheckedAt)]]} /></div>
         </Card>
       )}
+      {tab === 'documents' && <DocumentsPanel patientId={id} category="identification" />}
       {tab === 'edit' && <EditPatient p={p} />}
       {tab === 'visits' && (
         <Card title="Visits">

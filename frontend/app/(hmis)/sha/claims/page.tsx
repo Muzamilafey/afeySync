@@ -2,11 +2,12 @@
 
 import { useState } from 'react';
 import Link from 'next/link';
+import { useRouter } from 'next/navigation';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { Plus, Trash2 } from 'lucide-react';
 import { api } from '@/services/api';
 import { useCan } from '@/hooks/useMe';
-import { Alert, Badge, Button, Card, ErrorText, Field, Input, KV, Loading, Modal, PageHeader, Select, Stat, statusTone, Table, Td, Textarea } from '@/components/ui';
+import { Alert, Badge, Button, Card, ErrorText, Field, Input, Loading, Modal, PageHeader, Select, Stat, statusTone, Table, Td, Textarea } from '@/components/ui';
 import { fmtDateTime, money } from '@/lib/utils';
 import type { Patient } from '@/types/api';
 
@@ -37,6 +38,7 @@ const KINDS = [
 
 function NewDraft({ open, onClose }: { open: boolean; onClose: () => void }) {
   const can = useCan();
+  const router = useRouter();
   const qc = useQueryClient();
   const [kind, setKind] = useState('claim');
   const [q, setQ] = useState('');
@@ -63,9 +65,10 @@ function NewDraft({ open, onClose }: { open: boolean; onClose: () => void }) {
           idempotencyKey: key,
         },
       }),
-    onSuccess: () => {
+    onSuccess: (res) => {
       qc.invalidateQueries({ queryKey: ['sha-tx'] });
       onClose();
+      router.push(`/sha/transactions/${(res.data as { _id: string })._id}`);
     },
   });
   const total = lines.reduce((s, l) => s + l.quantity * l.unitPrice, 0);
@@ -113,16 +116,14 @@ export default function ClaimsPage() {
   const [kind, setKind] = useState('claim');
   const [q, setQ] = useState('');
   const [open, setOpen] = useState(false);
-  const [detail, setDetail] = useState<string | null>(null);
   const list = useQuery({ queryKey: ['sha-tx', kind, status, q], queryFn: () => api<Tx[]>('/sha/transactions', { query: { kind, status, q } }) });
-  const tx = useQuery({ queryKey: ['sha-tx-detail', detail], queryFn: async () => (await api<Tx>(`/sha/transactions/${detail}`)).data, enabled: !!detail });
   const counts = (list.data?.meta?.counts ?? {}) as Record<string, number>;
 
   return (
     <>
       <PageHeader title="SHA Claims" crumbs={['SHA', 'Claims']} actions={(can('sha.claim') || can('sha.preauthorization') || can('sha.authorization')) && <Button onClick={() => setOpen(true)}><Plus className="h-4 w-4" /> New draft</Button>} />
-      <div className="mb-5 grid grid-cols-2 gap-3 md:grid-cols-5">
-        {[['draft', 'Draft'], ['submitted', 'Submitted'], ['pending', 'Pending'], ['intervention_required', 'Intervention'], ['approved', 'Approved']].map(([k, l]) => (
+      <div className="mb-5 grid grid-cols-2 gap-3 md:grid-cols-6">
+        {[['draft', 'Draft'], ['submitted', 'Submitted'], ['intervention_required', 'Intervention'], ['approved', 'Approved'], ['rejected', 'Rejected'], ['paid', 'Paid']].map(([k, l]) => (
           <button key={k} onClick={() => setStatus(status === k ? '' : k)} className="text-left">
             <Stat label={l} value={counts[k] ?? 0} tone={statusTone(k)} />
           </button>
@@ -146,28 +147,13 @@ export default function ClaimsPage() {
                 <Td>{money(t.amounts?.claimed)}</Td>
                 <Td><Badge tone={statusTone(t.status)}>{t.status.replace('_', ' ')}</Badge></Td>
                 <Td>{fmtDateTime(t.updatedAt)}</Td>
-                <Td><Button size="sm" variant="ghost" onClick={() => setDetail(t._id)}>View</Button></Td>
+                <Td><Link href={`/sha/transactions/${t._id}`}><Button size="sm" variant="ghost">Open</Button></Link></Td>
               </tr>
             ))}
           </Table>
         )}
       </Card>
       <NewDraft open={open} onClose={() => setOpen(false)} />
-      <Modal open={!!detail} onClose={() => setDetail(null)} title={tx.data ? `${tx.data.kind.replace('_', ' ').toUpperCase()} ${tx.data.reference}` : 'Loading'} wide>
-        {tx.data && (
-          <div className="space-y-4">
-            <KV items={[['Patient', `${tx.data.patientId.firstName} ${tx.data.patientId.lastName}`], ['CR ID', tx.data.patientId.clientRegistryId], ['Intervention', tx.data.interventionCode], ['Access point', tx.data.accessPoint], ['Status', <Badge key="s" tone={statusTone(tx.data.status)}>{tx.data.status}</Badge>], ['Diagnoses', tx.data.diagnoses?.map((d) => d.code).join(', ')]]} />
-            <Table head={['Service', 'Qty', 'Unit', 'Amount']}>
-              {tx.data.lines?.map((l, i) => <tr key={i}><Td>{l.serviceCode} {l.description}</Td><Td>{l.quantity}</Td><Td>{money(l.unitPrice)}</Td><Td>{money(l.amount)}</Td></tr>)}
-            </Table>
-            <KV items={[['Claimed', money(tx.data.amounts?.claimed)], ['Approved', money(tx.data.amounts?.approved)], ['Paid', money(tx.data.amounts?.paid)], ['Outstanding', money((tx.data.amounts?.approved ?? 0) - (tx.data.amounts?.paid ?? 0))]]} />
-            <div>
-              <p className="label">Status history</p>
-              <ul className="text-sm">{tx.data.statusHistory?.map((s, i) => <li key={i}>{fmtDateTime(s.at)} — <strong>{s.status}</strong> <span className="muted">({s.source}{s.note ? `: ${s.note}` : ''})</span></li>)}</ul>
-            </div>
-          </div>
-        )}
-      </Modal>
     </>
   );
 }
