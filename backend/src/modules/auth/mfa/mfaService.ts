@@ -8,7 +8,7 @@ import { randomToken, sha256 } from '../../../utils/crypto';
 import { meta } from '../../../models/meta';
 import { IntegrationSecretService } from '../../integrations/secretService';
 import { enqueueJob } from '../../../jobs/queue';
-import { notifyEmail } from '../../notifications/notify';
+import { notifyEmail, enqueueSms } from '../../notifications/notify';
 import { normalizePhone } from '../../patients/patientService';
 import { verifyPassword } from '../password';
 import { generateTotpSecret, otpauthUri, verifyTotp } from './totp';
@@ -106,8 +106,9 @@ export async function deliverOtp(ch: Challenge, method: 'email' | 'sms', to: str
   await ch.save();
   const key = `${tenantId ?? 'platform'}:mfa:${ch._id}:${sends + 1}`;
   const text = `${brand} verification code: ${code}. It expires in 10 minutes. Never share this code.`;
-  if (method === 'email') await notifyEmail(tenantId, key, to, `${brand} verification code`, `${text}\n\nIf you did not try to sign in, change your password and contact your administrator.`);
-  else await enqueueJob('SMS', key, { to, message: text }, tenantId ?? undefined, { maxAttempts: 3 });
+  // The code is never stored in plain text: queued messages are encrypted and wiped after sending.
+  if (method === 'email') await notifyEmail(tenantId, key, to, `${brand} verification code`, `${text}\n\nIf you did not try to sign in, change your password and contact your administrator.`, undefined, { sensitive: true });
+  else await enqueueSms(tenantId, key, to, text, { critical: true, sensitive: true, maxAttempts: 3 });
   return { sentTo: ch.otp!.target };
 }
 

@@ -10,6 +10,7 @@ import { IntegrationSecretService } from '../integrations/secretService';
 import { resolveIntegration, type ResolvedIntegration } from '../integrations/integrationConfigService';
 import { registerC2BUrls, stkPush, stkQuery, toMsisdn } from '../../integrations/mpesa/mpesaService';
 import { applyPayment, round2, type BillingDoc } from './documentService';
+import { creditWallet, getSmsSettings, MAX_TOPUP_KES } from '../sms/smsWallet';
 
 /**
  * The platform owner's M-Pesa collection channel for subscription invoices (integration `mpesa_billing`,
@@ -52,6 +53,35 @@ export async function requestStk(doc: BillingDoc, phoneIn: string, initiatedBy: 
   doc.history.push({ at: new Date(), action: 'mpesa_prompt', byName: initiatedBy, note: `KES ${amount} to ${phone.replace(/^(\d{6})\d{3}/, '$1***')}` });
   await doc.save();
   return { paymentId: String(p._id), customerMessage: r.customerMessage };
+}
+
+/** Paybill account reference for a facility's SMS top-ups, e.g. SMSNDABIBI. */
+export const smsAccountRef = (slug: string) => `SMS${slug.toUpperCase().replace(/[^A-Z0-9]/g, '')}`.slice(0, 12);
+
+/** Sends an STK prompt to buy SMS credits for a facility. One pending prompt per facility at a time. */
+export async function requestSmsTopupStk(tenant: { id: string; slug: string }, amountIn: number, phoneIn: string, initiatedBy: string) {
+  const settings = await getSmsSettings();
+  const amount = Math.floor(amountIn);
+  if (!(amount >= settings.minTopupKes)) throw new AppError(400, 'VALIDATION_ERROR', `The minimum top-up is KES ${settings.minTopupKes}.`);
+  if (amount > MAX_TOPUP_KES) throw new AppError(400, 'VALIDATION_ERROR', `The maximum M-Pesa top-up is KES ${MAX_TOPUP_KES.toLocaleString()}.`);
+  const credits = Math.floor(amount / settings.pricePerSms);
+  const phone = toMsisdn(phoneIn);
+  const { PlatformPayment } = meta();
+  const recent = await PlatformPayment.findOne({ purpose: 'sms_topup', tenantId: tenant.id, method: 'mpesa_stk', status: 'pending', createdAt: { $gte: new Date(Date.now() - 2 * 60_000) } }).lean();
+  if (recent) throw conflict('A payment prompt was sent less than two minutes ago. Complete it on the phone or wait before retrying.', { paymentId: recent._id }, 'STK_PENDING');
+  const cfg = await collectionsConfig();
+  const token = await endpointToken();
+  const r = await stkPush(cfg, { phone, amount, accountReference: smsAccountRef(tenant.slug), description: 'SMS credits', callbackUrl: `${publicBase()}/callback/${token}` });
+  const p = await PlatformPayment.create({ purpose: 'sms_topup', tenantId: tenant.id, smsCredits: credits, smsPrice: settings.pricePerSms, method: 'mpesa_stk', amount, status: 'pending', mpesa: { checkoutRequestId: r.checkoutRequestId, merchantRequestId: r.merchantRequestId, phone }, initiatedBy });
+  return { paymentId: String(p._id), credits, customerMessage: r.customerMessage };
+}
+
+/** Credits the SMS wallet for a confirmed top-up (once per payment), priced at the rate shown when it was requested. */
+async function settleSmsTopup(p: { _id: unknown; tenantId?: unknown; amount: number; smsPrice?: number | null; reference?: string | null }) {
+  const price = p.smsPrice || (await getSmsSettings()).pricePerSms;
+  const credits = Math.floor(p.amount / price);
+  await meta().PlatformPayment.updateOne({ _id: p._id }, { $set: { smsCredits: credits } });
+  if (p.tenantId && credits > 0) await creditWallet(String(p.tenantId), credits, 'topup', `topup:${String(p._id)}`, { paymentId: String(p._id), note: `M-Pesa ${p.reference ?? ''} · KES ${p.amount}` });
 }
 
 /** Status for a pending STK payment. A query can only confirm failure; success always comes from the callback (it carries the receipt). */
@@ -121,15 +151,17 @@ platformMpesaPublicRouter.post('/payments/platform-mpesa/callback/:token', h(asy
   }
   p.set({ status: 'completed', amount: round2(amount), reference: receipt, receivedAt: new Date(), 'mpesa.receiptNumber': receipt, 'mpesa.transactionDate': String(item('TransactionDate') ?? '') });
   await p.save();
-  await applyPayment(p.documentId, p.amount, `M-Pesa ${receipt}`);
+  if (p.purpose === 'sms_topup') await settleSmsTopup(p);
+  else await applyPayment(p.documentId, p.amount, `M-Pesa ${receipt}`);
   res.json(ack);
 }));
 
 /** C2B validation: accept only references that match an open invoice, so wrong account numbers bounce back to the payer. */
 platformMpesaPublicRouter.post('/payments/platform-mpesa/c2b/:token/validation', h(async (req, res) => {
   if (!(await validToken(String(req.params.token)))) return res.status(404).json({ ResultCode: 'C2B00012', ResultDesc: 'Rejected' });
-  const doc = await invoiceForRef(String(req.body?.BillRefNumber ?? ''));
-  res.json(doc ? { ResultCode: '0', ResultDesc: 'Accepted' } : { ResultCode: 'C2B00012', ResultDesc: 'Invalid Account Number' });
+  const ref = String(req.body?.BillRefNumber ?? '');
+  const ok = (await invoiceForRef(ref)) || (await tenantForSmsRef(ref));
+  res.json(ok ? { ResultCode: '0', ResultDesc: 'Accepted' } : { ResultCode: 'C2B00012', ResultDesc: 'Invalid Account Number' });
 }));
 
 platformMpesaPublicRouter.post('/payments/platform-mpesa/c2b/:token/confirmation', h(async (req, res) => {
@@ -138,6 +170,16 @@ platformMpesaPublicRouter.post('/payments/platform-mpesa/c2b/:token/confirmation
   const receipt = String(b.TransID ?? '').toUpperCase();
   const amount = Number(b.TransAmount);
   if (!receipt || !(amount > 0) || (await receiptTaken(receipt))) return res.json(ack);
+  const smsTenant = await tenantForSmsRef(String(b.BillRefNumber ?? ''));
+  if (smsTenant) {
+    const price = (await getSmsSettings()).pricePerSms;
+    const sp = await meta().PlatformPayment.create({
+      purpose: 'sms_topup', tenantId: smsTenant._id, smsPrice: price, method: 'mpesa_c2b', amount: round2(amount), status: 'completed', reference: receipt, receivedAt: new Date(),
+      mpesa: { receiptNumber: receipt, billRef: String(b.BillRefNumber ?? '').slice(0, 40), phone: String(b.MSISDN ?? '').slice(0, 20), payerName: [b.FirstName, b.MiddleName, b.LastName].filter(Boolean).join(' ').slice(0, 80), transactionDate: String(b.TransTime ?? '') },
+    });
+    await settleSmsTopup(sp);
+    return res.json(ack);
+  }
   const doc = await invoiceForRef(String(b.BillRefNumber ?? ''));
   const p = await meta().PlatformPayment.create({
     documentId: doc?._id, tenantId: doc?.tenantId, method: 'mpesa_c2b', amount: round2(amount), status: 'completed', reference: receipt, receivedAt: new Date(),
@@ -147,6 +189,14 @@ platformMpesaPublicRouter.post('/payments/platform-mpesa/c2b/:token/confirmation
   if (doc) await applyPayment(doc._id, p.amount, `M-Pesa paybill ${receipt}`);
   res.json(ack);
 }));
+
+/** Matches "SMSNDABIBI" / "sms-ndabibi" to the facility's SMS wallet (slug up to 9 characters after SMS). */
+async function tenantForSmsRef(ref: string) {
+  const norm = ref.toUpperCase().replace(/[^A-Z0-9]/g, '');
+  if (!/^SMS[A-Z0-9]{2,}$/.test(norm)) return null;
+  const tenants = await meta().Tenant.find({ status: 'active' }).select('_id slug').lean();
+  return tenants.find((t) => smsAccountRef(t.slug) === norm) ?? null;
+}
 
 /** Matches "INV-2026-0001", "INV20260001" or "inv 2026 0001" to an open invoice. */
 async function invoiceForRef(ref: string) {

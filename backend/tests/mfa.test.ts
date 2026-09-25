@@ -1,3 +1,4 @@
+import { IntegrationSecretService } from '../src/modules/integrations/secretService';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import { api, createFacility, createUser, hostOf, OWNER_HOST, ownerToken, PASSWORD, setupApp, t, teardown, tenantLogin } from './helpers';
 import { meta } from '../src/models/meta';
@@ -14,8 +15,11 @@ const login = (slug: string, email: string, password = PASSWORD) => api().post('
 const verify = (slug: string, body: Record<string, string>) => api().post('/api/v1/auth/mfa/challenge/verify').set('Host', hostOf(slug)).send(body);
 async function lastCode(type: 'EMAIL' | 'SMS', to: string) {
   const job = await meta().Job.findOne({ type, 'payload.to': to }).sort({ createdAt: -1, _id: -1 }).lean();
-  const p = job!.payload as { text?: string; message?: string };
-  return /code: (\d{6})/.exec(p.text ?? p.message ?? '')![1];
+  const p = job!.payload as { textEnc?: never; messageEnc?: never; text?: string; message?: string };
+  // Sign-in codes are never stored in plain text in the queue.
+  expect(p.text ?? p.message).toBeUndefined();
+  const body = IntegrationSecretService.decrypt((p.textEnc ?? p.messageEnc)!);
+  return /(\d{6})/.exec(body)![1];
 }
 
 beforeAll(async () => {

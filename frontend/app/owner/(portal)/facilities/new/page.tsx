@@ -130,7 +130,7 @@ export default function NewFacilityWizard() {
         )}
         {step === 5 && (
           <div className="space-y-3">
-            {(Object.keys(integrations) as Array<keyof typeof integrations>).map((k) => (
+            {(Object.keys(integrations) as Array<keyof typeof integrations>).filter((k) => k !== 'africastalking' && k !== 'talksasa').map((k) => (
               <label key={k} className="flex items-center gap-3 text-sm">
                 <input type="checkbox" checked={integrations[k]} onChange={(e) => setIntegrations({ ...integrations, [k]: e.target.checked })} />
                 <span className="font-medium">{{ sha: 'SHA', dha: 'DHA HIE', mpesa: 'M-Pesa', africastalking: "Africa's Talking SMS", talksasa: 'Talksasa SMS', smtp: 'SMTP email', slade360: 'Slade360 private insurance' }[k]}</span>

@@ -154,6 +154,9 @@ function materialize(doc: ConfigDoc, provider: Provider, source: 'tenant' | 'pla
  *   3. provider disabled
  * The platform switch always wins: a globally disabled provider is disabled for every tenant.
  */
+/** SMS gateways need no per-facility switch: every facility can send SMS (paid from its SMS wallet). */
+export const SMS_PROVIDERS: readonly Provider[] = ['africastalking', 'talksasa'];
+
 export async function resolveIntegration(provider: Provider, tenantId: string | null): Promise<ResolvedIntegration> {
   const { IntegrationConfig, Tenant } = meta();
   const platform = await IntegrationConfig.findOne({ scope: 'platform', tenantId: null, provider });
@@ -161,7 +164,8 @@ export async function resolveIntegration(provider: Provider, tenantId: string | 
   if (tenantId) {
     const tenant = await Tenant.findById(tenantId).select('integrations').lean();
     const flags = (tenant?.integrations ?? {}) as Record<string, boolean>;
-    if (provider !== 'storage' && !flags[provider]) {
+    // SMS is available to every facility on every plan: the platform gateway is used unless the owner turned it off.
+    if (provider !== 'storage' && !SMS_PROVIDERS.includes(provider) && !flags[provider]) {
       throw new AppError(503, 'INTEGRATION_NOT_ENABLED_FOR_FACILITY', `${PROVIDER_DEFINITIONS[provider].label} is not enabled for this facility. Contact AfeySync platform administration.`);
     }
     if (platform.allowTenantCredentials) {
@@ -185,10 +189,11 @@ export async function integrationStatusForTenant(tenantId: string) {
   for (const provider of ['sha', 'dha', 'mpesa', 'africastalking', 'talksasa', 'smtp', 'slade360'] as const) {
     const p = platformCfgs.find((c) => c.provider === provider);
     const t = tenantCfgs.find((c) => c.provider === provider);
-    const enabled = Boolean(p?.enabled && flags[provider]);
+    const facilityOn = SMS_PROVIDERS.includes(provider) || flags[provider];
+    const enabled = Boolean(p?.enabled && facilityOn);
     out[provider] = {
       enabled,
-      message: !p?.enabled ? DISABLED_MESSAGE : !flags[provider] ? 'Not enabled for this facility.' : undefined,
+      message: !p?.enabled ? DISABLED_MESSAGE : !facilityOn ? 'Not enabled for this facility.' : undefined,
       tenantCredentialsAllowed: Boolean(p?.allowTenantCredentials),
       usingFacilityConfig: Boolean(p?.allowTenantCredentials && t?.enabled && t?.useTenantConfig),
       health: p?.health?.status,

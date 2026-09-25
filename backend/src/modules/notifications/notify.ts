@@ -1,3 +1,4 @@
+import { IntegrationSecretService } from '../integrations/secretService';
 import type { TenantModels } from '../../models/tenant';
 import type { Types } from 'mongoose';
 import { enqueueJob } from '../../jobs/queue';
@@ -30,10 +31,21 @@ export async function notifyPatientSms(tenant: { id: string; name: string }, pat
   }
 }
 
-export async function notifyEmail(tenantId: string | null, key: string, to: string, subject: string, text: string, html?: string) {
+export async function notifyEmail(tenantId: string | null, key: string, to: string, subject: string, text: string, html?: string, opts: { sensitive?: boolean } = {}) {
   try {
-    await enqueueJob('EMAIL', `${tenantId ?? 'platform'}:${key}`, html ? { to, subject, text, html } : { to, subject, text }, tenantId ?? undefined);
+    // Sensitive bodies (sign-in codes) are stored encrypted in the queue and wiped once sent.
+    const body = opts.sensitive ? { textEnc: IntegrationSecretService.encrypt(text), ...(html ? { htmlEnc: IntegrationSecretService.encrypt(html) } : {}) } : html ? { text, html } : { text };
+    await enqueueJob('EMAIL', `${tenantId ?? 'platform'}:${key}`, { to, subject, ...body }, tenantId ?? undefined);
   } catch (err) {
     logger.warn({ err }, 'email enqueue failed');
   }
+}
+
+/**
+ * Queues an SMS. The facility's SMS wallet pays for it when it is sent. `critical` (sign-in codes) may use
+ * the small wallet reserve; `sensitive` stores the text encrypted and wipes it after sending.
+ */
+export async function enqueueSms(tenantId: string | null, key: string, to: string, message: string, opts: { critical?: boolean; sensitive?: boolean; maxAttempts?: number; runAt?: Date } = {}) {
+  const body = opts.sensitive ? { messageEnc: IntegrationSecretService.encrypt(message) } : { message };
+  return enqueueJob('SMS', key, { to, ...body, ...(opts.critical ? { critical: true } : {}) }, tenantId ?? undefined, { maxAttempts: opts.maxAttempts, runAt: opts.runAt });
 }

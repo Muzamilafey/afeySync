@@ -1,3 +1,4 @@
+import { ensureWallet } from '../sms/smsWallet';
 import { z } from 'zod';
 import { registerDirectoryEntry } from '../auth/directory';
 import { meta } from '../../models/meta';
@@ -192,6 +193,8 @@ export async function provisionFacility(input: CreateFacilityInput, actorId?: st
     tenant.stats = { branches: branches.length, users: 1, patients: 0, lastActivityAt: new Date() };
     await tenant.save();
     clearDomainCache();
+    // Every new facility starts with free welcome SMS credits.
+    await ensureWallet(String(tenantId)).catch((err) => logger.warn({ err }, 'sms welcome grant failed'));
     return {
       tenant,
       dbName,

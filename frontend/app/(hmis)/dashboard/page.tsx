@@ -8,6 +8,7 @@ import { api } from '@/services/api';
 import { useMe } from '@/hooks/useMe';
 import { Badge, Button, Card, ErrorText, Loading, PageHeader, Stat, StatusDot, statusTone, Table, Td } from '@/components/ui';
 import { fmtDateTime } from '@/lib/utils';
+import { SmsWalletBanner } from '@/features/sms/SmsWalletBanner';
 import type { IntegrationFlag } from '@/types/api';
 
 interface Dash {
@@ -42,6 +43,7 @@ export default function DashboardPage() {
         subtitle={`${me?.tenant.name} · ${data.branch?.name ?? 'All branches'}`}
         actions={me?.permissions.includes('patients.create') && <Link href="/frontdesk"><Button><UserPlus className="h-4 w-4" /> Register patient</Button></Link>}
       />
+      <SmsWalletBanner />
       <div className="mb-5 grid grid-cols-2 gap-4 lg:grid-cols-4">
         {data.patients && <Stat label="Patients registered today" value={data.patients.today} tone="blue" icon={<UserPlus className="h-4 w-4 text-sky-600" />} />}
         {data.patients && <Stat label="Total patients" value={data.patients.total.toLocaleString()} icon={<Users className="muted h-4 w-4" />} />}

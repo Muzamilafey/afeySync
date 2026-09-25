@@ -136,13 +136,14 @@ export default function FacilityDetail({ params }: { params: Promise<{ id: strin
       {tab === 'integrations' && (
         <Card title="Enabled providers for this facility">
           <div className="space-y-3">
-            {Object.entries(tenant.integrations).map(([k, v]) => (
+            {Object.entries(tenant.integrations).filter(([k]) => !['africastalking', 'talksasa'].includes(k)).map(([k, v]) => (
               <label key={k} className="flex items-center justify-between rounded-md border border-[var(--border)] px-3 py-2 text-sm">
                 <span className="font-medium">{PROVIDER_LABEL[k] ?? k.toUpperCase()}</span>
                 <input type="checkbox" checked={v} onChange={(e) => intMut.mutate({ [k]: e.target.checked })} />
               </label>
             ))}
-            <Field label="SMS gateway for this facility" hint="Automatic uses Africa's Talking, or Talksasa when Africa's Talking is not set up. The chosen gateway must be enabled above and in Owner → Integrations.">
+            <p className="muted text-xs">SMS is available to every facility (paid from its SMS wallet); no switch is needed.</p>
+            <Field label="SMS gateway for this facility" hint="Automatic uses Africa's Talking, or Talksasa when Africa's Talking is not set up in Owner → Integrations.">
               <Select value={tenant.smsGateway ?? 'auto'} onChange={(e) => intMut.mutate({ smsGateway: e.target.value })}>
                 <option value="auto">Automatic</option>
                 <option value="africastalking">Africa&apos;s Talking</option>

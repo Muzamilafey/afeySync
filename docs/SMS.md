@@ -35,6 +35,44 @@ The fallback happens only when a gateway is not set up. AfeySync never retries a
 the other gateway, so a patient is never sent the same SMS twice. A facility can use its own
 account for either gateway only if the owner allows it.
 
+## Available to every facility
+
+SMS works for every facility on every plan. There is no per-facility SMS switch: all facility SMS
+(appointment reminders, payment receipts, results notices, sign-in codes and so on) go through the
+platform SMS gateway set up in Owner → Integrations. The only exception is a facility the owner
+allows to use its own gateway account. The facility's gateway choice (Automatic / Africa's Talking /
+Talksasa) still applies.
+
+## SMS wallet
+
+Each facility pays for its SMS from a prepaid **SMS wallet**. One credit is one SMS segment:
+160 characters, or 153 per part for longer messages; 70/67 for messages with emoji or non-Latin
+characters.
+
+* **Welcome gift:** every facility gets **20 free SMS** once, when it is created. Facilities that
+  already existed get them at the next start-up.
+* **Top-up with M-Pesa** (Admin → SMS wallet): an STK prompt to the payer's phone, or Paybill using
+  the owner's business number and the facility's account number `SMS<FACILITY>` (e.g.
+  `SMSNDABIBI`). Payments go to the owner's collection channel (Integrations → M-Pesa (AfeySync
+  billing)). They are credited only from Safaricom's confirmation, once per M-Pesa receipt, at the
+  price shown when the top-up was started.
+* **Charging:** credits are taken when an SMS is sent and returned automatically if the gateway
+  fails. When the wallet is empty, ordinary SMS stop (the job is dead-lettered with a clear reason).
+  Sign-in codes may use a small reserve (default 5) so nobody is locked out; it is recovered at the
+  next top-up.
+* **Reminders to top up:** administrators (users who can view the subscription or manage settings)
+  get an in-app notification and an email once when the balance is low (default 5 SMS or fewer) and
+  once when it is empty. The dashboard shows a banner until they top up. Alerts re-arm after each
+  top-up.
+* **Owner** (Owner → SMS): price per SMS (default KES 1), welcome credits, low-balance level,
+  minimum top-up, sign-in reserve, every facility's balance and usage, and manual adjustments (for
+  example a paybill payment sent with the wrong account number). Every change is recorded in the
+  wallet history and the audit log.
+* Facilities using their own SMS account are not charged.
+
+Sign-in codes are never stored in plain text: queued SMS and email codes are encrypted and wiped
+once sent.
+
 ## Delivery
 * Delivery goes through the `SMS` job type. The job result records which gateway sent it. Jobs are idempotent by key and retry with exponential
   backoff. Configuration errors and invalid numbers go straight to the dead-letter queue, where the

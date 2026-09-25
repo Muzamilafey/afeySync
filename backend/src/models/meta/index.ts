@@ -555,6 +555,11 @@ billingDocumentSchema.index({ tenantId: 1, type: 1, createdAt: -1 });
 
 const platformPaymentSchema = new Schema(
   {
+    /** invoice = pays a subscription invoice; sms_topup = buys SMS credits for a facility's SMS wallet. */
+    purpose: { type: String, enum: ['invoice', 'sms_topup'], default: 'invoice', index: true },
+    smsCredits: Number,
+    /** KES per SMS credit at the time of the top-up request. */
+    smsPrice: Number,
     documentId: { type: Schema.Types.ObjectId, index: true },
     tenantId: { type: Schema.Types.ObjectId, index: true },
     method: { type: String, enum: ['mpesa_stk', 'mpesa_c2b', 'bank', 'cash', 'cheque', 'other'], required: true },
@@ -596,6 +601,35 @@ const tenantLogoSchema = new Schema(
   { timestamps: true },
 );
 
+/** A facility's prepaid SMS credits (1 credit = 1 SMS segment of up to 160 characters). */
+const smsWalletSchema = new Schema(
+  {
+    tenantId: { type: Schema.Types.ObjectId, required: true, unique: true },
+    balance: { type: Number, default: 0 },
+    /** When the low / empty balance alerts were last sent (cleared on every credit). */
+    lowAlertAt: Date,
+    emptyAlertAt: Date,
+  },
+  { timestamps: true },
+);
+
+/** Every change to an SMS wallet. The key makes each entry happen at most once (welcome grant, a payment, a job attempt). */
+const smsLedgerSchema = new Schema(
+  {
+    tenantId: { type: Schema.Types.ObjectId, required: true, index: true },
+    type: { type: String, enum: ['welcome', 'topup', 'debit', 'refund', 'adjustment'], required: true },
+    credits: { type: Number, required: true },
+    balanceAfter: Number,
+    key: { type: String, required: true, unique: true },
+    note: String,
+    paymentId: Schema.Types.ObjectId,
+    jobId: Schema.Types.ObjectId,
+    byName: String,
+  },
+  { timestamps: { createdAt: true, updatedAt: false } },
+);
+smsLedgerSchema.index({ tenantId: 1, createdAt: -1 });
+
 /** Which facilities have a user with this email (hashed), so sign-in on the main domain can find them. */
 const userDirectorySchema = new Schema({ emailHash: { type: String, required: true }, tenantId: { type: Schema.Types.ObjectId, required: true } }, { timestamps: true });
 userDirectorySchema.index({ emailHash: 1, tenantId: 1 }, { unique: true });
@@ -635,6 +669,8 @@ const schemas = {
   UserDirectory: userDirectorySchema,
   LoginHandoff: loginHandoffSchema,
   TenantLogo: tenantLogoSchema,
+  SmsWallet: smsWalletSchema,
+  SmsLedger: smsLedgerSchema,
 };
 
 type Schemas = typeof schemas;

@@ -102,9 +102,12 @@ describe('Talksasa SMS gateway', () => {
     expect((await resolveSmsGateway(tenantId)).gateway).toBe('africastalking'); // auto prefers Africa's Talking
     expect((await own('put', `/tenants/${tenantId}/integrations`).send({ smsGateway: 'talksasa' })).body.data.smsGateway).toBe('talksasa');
     expect((await resolveSmsGateway(tenantId)).gateway).toBe('talksasa');
+    // SMS needs no per-facility switch; only the owner turning the gateway off platform-wide stops it.
     await own('put', `/tenants/${tenantId}/integrations`).send({ talksasa: false });
+    expect((await resolveSmsGateway(tenantId)).gateway).toBe('talksasa');
+    await own('put', '/integrations/talksasa').send({ enabled: false });
     await expect(resolveSmsGateway(tenantId)).rejects.toThrow(/Talksasa SMS is selected for this facility but is not available/);
-    await own('put', `/tenants/${tenantId}/integrations`).send({ talksasa: true });
+    await own('put', '/integrations/talksasa').send({ enabled: true });
   });
 
   it('treats an error in the response body as a failure, never as sent', async () => {

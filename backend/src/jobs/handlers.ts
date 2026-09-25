@@ -1,3 +1,6 @@
+import { meta } from '../models/meta';
+import { IntegrationSecretService } from '../modules/integrations/secretService';
+import { creditWallet, debitWallet, smsSegments } from '../modules/sms/smsWallet';
 import { registerHandler, PermanentJobError } from './queue';
 import { resolveIntegration } from '../modules/integrations/integrationConfigService';
 import { resolveSmsGateway, sendSmsVia } from '../integrations/sms/gateway';
@@ -16,14 +19,34 @@ export function registerJobHandlers() {
   registerHandler('SMS', async (payload, job) => {
     const to = String(payload.to ?? '');
     if (!/^\+?\d{9,15}$/.test(to)) throw new PermanentJobError('Invalid recipient phone number');
-    const { gateway, cfg } = (await resolveSmsGateway(job.tenantId ? String(job.tenantId) : null).catch(permanentIfConfig))!;
-    const result = await sendSmsVia(gateway, cfg, to, String(payload.message ?? '').slice(0, 918));
-    return { gateway, result };
+    const message = (payload.messageEnc ? IntegrationSecretService.decrypt(payload.messageEnc as never) : String(payload.message ?? '')).slice(0, 918);
+    const tenantId = job.tenantId ? String(job.tenantId) : null;
+    const { gateway, cfg } = (await resolveSmsGateway(tenantId).catch(permanentIfConfig))!;
+    // Facility SMS through the platform gateway is paid from the facility's SMS wallet (own accounts are not charged).
+    const charged = !!tenantId && cfg.source === 'platform';
+    const credits = smsSegments(message);
+    const attemptKey = `sms:${job.id}:${job.attempts}`;
+    if (charged && (await debitWallet(tenantId!, credits, attemptKey, { critical: payload.critical === true, jobId: job.id, note: `SMS to ${to.replace(/\d(?=\d{3})/g, '*')}` })) === null) {
+      throw new PermanentJobError('The SMS wallet is empty. Top up in Admin → SMS wallet to send SMS again.');
+    }
+    let result;
+    try {
+      result = await sendSmsVia(gateway, cfg, to, message);
+    } catch (err) {
+      if (charged) await creditWallet(tenantId!, credits, 'refund', `refund:${attemptKey}`, { jobId: job.id, note: 'SMS not sent: credits returned' });
+      throw err;
+    }
+    if (payload.messageEnc) await meta().Job.updateOne({ _id: job.id }, { $unset: { 'payload.messageEnc': '' } });
+    return { gateway, result, credits: charged ? credits : 0 };
   });
 
   registerHandler('EMAIL', async (payload, job) => {
     const cfg = await resolveMailConfig(job.tenantId ?? null).catch(permanentIfConfig);
-    return sendMail(cfg!, { to: String(payload.to), subject: String(payload.subject), text: String(payload.text ?? ''), html: payload.html ? String(payload.html) : undefined, attachments: Array.isArray(payload.attachments) ? (payload.attachments as Array<{ filename: string; contentBase64: string; contentType?: string }>).map((a) => ({ filename: a.filename, content: Buffer.from(a.contentBase64, 'base64'), contentType: a.contentType })) : undefined });
+    const text = payload.textEnc ? IntegrationSecretService.decrypt(payload.textEnc as never) : String(payload.text ?? '');
+    const html = payload.htmlEnc ? IntegrationSecretService.decrypt(payload.htmlEnc as never) : payload.html ? String(payload.html) : undefined;
+    const sent = await sendMail(cfg!, { to: String(payload.to), subject: String(payload.subject), text, html, attachments: Array.isArray(payload.attachments) ? (payload.attachments as Array<{ filename: string; contentBase64: string; contentType?: string }>).map((a) => ({ filename: a.filename, content: Buffer.from(a.contentBase64, 'base64'), contentType: a.contentType })) : undefined });
+    if (payload.textEnc) await meta().Job.updateOne({ _id: job.id }, { $unset: { 'payload.textEnc': '', 'payload.htmlEnc': '' } });
+    return sent;
   });
 
   /** FHIR outbox → DHA Shared Health Record. Configuration problems park the entry as "blocked". */
