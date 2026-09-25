@@ -1,6 +1,7 @@
 'use client';
 
 import Link from 'next/link';
+import { InstallButton } from '@/features/pwa/InstallButton';
 import { usePathname, useRouter } from 'next/navigation';
 import { useEffect, useRef, useState, type ReactNode } from 'react';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
@@ -275,6 +276,7 @@ export function AppShell({ children }: { children: ReactNode }) {
           <BranchSwitcher />
         </div>
         <div className="flex flex-1 justify-center">{perms.has('patients.search') && <GlobalSearch />}</div>
+        <InstallButton />
         <Notifications />
         <div className="relative">
           <button onClick={() => setMenu(!menu)} className="flex items-center gap-2 rounded-md px-2 py-1 text-sm hover:bg-[var(--surface-2)]">

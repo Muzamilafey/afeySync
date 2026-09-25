@@ -12,6 +12,7 @@ import { useSessionStore } from '@/stores/session';
 import { useQueryClient } from '@tanstack/react-query';
 import { MfaChallenge } from '@/features/auth/MfaChallenge';
 import { GoogleButton } from '@/features/auth/GoogleButton';
+import { InstallButton } from '@/features/pwa/InstallButton';
 import type { LoginResult, MfaChallengeData } from '@/features/auth/types';
 
 const schema = z.object({ email: z.string().email('Enter a valid email'), password: z.string().min(1, 'Password is required') });
@@ -78,6 +79,7 @@ export default function LoginPage() {
         <div className="mt-6 rounded-xl border border-[var(--border)] bg-[var(--surface-2)] p-3 text-center text-sm">
           New to AfeySync? <a href="/get-started" className="font-semibold text-brand-600 hover:underline">Register your facility →</a>
         </div>
+        <div className="mt-3"><InstallButton variant="card" /></div>
         <p className="muted mt-4 text-center text-xs">Access is logged and audited. Authorized personnel only.</p>
       </div>
     </div>

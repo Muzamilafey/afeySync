@@ -1,6 +1,7 @@
 'use client';
 
 import Link from 'next/link';
+import { InstallButton } from '@/features/pwa/InstallButton';
 import { usePathname, useRouter } from 'next/navigation';
 import { useEffect, useState, type ReactNode } from 'react';
 import { useQuery } from '@tanstack/react-query';
@@ -62,6 +63,7 @@ export function OwnerShell({ children }: { children: ReactNode }) {
         <Activity className="h-5 w-5 text-brand-500" />
         <span className="font-semibold">AfeySync Owner</span>
         <span className="ml-auto flex items-center gap-3 text-sm">
+          <InstallButton className="border-white/20 hover:bg-white/10" />
           <Settings2 className="h-4 w-4 opacity-60" />
           <span className="hidden sm:inline">{me.user.name}</span>
           <span className="rounded bg-white/10 px-2 py-0.5 text-xs">{me.user.role.replace('_', ' ')}</span>

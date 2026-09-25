@@ -15,6 +15,8 @@ const config: NextConfig = {
   },
   async headers() {
     return [
+      // The service worker must always be revalidated so updates reach users promptly.
+      { source: '/sw.js', headers: [{ key: 'Cache-Control', value: 'no-cache, no-store, must-revalidate' }, { key: 'Service-Worker-Allowed', value: '/' }, { key: 'Content-Type', value: 'application/javascript; charset=utf-8' }] },
       {
         source: '/:path*',
         headers: [

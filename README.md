@@ -21,6 +21,7 @@ AfeySync Platform ──┬── Owner Portal (owner.afeysync.com)       → af
 | RBAC: permission catalog, 30 default roles, custom roles, branch scoping, privilege-escalation guards | ✅ |
 | Append-only audit trail (tenant + platform) | ✅ |
 | Plans with per-plan modules (enforced by the API), owner quotations, invoices and service agreements as PDFs signed automatically with the owner's stamp and signature, M-Pesa collections (STK and paybill) that extend subscriptions | ✅ |
+| Installable app (PWA) for facilities and the owner portal: install prompt, iOS instructions, offline page, update notice; patient data never cached | ✅ |
 | Facility self-registration at `/get-started` (email-verified, owner review or automatic approval) | ✅ |
 | Owner portal: dashboard, facilities, provisioning wizard, domains, subscriptions, health, jobs, backups, support access | ✅ |
 | Integration credential manager (AES-256-GCM, platform → tenant priority, masked in UI) | ✅ |
@@ -97,6 +98,6 @@ and backup monitoring.
 ## Documentation
 
 [Architecture](docs/ARCHITECTURE.md) · [Multitenancy](docs/MULTITENANCY.md) · [RBAC](docs/RBAC.md) ·
-[Database](docs/DATABASE.md) · [Security](docs/SECURITY.md) · [SHA](docs/SHA.md) · [DHA](docs/DHA.md) · [Insurance](docs/INSURANCE.md) · [Onboarding](docs/ONBOARDING.md) · [Plans & billing](docs/BILLING.md) ·
+[Database](docs/DATABASE.md) · [Security](docs/SECURITY.md) · [SHA](docs/SHA.md) · [DHA](docs/DHA.md) · [Insurance](docs/INSURANCE.md) · [Onboarding](docs/ONBOARDING.md) · [Plans & billing](docs/BILLING.md) · [Installable app](docs/PWA.md) ·
 [FHIR](docs/FHIR.md) · [M-Pesa](docs/M-PESA.md) · [SMS](docs/SMS.md) · [Email](docs/EMAIL.md) ·
 [Authentication](docs/AUTHENTICATION.md) · [Deployment](docs/DEPLOYMENT.md) · [Owner portal](docs/OWNER-PORTAL.md) · [Branches](docs/BRANCHES.md) · [API](docs/API.md)

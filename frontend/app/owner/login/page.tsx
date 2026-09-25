@@ -1,6 +1,7 @@
 'use client';
 
 import { useState } from 'react';
+import { InstallButton } from '@/features/pwa/InstallButton';
 import { useRouter } from 'next/navigation';
 import { useQueryClient } from '@tanstack/react-query';
 import { Activity } from 'lucide-react';
@@ -63,6 +64,7 @@ export default function OwnerLogin() {
         <Field label="Password"><Input type="password" value={password} onChange={(e) => setPassword(e.target.value)} autoComplete="current-password" /></Field>
         <Button type="submit" className="w-full" loading={busy}>Sign in</Button>
         <GoogleButton realm="owner" />
+        <InstallButton variant="card" />
       </form>
     </div>
   );
