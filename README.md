@@ -15,22 +15,27 @@ AfeySync Platform ──┬── Owner Portal (owner.afeysync.com)       → af
 
 | Area | Status |
 |---|---|
-| Multi-tenancy: meta DB + one database per facility, hostname/custom-domain resolver | ✅ |
-| Authentication: JWT access tokens, rotating refresh sessions with reuse detection, lockout, idle timeout | ✅ |
+| Multi-tenancy: meta DB + one database per facility, hostname/custom-domain resolver, tenant schema migrations | ✅ |
+| Authentication: JWT access tokens, rotating refresh sessions with reuse detection, lockout, idle timeout, email password reset | ✅ |
 | RBAC: permission catalog, 30 default roles, custom roles, branch scoping, privilege-escalation guards | ✅ |
 | Append-only audit trail (tenant + platform) | ✅ |
-| Owner portal: dashboard, facilities, 8-step provisioning wizard, domains, subscriptions, health, support access | ✅ |
+| Owner portal: dashboard, facilities, provisioning wizard, domains, subscriptions, health, jobs, backups, support access | ✅ |
 | Integration credential manager (AES-256-GCM, platform → tenant priority, masked in UI) | ✅ |
 | DHA HIE adapter: OAuth token caching and renewal, contract-driven operations, retries, integration logs | ✅ |
-| Client Registry patient search and import, duplicate protection | ✅ |
-| SHA eligibility, benefits, interventions, utilization, facility bed occupancy | ✅ |
-| SHA authorization/preauth/claim drafts (idempotent) and verified status callbacks | ✅ (submission waits for operation paths, see below) |
-| Patient registration/search/profile, front desk | ✅ |
-| Branch, user and role administration; facility integration page; support-access approvals | ✅ |
-| Queue abstraction (Mongo-backed, DLQ) with SMS / email / callback handlers | ✅ |
-| M-Pesa Daraja adapter (OAuth, STK push) | Adapter only. Billing/cashier endpoints are not built yet |
-| OPD, inpatient, maternity, MCH, lab, radiology, pharmacy, dental, mortuary, billing, inventory, procurement, finance, HR | Not started |
-| FHIR R4 mappers + outbox, SHR, terminology UI, ePrescription, emergency | Operations are declared in the contract. Mappers are not built yet |
+| Client Registry search/import, SHA eligibility, benefits, interventions, utilization, bed occupancy | ✅ |
+| SHA claims: from invoice, FHIR Claim preview, submit, decisions, interventions, resubmission, remittance reconciliation; verified callbacks | ✅ (submission needs operation paths, see below) |
+| Front desk: registration, visits, queues with tickets, appointments with SMS, emergency, referrals | ✅ |
+| OPD: triage/vitals with flags, consultations (draft → final → addenda), procedures | ✅ |
+| Laboratory (catalog, reference ranges, accession, verification by a second person) and radiology (MWL worklist, reports) | ✅ |
+| Pharmacy (FEFO dispensing, allergy check), inventory, procurement (PO approval, GRN) | ✅ |
+| Inpatient/nursing, maternity (ANC, partograph, delivery), MCH (KEPI), family planning, dental, mortuary | ✅ |
+| Billing & cashier (price lists, invoices, payments, refunds, credit notes), M-Pesa STK/C2B | ✅ |
+| Finance (expenses with second approver, cash summary, receivables aging), HR (staff, leave, roster, licences) | ✅ |
+| Reports (clinical, finance, supply, productivity) with audited CSV export | ✅ |
+| Documents (content-sniffed uploads, audited downloads, soft delete) | ✅ |
+| FHIR R4 mappers, validator, idempotent outbox to DHA SHR | ✅ (SHR write needs its operation path) |
+| Encrypted per-database backups with run tracking | ✅ |
+| DHA terminology UI, ePrescription, emergency claim protocols | Operations declared in the contract. No dedicated UI yet |
 
 **External API rule:** the HIE operations whose paths come from the DHA documentation are
 configured by default: token, Client Registry `GET /patients`, eligibility, benefits,
@@ -73,11 +78,14 @@ In development, set `PLATFORM_DOMAIN=localhost` and `OWNER_HOSTS=owner.localhost
 cd backend && npm test      # needs MongoDB on 127.0.0.1:27017 (or TEST_MONGO_URI)
 ```
 
-The suite covers authentication, refresh-token reuse detection, RBAC and escalation, **tenant
-isolation** (Tenant A user vs. Tenant B patient, claim, DHA record, SHA record, credentials and
-branch), **branch isolation**, support access, the DHA/SHA adapter (token caching, 401 renewal,
-retries, headers, error mapping, not-configured operations), callbacks (HMAC, dedupe, matching) and
-secret encryption.
+The suite (114 tests) covers authentication, password reset, refresh-token reuse detection, RBAC
+and escalation, **tenant isolation** (Tenant A user vs. Tenant B patient, claim, DHA record, SHA
+record, credentials and branch), **branch isolation**, support access, the DHA/SHA adapter (token
+caching, 401 renewal, retries, headers, error mapping, not-configured operations), callbacks (HMAC,
+dedupe, matching), secret encryption, billing and M-Pesa idempotency, clinical workflows (queues,
+immutable consultations, lab verification, FEFO dispensing, wards, maternity), documents, finance
+and HR segregation of duties, reports and CSV safety, FHIR mapping and outbox, the SHA claim
+lifecycle and backup monitoring.
 
 ## Documentation
 

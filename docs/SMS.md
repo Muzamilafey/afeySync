@@ -6,5 +6,19 @@
 * Delivery goes through the `SMS` job type. Jobs are idempotent by key and retry with exponential
   backoff. Configuration errors and invalid numbers go straight to the dead-letter queue, where the
   owner can review and retry them under Owner → Jobs.
-* Use cases (OTP, appointments, payments, lab results, reminders) are triggered by the modules that
-  own those events. Those triggers are wired up as each module is built.
+* Patient messages respect `patient.consent.sms`. A clinical transaction never fails because an
+  SMS could not be queued.
+
+Current triggers:
+
+| Event | Message |
+|---|---|
+| Appointment booked | Confirmation, plus a reminder scheduled before the appointment |
+| M-Pesa payment confirmed | Receipt number and M-Pesa reference |
+| Lab results verified | "Your laboratory results are ready" (no results in the SMS) |
+| ANC visit | Next visit date |
+| Immunization given | Next vaccine due date (KEPI schedule) |
+| Family planning visit | Return date |
+| Discharge | Discharge notice |
+
+SMS never contains diagnoses, results or other clinical details.

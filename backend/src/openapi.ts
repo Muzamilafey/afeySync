@@ -2,7 +2,10 @@
  * OpenAPI description of AfeySync's own API. External SHA/DHA contracts are NOT redefined here —
  * they are referenced to the official DHA HIE documentation (https://hie-docs.dha.go.ke/).
  */
-type Op = { summary: string; permission?: string; public?: boolean; tag: string };
+import { generatedRoutes } from './openapi.routes.generated';
+
+export type RouteDoc = { summary: string; permission?: string; public?: boolean; tag: string };
+type Op = RouteDoc;
 
 const routes: Record<string, Record<string, Op>> = {
   '/health': { get: { summary: 'Liveness', public: true, tag: 'Health' } },
@@ -61,12 +64,30 @@ const routes: Record<string, Record<string, Op>> = {
   '/api/v1/sha/transactions': { get: { summary: 'Authorizations/preauths/claims', permission: 'sha.view', tag: 'SHA' }, post: { summary: 'Create draft (idempotent)', permission: 'sha.authorization|sha.preauthorization|sha.claim', tag: 'SHA' } },
   '/api/v1/sha/callback-endpoints': { get: { summary: 'Callback endpoints', permission: 'admin.integrations', tag: 'SHA' }, post: { summary: 'Create callback endpoint (URL shown once)', permission: 'admin.integrations', tag: 'SHA' } },
   '/api/v1/sha/callbacks/{token}': { post: { summary: 'HIE status callback receiver (verified)', public: true, tag: 'Callbacks' } },
+  '/api/v1/dha/callbacks/{token}': { post: { summary: 'HIE (DHA) status callback receiver (verified)', public: true, tag: 'Callbacks' } },
+  '/api/v1/auth/forgot-password': { post: { summary: 'Request password reset email (response never reveals whether the account exists)', public: true, tag: 'Auth' } },
+  '/api/v1/auth/reset-password': { post: { summary: 'Reset password with single-use emailed token (revokes all sessions)', public: true, tag: 'Auth' } },
+  '/api/v1/owner/backups': { get: { summary: 'Backup freshness per facility and recent backup runs', permission: 'owner.platform', tag: 'Owner' } },
+  '/api/v1/sha/transactions/from-invoice': { post: { summary: 'Build an SHA claim draft from an SHA-payer invoice (lines + finalized diagnoses)', permission: 'sha.claim', tag: 'SHA' } },
+  '/api/v1/sha/transactions/{id}/submit': { post: { summary: 'Submit via the configured HIE contract operation (501 until configured; never faked)', permission: 'per transaction kind', tag: 'SHA' } },
+  '/api/v1/sha/transactions/{id}/decision': { post: { summary: 'Record an SHA decision received outside callbacks (note required, audited)', permission: 'per transaction kind', tag: 'SHA' } },
+  '/api/v1/sha/transactions/{id}/reconcile': { post: { summary: 'Record SHA remittance: posts idempotent sha payment to the claim invoice', permission: 'sha.reconciliation', tag: 'SHA' } },
+  '/api/v1/sha/transactions/{id}/fhir': { get: { summary: 'FHIR R4 Claim preview with structural validation', permission: 'sha.view', tag: 'SHA' } },
+  '/api/v1/documents': { get: { summary: 'List documents (by patient / related record, branch-scoped)', permission: 'documents.view', tag: 'Documents' }, post: { summary: 'Upload (multipart field file; PDF/PNG/JPEG/DICOM ≤ 15 MB, sniffed)', permission: 'documents.upload', tag: 'Documents' } },
+  '/api/v1/documents/{id}/download': { get: { summary: 'Download (audited, no-store)', permission: 'documents.view', tag: 'Documents' } },
+  '/api/v1/reports/{key}': { get: { summary: 'Run report for from/to; format=csv requires reports.export (audited)', permission: 'reports.view', tag: 'Reports' } },
+  '/api/v1/fhir/outbox': { get: { summary: 'FHIR outbox entries and status counts', permission: 'dha.fhir', tag: 'FHIR' } },
+  '/api/v1/fhir/outbox/{id}/retry': { post: { summary: 'Revalidate and requeue a failed/blocked entry', permission: 'dha.fhir', tag: 'FHIR' } },
   '/api/v1/dashboard': { get: { summary: 'Facility dashboard (sections by permission)', tag: 'Dashboard' } },
   '/api/v1/notifications': { get: { summary: 'My notifications', tag: 'Notifications' } },
 };
 
+// Every mounted route is listed (generated from the route files); curated entries above win.
+const merged: Record<string, Record<string, Op>> = { ...generatedRoutes };
+for (const [path, ops] of Object.entries(routes)) merged[path] = { ...(merged[path] ?? {}), ...ops };
+
 const paths: Record<string, unknown> = {};
-for (const [path, ops] of Object.entries(routes)) {
+for (const [path, ops] of Object.entries(merged).sort(([a], [b]) => a.localeCompare(b))) {
   paths[path] = Object.fromEntries(
     Object.entries(ops).map(([method, op]) => [
       method,

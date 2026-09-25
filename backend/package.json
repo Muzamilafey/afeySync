@@ -10,7 +10,8 @@
     "start": "node dist/server.js",
     "typecheck": "tsc -p tsconfig.json --noEmit",
     "test": "vitest run",
-    "seed:owner": "tsx src/scripts/createOwner.ts"
+    "seed:owner": "tsx src/scripts/createOwner.ts",
+    "openapi:routes": "node scripts/gen-openapi-routes.mjs"
   },
   "dependencies": {
     "bcryptjs": "^3.0.3",
