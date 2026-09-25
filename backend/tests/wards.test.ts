@@ -295,3 +295,67 @@ describe('diagnosis catalog', () => {
     expect((await t(S, admin).post('/api/v1/diagnoses').send({ name: 'X', code: 'bad code!' })).status).toBe(400);
   });
 });
+
+describe('ward medication: order → pharmacy → dispense → receive → chart', () => {
+  let pharmacist: string;
+  let admissionId: string;
+  let itemId: string;
+  let locationId: string;
+  let rxId: string;
+  let rxItemId: string;
+
+  beforeAll(async () => {
+    pharmacist = await createUser(S, admin, { email: 'pharm@w.test', roleKey: 'pharmacist', branchAccess: 'specific', branchIds: [branchId] });
+    await t(S, admin).post('/api/v1/billing/services').send({ code: 'RX-CEFTRI1G', name: 'Ceftriaxone 1g injection', category: 'pharmacy', prices: [{ priceList: 'cash', amount: 350 }] });
+    itemId = (await t(S, admin).post('/api/v1/inventory/items').send({ code: 'CEFTRI1G', name: 'Ceftriaxone', genericName: 'Ceftriaxone', form: 'Injection', strength: '1g', unit: 'vial', category: 'drug' })).body.data._id;
+    locationId = (await t(S, admin, branchId).post('/api/v1/pharmacy/locations').send({ name: 'Main Pharmacy', type: 'pharmacy' })).body.data._id;
+    const rec = await t(S, admin, branchId).post('/api/v1/pharmacy/stock/receive').send({ locationId, lines: [{ itemId, batchNumber: 'B-CEF-1', expiryDate: '2030-01-01', quantity: 50, unitCost: 120 }] });
+    expect(rec.status).toBeLessThan(300);
+    const wardId = (await t(S, admin).post('/api/v1/inpatient/wards').send({ name: 'Surgical', code: 'SUR' })).body.data._id;
+    const bed = (await t(S, admin).post(`/api/v1/inpatient/wards/${wardId}/beds`).send({ numbers: ['S1'] })).body.data[0];
+    const p = await mk({ firstName: 'Ward', lastName: 'Meds', gender: 'male' });
+    admissionId = (await t(S, doctor).post('/api/v1/inpatient/admissions').send({ patientId: p, bedId: bed._id, admissionDiagnosis: 'Acute appendicitis', phoneVerification: { skipReason: 'no_phone' } })).body.data._id;
+  });
+
+  it('lets ward nurses search the drug list with stock', async () => {
+    const r = await t(S, nurse, branchId).get('/api/v1/pharmacy/items?q=ceftri');
+    expect(r.status).toBe(200);
+    expect(r.body.data[0]).toMatchObject({ name: 'Ceftriaxone', strength: '1g', stock: { usable: 50 } });
+  });
+
+  it('sends a STAT ward order to the pharmacy queue with ward and bed', async () => {
+    const r = await t(S, doctor).post('/api/v1/pharmacy/prescriptions').send({ admissionId, urgency: 'stat', items: [{ itemId, drugName: 'Ceftriaxone 1g', dose: '1g', frequency: 'OD', route: 'IV', durationDays: 3, quantity: 3 }] });
+    expect(r.status).toBe(201);
+    rxId = r.body.data._id;
+    rxItemId = r.body.data.items[0]._id;
+    expect(r.body.data).toMatchObject({ urgency: 'stat', ward: { name: 'Surgical', bedNumber: 'S1' } });
+    const queue = (await t(S, pharmacist).get('/api/v1/pharmacy/prescriptions?source=ward&status=pending,partially_dispensed')).body.data;
+    expect(queue[0]._id).toBe(rxId);
+    expect((await t(S, pharmacist).get('/api/v1/pharmacy/prescriptions?source=opd&status=pending,partially_dispensed')).body.data.map((x: { _id: string }) => x._id)).not.toContain(rxId);
+    expect(JSON.stringify((await t(S, pharmacist).get('/api/v1/notifications')).body.data)).toMatch(/STAT ward request/);
+  });
+
+  it('dispenses from stock, then the ward confirms receipt', async () => {
+    expect((await t(S, nurse).post(`/api/v1/pharmacy/prescriptions/${rxId}/receive`).send({})).body.error.code).toBe('NOTHING_TO_RECEIVE');
+    const d = await t(S, pharmacist).post(`/api/v1/pharmacy/prescriptions/${rxId}/dispense`).send({ locationId, lines: [{ rxItemId, itemId, quantity: 3 }] });
+    expect(d.status).toBe(200);
+    expect(d.body.data.status).toBe('dispensed');
+    expect((await t(S, nurse, branchId).get('/api/v1/pharmacy/items?q=ceftri')).body.data[0].stock.usable).toBe(47);
+    const rcv = await t(S, nurse).post(`/api/v1/pharmacy/prescriptions/${rxId}/receive`).send({ note: 'Received 3 vials' });
+    expect(rcv.status).toBe(200);
+    expect(rcv.body.data.receipts[0]).toMatchObject({ dispenseCount: 1, note: 'Received 3 vials' });
+    expect((await t(S, nurse).post(`/api/v1/pharmacy/prescriptions/${rxId}/receive`).send({})).body.error.code).toBe('NOTHING_TO_RECEIVE');
+  });
+
+  it('charts doses against the order, or a drug from the list', async () => {
+    const g = await t(S, nurse).post(`/api/v1/inpatient/admissions/${admissionId}/mar`).send({ prescriptionId: rxId, rxItemId, status: 'given' });
+    expect(g.status).toBe(201);
+    expect(g.body.data).toMatchObject({ drugName: 'Ceftriaxone 1g', dose: '1g', route: 'IV', itemId });
+    const free = await t(S, nurse).post(`/api/v1/inpatient/admissions/${admissionId}/mar`).send({ itemId, status: 'given', dose: '1g' });
+    expect(free.body.data.drugName).toBe('Ceftriaxone 1g');
+    expect((await t(S, nurse).post(`/api/v1/inpatient/admissions/${admissionId}/mar`).send({ status: 'given' })).body.error.message).toMatch(/Choose the medication/);
+    const other = (await t(S, doctor).post('/api/v1/pharmacy/prescriptions').send({ visitId: undefined, admissionId: admissionId, items: [{ drugName: 'Paracetamol', quantity: 1 }] })).body.data;
+    await t(S, pharmacist).post(`/api/v1/pharmacy/prescriptions/${other._id}/cancel`).send({ reason: 'Duplicate order' });
+    expect((await t(S, nurse).post(`/api/v1/inpatient/admissions/${admissionId}/mar`).send({ prescriptionId: other._id, rxItemId: other.items[0]._id, status: 'given' })).body.error.code).toBe('ORDER_CANCELLED');
+  });
+});

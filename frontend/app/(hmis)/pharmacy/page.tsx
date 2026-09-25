@@ -1,7 +1,8 @@
 'use client';
 
 import { EPrescriptionControls } from '@/features/pharmacy/EPrescriptionControls';
-import { useState } from 'react';
+import { Suspense, useState } from 'react';
+import { useSearchParams } from 'next/navigation';
 import Link from 'next/link';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { api } from '@/services/api';
@@ -42,30 +43,44 @@ function Dispense({ rx, onDone }: { rx: Prescription; onDone: () => void }) {
   );
 }
 
+const URGENCY_TONE = { stat: 'red', urgent: 'amber', routine: 'gray' } as const;
+
 export default function PharmacyPage() {
+  return <Suspense><PharmacyQueue /></Suspense>;
+}
+
+function PharmacyQueue() {
   const can = useCan();
   const qc = useQueryClient();
+  const params = useSearchParams();
+  const [source, setSource] = useState<'opd' | 'ward'>(params.get('view') === 'ward' ? 'ward' : 'opd');
   const [tab, setTab] = useState<'pending,partially_dispensed' | 'dispensed'>('pending,partially_dispensed');
   const [sel, setSel] = useState<Prescription | null>(null);
-  const q = useQuery({ queryKey: ['rx-queue', tab], queryFn: async () => (await api<Prescription[]>('/pharmacy/prescriptions', { query: { status: tab, limit: 100 } })).data, refetchInterval: 20_000 });
+  const q = useQuery({ queryKey: ['rx-queue', source, tab], queryFn: async () => (await api<Prescription[]>('/pharmacy/prescriptions', { query: { status: tab, source, limit: 100 } })).data, refetchInterval: 20_000 });
+  const wardPending = useQuery({ queryKey: ['rx-queue', 'ward', 'count'], queryFn: async () => (await api<Prescription[]>('/pharmacy/prescriptions', { query: { status: 'pending,partially_dispensed', source: 'ward', limit: 100 } })).data, refetchInterval: 20_000 });
+  const wardCount = wardPending.data?.length ?? 0;
+  const statCount = wardPending.data?.filter((r) => r.urgency === 'stat').length ?? 0;
   const cancel = useMutation({ mutationFn: ({ rx, reason }: { rx: Prescription; reason: string }) => api(`/pharmacy/prescriptions/${rx._id}/cancel`, { method: 'POST', body: { reason } }), onSuccess: () => qc.invalidateQueries({ queryKey: ['rx-queue'] }) });
   return (
     <>
       <PageHeader title="Pharmacy" crumbs={['Pharmacy', 'Prescriptions']} actions={<Link href="/inventory"><Button variant="outline">Stock</Button></Link>} />
+      <Tabs value={source} onChange={setSource} tabs={[{ key: 'opd', label: 'Outpatient prescriptions' }, { key: 'ward', label: `Ward requests${wardCount ? ` (${wardCount})` : ''}` }]} />
+      {source === 'ward' && statCount > 0 && tab !== 'dispensed' && <Alert tone="red" title="STAT requests waiting">{statCount} STAT ward request{statCount > 1 ? 's are' : ' is'} at the top of the list. Dispense these first.</Alert>}
       <Tabs value={tab} onChange={setTab} tabs={[{ key: 'pending,partially_dispensed', label: 'To dispense' }, { key: 'dispensed', label: 'Dispensed' }]} />
       <Card>
         {q.isLoading && <Loading />}
         <ErrorText error={q.error || cancel.error} />
-        <Table head={['Rx', 'Patient', 'Drugs', 'Prescriber', 'Status', '']} empty={(q.data ?? []).length === 0}>
+        <Table head={source === 'ward' ? ['Rx', 'Patient', 'Ward / bed', 'Drugs', 'Ordered by', 'Status', ''] : ['Rx', 'Patient', 'Drugs', 'Prescriber', 'Status', '']} empty={(q.data ?? []).length === 0}>
           {q.data?.map((rx) => {
             const p = typeof rx.patientId === 'object' ? rx.patientId : null;
             return (
               <tr key={rx._id}>
-                <Td className="font-mono text-xs">{rx.rxNumber}<span className="muted block">{fmtDateTime(rx.createdAt)}</span></Td>
+                <Td className="font-mono text-xs">{rx.rxNumber}<span className="muted block">{fmtDateTime(rx.createdAt)}</span>{rx.admissionId && rx.urgency && rx.urgency !== 'routine' && <Badge tone={URGENCY_TONE[rx.urgency]}>{rx.urgency.toUpperCase()}</Badge>}</Td>
                 <Td>{p?.firstName} {p?.lastName}<span className="muted block text-xs capitalize">{p?.gender} · {age(p?.dateOfBirth)} · {p?.patientNumber}</span>{!!p?.allergies?.length && <Badge tone="red">Allergies</Badge>}</Td>
+                {source === 'ward' && <Td>{rx.ward?.name ?? '—'}{rx.ward?.bedNumber && <span className="muted block text-xs">Bed {rx.ward.bedNumber}</span>}</Td>}
                 <Td className="text-sm">{rx.items.map((i) => <span key={i._id} className={`block ${i.status === 'cancelled' ? 'line-through opacity-50' : ''}`}>{i.drugName} — {i.dose} {i.frequency} · {i.dispensedQuantity}/{i.quantity}</span>)}</Td>
                 <Td>{rx.prescriberName}</Td>
-                <Td><Badge tone={statusTone(rx.status === 'dispensed' ? 'completed' : 'pending')}>{rx.status.replace('_', ' ')}</Badge>{rx.ePrescription?.status && <EPrescriptionControls rx={rx} />}</Td>
+                <Td><Badge tone={statusTone(rx.status === 'dispensed' ? 'completed' : 'pending')}>{rx.status.replace('_', ' ')}</Badge>{rx.admissionId && rx.dispenses.length > 0 && (rx.receipts?.at(-1)?.dispenseCount ?? 0) >= rx.dispenses.length ? <Badge tone="green">received on ward</Badge> : rx.admissionId && rx.dispenses.length > 0 ? <Badge tone="blue">awaiting ward receipt</Badge> : null}{rx.ePrescription?.status && <EPrescriptionControls rx={rx} />}</Td>
                 <Td className="whitespace-nowrap">
                   {can('pharmacy.dispense') && rx.status !== 'dispensed' && <Button size="sm" onClick={() => setSel(rx)}>Dispense</Button>}{' '}
                   {can('pharmacy.dispense') && rx.status === 'pending' && <Button size="sm" variant="ghost" onClick={() => { const reason = window.prompt('Reason for cancelling'); if (reason) cancel.mutate({ rx, reason }); }}>Cancel</Button>}

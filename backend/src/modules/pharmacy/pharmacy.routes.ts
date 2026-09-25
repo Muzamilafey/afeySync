@@ -1,3 +1,4 @@
+import { notifyStaff } from '../notifications/notify';
 import { importUpload, sendXlsx } from '../imports/excel';
 import { importItems, itemTemplate } from '../imports/itemImport';
 import { Router, type Request } from 'express';
@@ -20,6 +21,8 @@ router.use(authenticateTenant);
 
 const STOCK_WRITE = ['pharmacy.stock', 'inventory.manage'];
 const STOCK_READ = ['pharmacy.view', 'inventory.view', 'pharmacy.stock', 'inventory.manage'];
+/** Ward nurses search the drug list (with stock) to chart doses. */
+const DRUG_SEARCH = [...STOCK_READ, 'prescription.create', 'nursing.view', 'nursing.record'];
 
 async function location(req: Request, id: unknown) {
   return loadScoped(req, req.tenant!.models.StockLocation, id, 'Stock location');
@@ -42,7 +45,7 @@ const itemSchema = z.object({
 
 router.get(
   '/items',
-  requireAnyPermission(...STOCK_READ, 'prescription.create'),
+  requireAnyPermission(...DRUG_SEARCH),
   h(async (req, res) => {
     const m = req.tenant!.models;
     const q = String(req.query.q ?? '').trim();
@@ -260,16 +263,18 @@ router.post(
   '/prescriptions',
   requirePermission('prescription.create'),
   h(async (req, res) => {
-    const body = parse(z.object({ visitId: z.string().optional(), admissionId: z.string().optional(), items: z.array(rxItem).min(1).max(30), overrideAllergy: z.object({ reason: z.string().min(5).max(300) }).optional() }), req.body);
+    const body = parse(z.object({ visitId: z.string().optional(), admissionId: z.string().optional(), urgency: z.enum(['routine', 'urgent', 'stat']).default('routine'), items: z.array(rxItem).min(1).max(30), overrideAllergy: z.object({ reason: z.string().min(5).max(300) }).optional() }), req.body);
     const m = req.tenant!.models;
-    let ctx: { patientId: Types.ObjectId; branchId: Types.ObjectId; visitId?: Types.ObjectId | null; admissionId?: Types.ObjectId };
+    let ctx: { patientId: Types.ObjectId; branchId: Types.ObjectId; visitId?: Types.ObjectId | null; admissionId?: Types.ObjectId; ward?: { wardId: Types.ObjectId; name?: string; bedNumber?: string } };
     if (body.visitId) {
       const v = await loadScoped(req, m.Visit, body.visitId, 'Visit');
       if (!['open', 'in_progress', 'admitted'].includes(v.status)) throw conflict('Visit is closed');
       ctx = { patientId: v.patientId, branchId: v.branchId, visitId: v._id };
     } else if (body.admissionId) {
       const a = await loadScoped(req, m.Admission, body.admissionId, 'Admission');
-      ctx = { patientId: a.patientId, branchId: a.branchId, visitId: a.visitId, admissionId: a._id };
+      if (a.status !== 'admitted') throw conflict('Patient is no longer admitted');
+      const [ward, bed] = await Promise.all([m.Ward.findById(a.wardId).select('name').lean(), m.Bed.findById(a.bedId).select('number').lean()]);
+      ctx = { patientId: a.patientId, branchId: a.branchId, visitId: a.visitId, admissionId: a._id, ward: { wardId: a.wardId, name: ward?.name, bedNumber: bed?.number } };
     } else throw badRequest('visitId or admissionId is required');
     // Allergy safety check against recorded allergies (drug and generic names).
     const patient = await m.Patient.findById(ctx.patientId).select('allergies').lean();
@@ -280,8 +285,14 @@ router.post(
       for (const sub of allergyConflicts(patient?.allergies ?? [], [i.drugName, item?.name ?? '', item?.genericName ?? ''])) hits.push(`${i.drugName} ↔ allergy to ${sub}`);
     }
     if (hits.length && !body.overrideAllergy) throw new AppError(422, 'ALLERGY_ALERT', `Possible allergy conflict: ${hits.join('; ')}`, hits);
-    const rx = await m.Prescription.create({ rxNumber: await nextNumber(m, 'rx', 'RX'), ...ctx, prescriberId: req.user!.id, prescriberName: req.user!.name, items: body.items });
-    if (ctx.visitId) await enqueue(m, { visitId: ctx.visitId, patientId: ctx.patientId, branchId: ctx.branchId, stage: 'pharmacy' });
+    const rx = await m.Prescription.create({ rxNumber: await nextNumber(m, 'rx', 'RX'), ...ctx, urgency: ctx.admissionId ? body.urgency : 'routine', prescriberId: req.user!.id, prescriberName: req.user!.name, items: body.items });
+    if (ctx.admissionId) {
+      // Ward request: tell the pharmacy team (in-app); STAT/urgent requests are flagged.
+      const roleIds = (await m.Role.find({ permissions: 'pharmacy.dispense' }).select('_id').lean()).map((r) => r._id);
+      const staff = await m.User.find({ status: 'active', roleIds: { $in: roleIds } }).select('_id').lean();
+      const tag = rx.urgency === 'stat' ? 'STAT ' : rx.urgency === 'urgent' ? 'Urgent ' : '';
+      await notifyStaff(m, staff.map((u) => u._id), { event: 'Prescription', title: `${tag}ward request ${rx.rxNumber}: ${ctx.ward?.name ?? 'ward'}${ctx.ward?.bedNumber ? `, bed ${ctx.ward.bedNumber}` : ''}`, body: body.items.map((i) => i.drugName).join(', '), link: '/pharmacy?view=ward', branchId: ctx.branchId });
+    } else if (ctx.visitId) await enqueue(m, { visitId: ctx.visitId, patientId: ctx.patientId, branchId: ctx.branchId, stage: 'pharmacy' });
     await audit(req, { action: 'prescription.create', resource: 'prescription', resourceId: String(rx._id), newValue: { items: body.items.map((i) => i.drugName), allergyOverride: body.overrideAllergy?.reason, allergyHits: hits } });
     res.status(201).json({ success: true, data: rx });
   }),
@@ -296,7 +307,13 @@ router.get(
     const filter: Record<string, unknown> = { ...branchFilter(req) };
     for (const k of ['visitId', 'admissionId', 'patientId'] as const) if (req.query[k]) filter[k] = oid(req.query[k], k);
     if (req.query.status) filter.status = { $in: String(req.query.status).split(',') };
-    const [items, total] = await Promise.all([m.Prescription.find(filter).populate('patientId', 'patientNumber firstName lastName gender dateOfBirth allergies').sort({ createdAt: -1 }).skip(skip).limit(limit).lean(), m.Prescription.countDocuments(filter)]);
+    // source=ward: inpatient requests; source=opd: outpatient prescriptions.
+    if (req.query.source === 'ward') filter.admissionId = { $ne: null };
+    else if (req.query.source === 'opd') filter.admissionId = null;
+    const [rows, total] = await Promise.all([m.Prescription.find(filter).populate('patientId', 'patientNumber firstName lastName gender dateOfBirth allergies').sort({ createdAt: -1 }).skip(skip).limit(limit).lean(), m.Prescription.countDocuments(filter)]);
+    // Outstanding ward requests: STAT first, then urgent, then oldest first.
+    const rank = { stat: 0, urgent: 1, routine: 2 } as Record<string, number>;
+    const items = req.query.source === 'ward' && String(req.query.status ?? '').includes('pending') ? [...rows].sort((a, b) => (rank[a.urgency ?? 'routine'] - rank[b.urgency ?? 'routine']) || (new Date(a.createdAt as never).getTime() - new Date(b.createdAt as never).getTime())) : rows;
     res.json({ success: true, data: items, meta: { page, limit, total } });
   }),
 );
@@ -354,6 +371,26 @@ router.post(
     refreshRxStatus(rx);
     await rx.save();
     await audit(req, { action: 'pharmacy.dispense', resource: 'prescription', resourceId: String(rx._id), newValue: { lines: lines.map((l) => ({ batch: l.batchNumber, qty: l.quantity })) } });
+    if (rx.admissionId && rx.prescriberId) void notifyStaff(m, [rx.prescriberId], { event: 'Prescription', title: `Pharmacy dispensed ${rx.rxNumber}${rx.ward?.name ? ` for ${rx.ward.name}` : ''}`, body: 'Ready to collect / receive on the ward.', link: `/inpatient/${rx.admissionId}`, branchId: rx.branchId });
+    res.json({ success: true, data: rx });
+  }),
+);
+
+/** The ward confirms it has received the medicines pharmacy dispensed for an admitted patient. */
+router.post(
+  '/prescriptions/:id/receive',
+  requirePermission('nursing.record'),
+  h(async (req, res) => {
+    const { note } = parse(z.object({ note: z.string().trim().max(300).optional() }), req.body ?? {});
+    const m = req.tenant!.models;
+    const rx = await loadScoped(req, m.Prescription, req.params.id, 'Prescription');
+    if (!rx.admissionId) throw badRequest('Only ward requests are received on the ward');
+    const received = Math.max(0, ...(rx.receipts ?? []).map((r) => r.dispenseCount ?? 0));
+    if (rx.dispenses.length === 0 || received >= rx.dispenses.length) throw conflict('There is nothing new to receive from pharmacy', undefined, 'NOTHING_TO_RECEIVE');
+    rx.receipts.push({ at: new Date(), by: req.user!.id, byName: req.user!.name, dispenseCount: rx.dispenses.length, note } as never);
+    await rx.save();
+    await audit(req, { action: 'pharmacy.ward_received', resource: 'prescription', resourceId: String(rx._id), newValue: { dispenses: rx.dispenses.length, note } });
+    if (rx.prescriberId) void notifyStaff(m, [rx.prescriberId], { event: 'Prescription', title: `${rx.rxNumber} received on the ward`, link: `/inpatient/${rx.admissionId}`, branchId: rx.branchId });
     res.json({ success: true, data: rx });
   }),
 );

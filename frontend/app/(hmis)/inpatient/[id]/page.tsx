@@ -10,6 +10,9 @@ import { Badge, Button, Card, ErrorText, Field, Input, KV, Loading, Modal, Selec
 import { age, fmtDateTime } from '@/lib/utils';
 import { VitalsForm, type VitalsRow } from '@/features/opd/VitalsForm';
 import { VisitOrders } from '@/features/opd/VisitOrders';
+import { PrescriptionPanel } from '@/features/pharmacy/PrescriptionPanel';
+import { ItemPicker } from '@/features/pharmacy/ItemPicker';
+import type { Prescription } from '@/features/pharmacy/types';
 
 interface Bundle {
   admission: { _id: string; admissionNumber: string; status: string; admittedAt: string; admissionDiagnosis: string; admittingDoctorName?: string; visitId?: string; transfers: Array<{ at: string; reason: string }>; discharge?: { at: string; outcome: string; summary: string; finalDiagnosis: string; byName?: string } };
@@ -21,9 +24,10 @@ interface Bundle {
   mar: Array<{ _id: string; drugName: string; dose?: string; route?: string; status: string; givenAt: string; byName?: string; notes?: string }>;
   fluids: Array<{ _id: string; direction: string; route: string; volumeMl: number; at: string }>;
   fluidBalance24h: { intake: number; output: number; net: number };
+  prescriptions: Prescription[];
   lengthOfStayDays: number;
 }
-type Tab = 'notes' | 'vitals' | 'mar' | 'fluids' | 'orders' | 'discharge';
+type Tab = 'notes' | 'vitals' | 'meds' | 'mar' | 'fluids' | 'orders' | 'discharge';
 
 export default function AdmissionPage({ params }: { params: Promise<{ id: string }> }) {
   const { id } = use(params);
@@ -32,13 +36,15 @@ export default function AdmissionPage({ params }: { params: Promise<{ id: string
   const [tab, setTab] = useState<Tab>('notes');
   const [note, setNote] = useState({ kind: can('nursing.record') ? 'nursing' : 'doctor_round', text: '' });
   const [mar, setMar] = useState({ drugName: '', dose: '', route: '', status: 'given', notes: '' });
+  // What is being charted: an item on a medication order, or a drug picked from the drug list.
+  const [marPick, setMarPick] = useState<{ prescriptionId?: string; rxItemId?: string; itemId?: string; label: string } | null>(null);
   const [fluid, setFluid] = useState({ direction: 'intake', route: 'IV', volumeMl: '' });
   const [dis, setDis] = useState({ outcome: 'recovered', summary: '', finalDiagnosis: '', dischargeMedications: '', followUp: '' });
   const [transfer, setTransfer] = useState(false);
   const [toBed, setToBed] = useState({ wardId: '', bedId: '', reason: '' });
   const q = useQuery({ queryKey: ['admission', id], queryFn: async () => (await api<Bundle>(`/inpatient/admissions/${id}`)).data });
-  const refresh = () => qc.invalidateQueries({ queryKey: ['admission', id] });
-  const post = useMutation({ mutationFn: ({ path, body }: { path: string; body: object }) => api(`/inpatient/admissions/${id}/${path}`, { method: 'POST', body }), onSuccess: () => { refresh(); setNote({ ...note, text: '' }); setMar({ drugName: '', dose: '', route: '', status: 'given', notes: '' }); setFluid({ ...fluid, volumeMl: '' }); setTransfer(false); } });
+  const refresh = () => { qc.invalidateQueries({ queryKey: ['admission', id] }); qc.invalidateQueries({ queryKey: ['rx', id] }); };
+  const post = useMutation({ mutationFn: ({ path, body }: { path: string; body: object }) => api(`/inpatient/admissions/${id}/${path}`, { method: 'POST', body }), onSuccess: () => { refresh(); setNote({ ...note, text: '' }); setMarPick(null); setMar({ drugName: '', dose: '', route: '', status: 'given', notes: '' }); setFluid({ ...fluid, volumeMl: '' }); setTransfer(false); } });
   const wards = useQuery({ queryKey: ['wards'], queryFn: async () => (await api<Array<{ _id: string; name: string; available: number }>>('/inpatient/wards')).data, enabled: transfer });
   const beds = useQuery({ queryKey: ['free-beds', toBed.wardId], queryFn: async () => (await api<Array<{ _id: string; number: string }>>('/inpatient/beds', { query: { wardId: toBed.wardId, status: 'available' } })).data, enabled: !!toBed.wardId });
   if (q.isLoading) return <Loading />;
@@ -73,7 +79,7 @@ export default function AdmissionPage({ params }: { params: Promise<{ id: string
         <Stat label="Balance (24h)" value={`${q.data.fluidBalance24h.net > 0 ? '+' : ''}${q.data.fluidBalance24h.net} ml`} tone={Math.abs(q.data.fluidBalance24h.net) > 1500 ? 'red' : 'gray'} />
       </div>
       <ErrorText error={post.error} />
-      <Tabs<Tab> value={tab} onChange={setTab} tabs={[{ key: 'notes', label: 'Notes & rounds' }, { key: 'vitals', label: 'Vitals' }, { key: 'mar', label: 'Medication (MAR)' }, { key: 'fluids', label: 'Fluid chart' }, { key: 'orders', label: 'Orders' }, { key: 'discharge', label: active ? 'Discharge' : 'Discharge summary' }]} />
+      <Tabs<Tab> value={tab} onChange={setTab} tabs={[{ key: 'notes', label: 'Notes & rounds' }, { key: 'vitals', label: 'Vitals' }, { key: 'meds', label: 'Medication orders' }, { key: 'mar', label: 'Medication (MAR)' }, { key: 'fluids', label: 'Fluid chart' }, { key: 'orders', label: 'Orders' }, { key: 'discharge', label: active ? 'Discharge' : 'Discharge summary' }]} />
       {tab === 'notes' && (
         <Card>
           {active && (
@@ -97,16 +103,43 @@ export default function AdmissionPage({ params }: { params: Promise<{ id: string
           </Table>
         </Card>
       )}
+      {tab === 'meds' && <PrescriptionPanel admissionId={a._id} patientId={p._id} open={active} />}
       {tab === 'mar' && (
         <Card>
           {active && can('nursing.record') && (
-            <div className="mb-4 grid gap-2 border-b border-[var(--border)] pb-4 sm:grid-cols-[2fr_1fr_1fr_1fr_2fr_auto]">
-              <Input placeholder="Drug" value={mar.drugName} onChange={(e) => setMar({ ...mar, drugName: e.target.value })} />
-              <Input placeholder="Dose" value={mar.dose} onChange={(e) => setMar({ ...mar, dose: e.target.value })} />
-              <Input placeholder="Route" value={mar.route} onChange={(e) => setMar({ ...mar, route: e.target.value })} />
-              <Select value={mar.status} onChange={(e) => setMar({ ...mar, status: e.target.value })}><option value="given">Given</option><option value="held">Held</option><option value="refused">Refused</option><option value="missed">Missed</option></Select>
-              <Input placeholder={mar.status === 'given' ? 'Notes' : 'Reason (required)'} value={mar.notes} onChange={(e) => setMar({ ...mar, notes: e.target.value })} />
-              <Button onClick={() => post.mutate({ path: 'mar', body: { ...mar, dose: mar.dose || undefined, route: mar.route || undefined, notes: mar.notes || undefined } })} disabled={mar.drugName.length < 2}>Record</Button>
+            <div className="mb-4 space-y-2 border-b border-[var(--border)] pb-4">
+              {(() => {
+                const orders = (q.data.prescriptions ?? []).filter((rx) => rx.status !== 'cancelled').flatMap((rx) => rx.items.filter((i) => i.status !== 'cancelled').map((i) => ({ rx, i })));
+                return (
+                  <div className="grid gap-2 sm:grid-cols-2">
+                    <Select
+                      value={marPick?.rxItemId ?? ''}
+                      onChange={(e) => {
+                        const hit = orders.find((o) => o.i._id === e.target.value);
+                        if (!hit) return setMarPick(null);
+                        setMarPick({ prescriptionId: hit.rx._id, rxItemId: hit.i._id, label: hit.i.drugName });
+                        setMar({ ...mar, drugName: hit.i.drugName, dose: hit.i.dose ?? '', route: hit.i.route ?? '' });
+                      }}
+                    >
+                      <option value="">{orders.length ? 'Choose from medication orders…' : 'No medication orders yet'}</option>
+                      {orders.map(({ rx, i }) => <option key={i._id} value={i._id}>{i.drugName} · {[i.dose, i.frequency, i.route].filter(Boolean).join(' ')} · {i.dispensedQuantity}/{i.quantity} dispensed ({rx.rxNumber})</option>)}
+                    </Select>
+                    {marPick && !marPick.rxItemId ? (
+                      <div className="flex items-center justify-between rounded-md border border-[var(--border)] px-3 py-2 text-sm"><span>{marPick.label}</span><button type="button" className="text-xs text-brand-600" onClick={() => setMarPick(null)}>Change</button></div>
+                    ) : (
+                      <ItemPicker onPick={(it) => { setMarPick({ itemId: it._id, label: `${it.name}${it.strength ? ` ${it.strength}` : ''}` }); setMar({ ...mar, drugName: `${it.name}${it.strength ? ` ${it.strength}` : ''}`, dose: '', route: '' }); }} placeholder="…or search the drug list (ward stock)" />
+                    )}
+                  </div>
+                );
+              })()}
+              <div className="grid gap-2 sm:grid-cols-[1fr_1fr_1fr_2fr_auto]">
+                <Input placeholder="Dose" value={mar.dose} onChange={(e) => setMar({ ...mar, dose: e.target.value })} />
+                <Input placeholder="Route (IV, PO…)" value={mar.route} onChange={(e) => setMar({ ...mar, route: e.target.value })} />
+                <Select value={mar.status} onChange={(e) => setMar({ ...mar, status: e.target.value })}><option value="given">Given</option><option value="held">Held</option><option value="refused">Refused</option><option value="missed">Missed</option></Select>
+                <Input placeholder={mar.status === 'given' ? 'Notes' : 'Reason (required)'} value={mar.notes} onChange={(e) => setMar({ ...mar, notes: e.target.value })} />
+                <Button onClick={() => post.mutate({ path: 'mar', body: { prescriptionId: marPick?.prescriptionId, rxItemId: marPick?.rxItemId, itemId: marPick?.itemId, drugName: marPick?.rxItemId ? undefined : mar.drugName, dose: mar.dose || undefined, route: mar.route || undefined, status: mar.status, notes: mar.notes || undefined } })} disabled={!marPick || (mar.status !== 'given' && !mar.notes)}>Record</Button>
+              </div>
+              {marPick && <p className="muted text-xs">Charting: <strong>{marPick.label}</strong>{marPick.rxItemId ? ' (on a medication order)' : ' (from the drug list)'}</p>}
             </div>
           )}
           <Table head={['Time', 'Drug', 'Dose', 'Route', 'Status', 'By', 'Notes']} empty={q.data.mar.length === 0}>

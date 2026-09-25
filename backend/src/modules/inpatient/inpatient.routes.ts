@@ -358,13 +358,28 @@ router.post(
   '/admissions/:id/mar',
   requirePermission('nursing.record'),
   h(async (req, res) => {
-    const body = parse(z.object({ prescriptionId: z.string().optional(), drugName: z.string().min(2).max(160), dose: z.string().max(60).optional(), route: z.string().max(40).optional(), scheduledAt: z.coerce.date().optional(), status: z.enum(['given', 'held', 'refused', 'missed']), notes: z.string().max(500).optional() }), req.body);
+    const body = parse(z.object({ prescriptionId: z.string().optional(), rxItemId: z.string().optional(), itemId: z.string().optional(), drugName: z.string().min(2).max(160).optional(), dose: z.string().max(60).optional(), route: z.string().max(40).optional(), scheduledAt: z.coerce.date().optional(), status: z.enum(['given', 'held', 'refused', 'missed']), notes: z.string().max(500).optional() }), req.body);
     if (body.status !== 'given' && !body.notes) throw badRequest('A note is required when a dose is not given');
     const m = req.tenant!.models;
     const a = await loadScoped(req, m.Admission, req.params.id, 'Admission');
     if (a.status !== 'admitted') throw conflict('Patient is not admitted');
-    const e = await m.MedicationAdministration.create({ ...body, admissionId: a._id, patientId: a.patientId, branchId: a.branchId, by: req.user!.id, byName: req.user!.name });
-    await audit(req, { action: 'inpatient.mar', resource: 'admission', resourceId: String(a._id), newValue: { drug: body.drugName, status: body.status } });
+    const entry: Record<string, unknown> = { ...body };
+    if (body.prescriptionId) {
+      // Charting against a medication order: it must be this patient's active order.
+      const rx = await m.Prescription.findOne({ _id: oid(body.prescriptionId, 'Prescription'), admissionId: a._id }).lean();
+      if (!rx) throw notFound('Medication order not found for this admission');
+      const it = body.rxItemId ? rx.items.find((x) => String(x._id) === body.rxItemId) : undefined;
+      if (body.rxItemId && !it) throw notFound('Medication not found on this order');
+      if (it?.status === 'cancelled' || rx.status === 'cancelled') throw conflict('This medication order was cancelled', undefined, 'ORDER_CANCELLED');
+      if (it) Object.assign(entry, { drugName: it.drugName, dose: body.dose ?? it.dose, route: body.route ?? it.route, itemId: it.itemId });
+    } else if (body.itemId) {
+      const item = await m.Item.findById(oid(body.itemId, 'Item')).select('name strength').lean();
+      if (!item) throw notFound('Drug not found');
+      entry.drugName = body.drugName ?? `${item.name}${item.strength ? ` ${item.strength}` : ''}`;
+    }
+    if (!entry.drugName) throw badRequest('Choose the medication');
+    const e = await m.MedicationAdministration.create({ ...entry, admissionId: a._id, patientId: a.patientId, branchId: a.branchId, by: req.user!.id, byName: req.user!.name });
+    await audit(req, { action: 'inpatient.mar', resource: 'admission', resourceId: String(a._id), newValue: { drug: entry.drugName, status: body.status, prescriptionId: body.prescriptionId } });
     res.status(201).json({ success: true, data: e });
   }),
 );

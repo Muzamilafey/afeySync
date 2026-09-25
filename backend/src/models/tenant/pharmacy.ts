@@ -89,6 +89,11 @@ const prescriptionSchema = new Schema(
       },
     ],
     status: { type: String, enum: ['pending', 'partially_dispensed', 'dispensed', 'cancelled'], default: 'pending', index: true },
+    /** Ward (inpatient) requests: how soon pharmacy should supply, and where to. */
+    urgency: { type: String, enum: ['routine', 'urgent', 'stat'], default: 'routine' },
+    ward: { wardId: ObjectId, name: String, bedNumber: String },
+    /** Ward confirms it received what pharmacy dispensed (one entry per receipt). */
+    receipts: [{ _id: false, at: Date, by: ObjectId, byName: String, dispenseCount: Number, note: String }],
     dispenses: [
       {
         _id: false,

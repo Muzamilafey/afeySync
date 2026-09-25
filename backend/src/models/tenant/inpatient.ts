@@ -93,6 +93,8 @@ const medicationAdministrationSchema = new Schema(
     patientId: { type: ObjectId, ref: 'Patient', required: true },
     branchId: { type: ObjectId, ref: 'Branch', required: true },
     prescriptionId: { type: ObjectId, ref: 'Prescription' },
+    rxItemId: ObjectId,
+    itemId: { type: ObjectId, ref: 'Item' },
     drugName: { type: String, required: true },
     dose: String,
     route: String,
