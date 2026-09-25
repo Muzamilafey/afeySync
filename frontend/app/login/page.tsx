@@ -5,8 +5,9 @@ import { useRouter, useSearchParams } from 'next/navigation';
 import { useForm } from 'react-hook-form';
 import { zodResolver } from '@hookform/resolvers/zod';
 import { z } from 'zod';
-import { Activity, Building2, ChevronRight, Loader2 } from 'lucide-react';
+import { Building2, ChevronRight, Loader2 } from 'lucide-react';
 import { Alert, Button, ErrorText, Field, Input } from '@/components/ui';
+import { BrandMark, PoweredBy, useHostContext, type HostContext } from '@/features/branding/branding';
 import { api } from '@/services/api';
 import { useSessionStore } from '@/stores/session';
 import { useQueryClient } from '@tanstack/react-query';
@@ -17,7 +18,6 @@ import type { LoginResult, MfaChallengeData } from '@/features/auth/types';
 
 const schema = z.object({ email: z.string().email('Enter a valid email'), password: z.string().min(1, 'Password is required') });
 
-interface HostContext { kind: 'facility' | 'platform' | 'owner' | 'unknown'; facility?: { name: string; slug: string } | null; message?: string }
 interface FacilityMatch { name: string; slug: string; url: string }
 
 function LoginForm({ ctx }: { ctx: HostContext | null }) {
@@ -117,28 +117,25 @@ function LoginForm({ ctx }: { ctx: HostContext | null }) {
 }
 
 export default function LoginPage() {
-  const [ctx, setCtx] = useState<HostContext | null>(null);
-  useEffect(() => {
-    api<HostContext>('/auth/context', { auth: false }).then((r) => setCtx(r.data)).catch(() => setCtx({ kind: 'unknown' }));
-  }, []);
+  const { data: ctx, isError } = useHostContext();
+  const context: HostContext | null = ctx ?? (isError ? { kind: 'unknown' } : null);
+  const branding = context?.kind === 'facility' ? context.branding ?? null : null;
   return (
     <div className="flex min-h-screen items-center justify-center bg-gradient-to-br from-brand-900 to-slate-900 p-4">
       <div className="surface w-full max-w-sm rounded-2xl p-6 shadow-2xl">
-        <div className="mb-6 flex items-center gap-2">
-          <Activity className="h-7 w-7 text-brand-600" />
-          <div>
-            <p className="text-lg font-semibold">AfeySync</p>
-            <p className="muted text-xs">{ctx?.kind === 'facility' && ctx.facility ? ctx.facility.name : 'Hospital Management Information System'}</p>
-          </div>
-        </div>
+        <BrandMark branding={branding} className="mb-4" />
+        {branding?.welcomeMessage && <p className="mb-4 rounded-lg bg-brand-50 px-3 py-2 text-sm text-brand-900 dark:bg-brand-900/30 dark:text-brand-100">{branding.welcomeMessage}</p>}
         <Suspense>
-          <LoginForm ctx={ctx} />
+          <LoginForm ctx={context} />
         </Suspense>
-        <div className="mt-6 rounded-xl border border-[var(--border)] bg-[var(--surface-2)] p-3 text-center text-sm">
-          New to AfeySync? <a href="/get-started" className="font-semibold text-brand-600 hover:underline">Register your facility →</a>
-        </div>
+        {!branding && (
+          <div className="mt-6 rounded-xl border border-[var(--border)] bg-[var(--surface-2)] p-3 text-center text-sm">
+            New to AfeySync? <a href="/get-started" className="font-semibold text-brand-600 hover:underline">Register your facility →</a>
+          </div>
+        )}
         <div className="mt-3"><InstallButton variant="card" /></div>
         <p className="muted mt-4 text-center text-xs">Access is logged and audited. Authorized personnel only.</p>
+        <PoweredBy branding={branding} />
       </div>
     </div>
   );

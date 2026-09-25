@@ -123,6 +123,16 @@ const tenantSchema = new Schema(
     },
     suspendedReason: String,
     provisioningError: String,
+    /** Public look of the facility's own address (sign-in page, app header, installed app). Not sensitive. */
+    branding: {
+      displayName: String,
+      tagline: String,
+      welcomeMessage: String,
+      primaryColor: String,
+      logoVersion: String,
+      logoMimeType: String,
+      updatedAt: Date,
+    },
     integrations: {
       // Per-tenant enablement switches set by the platform owner.
       sha: { type: Boolean, default: false },
@@ -577,6 +587,12 @@ const brandAssetSchema = new Schema(
   { timestamps: true },
 );
 
+/** A facility's logo, kept apart from Tenant so tenant lookups stay small. One current logo per facility. */
+const tenantLogoSchema = new Schema(
+  { tenantId: { type: Schema.Types.ObjectId, required: true, unique: true }, mimeType: { type: String, required: true }, data: { type: Buffer, required: true }, sha256: String, sizeBytes: Number },
+  { timestamps: true },
+);
+
 /** Which facilities have a user with this email (hashed), so sign-in on the main domain can find them. */
 const userDirectorySchema = new Schema({ emailHash: { type: String, required: true }, tenantId: { type: Schema.Types.ObjectId, required: true } }, { timestamps: true });
 userDirectorySchema.index({ emailHash: 1, tenantId: 1 }, { unique: true });
@@ -615,6 +631,7 @@ const schemas = {
   BrandAsset: brandAssetSchema,
   UserDirectory: userDirectorySchema,
   LoginHandoff: loginHandoffSchema,
+  TenantLogo: tenantLogoSchema,
 };
 
 type Schemas = typeof schemas;

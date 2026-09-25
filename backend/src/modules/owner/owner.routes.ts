@@ -27,6 +27,7 @@ import { randomToken } from '../../utils/crypto';
 import { getConnectionStats } from '../health/health.routes';
 import { ALL_TENANT_PERMISSIONS } from '../rbac/catalog';
 import { clearEntitlementCache } from '../plans/planService';
+import { brandingSchema, editorBranding, logoUploadSchema, removeLogo, setLogo, updateBranding } from '../branding/brandingService';
 
 const router = Router();
 router.use(authenticatePlatform);
@@ -347,6 +348,50 @@ router.put(
     const after = await Tenant.findById(id).select('integrations').lean();
     await platformAudit(req, { action: 'tenant.integrations', resource: 'tenant', resourceId: id, tenantId: id, oldValue: before.integrations, newValue: after?.integrations });
     res.json({ success: true, data: after?.integrations });
+  }),
+);
+
+
+/* Facility branding (the owner can set it up on the facility's behalf) */
+const ownerTenantId = async (id: string) => {
+  if (!isValidObjectId(id) || !(await meta().Tenant.exists({ _id: id }))) throw notFound('Facility not found');
+  return id;
+};
+router.get(
+  '/tenants/:id/branding',
+  requirePermission('owner.tenants'),
+  h(async (req, res) => {
+    res.json({ success: true, data: await editorBranding(await ownerTenantId(req.params.id as string)) });
+  }),
+);
+router.put(
+  '/tenants/:id/branding',
+  requirePermission('owner.tenants'),
+  h(async (req, res) => {
+    const id = await ownerTenantId(req.params.id as string);
+    const { before, after } = await updateBranding(id, parse(brandingSchema, req.body));
+    await platformAudit(req, { action: 'tenant.branding', resource: 'tenant', resourceId: id, tenantId: id, oldValue: before, newValue: after });
+    res.json({ success: true, data: await editorBranding(id) });
+  }),
+);
+router.put(
+  '/tenants/:id/branding/logo',
+  requirePermission('owner.tenants'),
+  h(async (req, res) => {
+    const id = await ownerTenantId(req.params.id as string);
+    const r = await setLogo(id, parse(logoUploadSchema, req.body).dataBase64);
+    await platformAudit(req, { action: 'tenant.branding_logo', resource: 'tenant', resourceId: id, tenantId: id, newValue: r });
+    res.json({ success: true, data: await editorBranding(id) });
+  }),
+);
+router.delete(
+  '/tenants/:id/branding/logo',
+  requirePermission('owner.tenants'),
+  h(async (req, res) => {
+    const id = await ownerTenantId(req.params.id as string);
+    await removeLogo(id);
+    await platformAudit(req, { action: 'tenant.branding_logo_removed', resource: 'tenant', resourceId: id, tenantId: id });
+    res.json({ success: true, data: await editorBranding(id) });
   }),
 );
 

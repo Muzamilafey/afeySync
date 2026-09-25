@@ -2,6 +2,7 @@ import { Router, type Request, type Response } from 'express';
 import { env } from '../../config/env';
 import { explainUnknownHost, isLoopbackHost, platformSubdomain } from '../../middleware/tenantResolver';
 import { tenantsForEmail } from './directory';
+import { logoFile, publicBranding } from '../branding/brandingService';
 import { tenantEntitlements } from '../plans/planService';
 import { z } from 'zod';
 import { h } from '../../utils/asyncHandler';
@@ -72,11 +73,26 @@ router.get(
   h(async (req, res) => {
     if (req.isOwnerHost) return res.json({ success: true, data: { kind: 'owner' } });
     if (req.hostTenantId) {
-      const t = await meta().Tenant.findById(req.hostTenantId).select('name slug status').lean();
-      return res.json({ success: true, data: { kind: 'facility', facility: t ? { name: t.name, slug: t.slug } : null } });
+      const t = await meta().Tenant.findById(req.hostTenantId).select('name slug status branding').lean();
+      return res.json({ success: true, data: { kind: 'facility', facility: t ? { name: t.name, slug: t.slug } : null, branding: t ? publicBranding(t) : null } });
     }
     if (platformHost(req)) return res.json({ success: true, data: { kind: 'platform' } });
     res.json({ success: true, data: { kind: 'unknown', message: await explainUnknownHost(req.hostname) } });
+  }),
+);
+
+/** The facility's logo for its own address. Public (it is on the sign-in page); versioned URLs are cached. */
+router.get(
+  '/branding/logo',
+  h(async (req, res) => {
+    const logo = req.hostTenantId ? await logoFile(req.hostTenantId) : null;
+    if (!logo) return res.status(404).json({ success: false, error: { code: 'NOT_FOUND', message: 'No logo' } });
+    res.setHeader('Content-Type', logo.mimeType);
+    res.setHeader('X-Content-Type-Options', 'nosniff');
+    res.setHeader('Content-Security-Policy', "default-src 'none'");
+    res.setHeader('Cache-Control', req.query.v ? 'public, max-age=31536000, immutable' : 'public, max-age=300');
+    res.setHeader('ETag', `"${logo.sha256.slice(0, 32)}"`);
+    res.send(logo.data);
   }),
 );
 

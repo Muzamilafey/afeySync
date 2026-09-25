@@ -3,9 +3,9 @@
 import { Suspense, useState } from 'react';
 import Link from 'next/link';
 import { useSearchParams } from 'next/navigation';
-import { Activity } from 'lucide-react';
 import { Alert, Button, ErrorText, Field, Input } from '@/components/ui';
 import { api } from '@/services/api';
+import { BrandMark, PoweredBy, useBranding } from '@/features/branding/branding';
 
 function ResetForm() {
   const token = useSearchParams().get('token') ?? '';
@@ -41,14 +41,14 @@ function ResetForm() {
 }
 
 export default function ResetPasswordPage() {
+  const branding = useBranding();
   return (
     <div className="flex min-h-screen items-center justify-center bg-gradient-to-br from-brand-900 to-slate-900 p-4">
       <div className="surface w-full max-w-sm rounded-2xl p-6 shadow-2xl">
-        <div className="mb-6 flex items-center gap-2">
-          <Activity className="h-7 w-7 text-brand-600" />
-          <p className="text-lg font-semibold">Choose a new password</p>
-        </div>
+        <BrandMark branding={branding} subtitle={null} className="mb-3" />
+        <p className="mb-4 text-lg font-semibold">Choose a new password</p>
         <Suspense><ResetForm /></Suspense>
+        <PoweredBy branding={branding} />
       </div>
     </div>
   );

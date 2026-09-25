@@ -8,6 +8,7 @@ import { ownerApi } from '@/services/api';
 import { Alert, Badge, Button, Card, ErrorText, Field, Input, KV, Loading, Modal, PageHeader, Select, StatusDot, statusTone, Table, Tabs, Td } from '@/components/ui';
 import { ago, fmtDateTime } from '@/lib/utils';
 import type { Branch } from '@/types/api';
+import { BrandingEditor } from '@/features/branding/BrandingEditor';
 
 interface Detail {
   tenant: { _id: string; name: string; slug: string; status: string; suspendedReason?: string; facilityCode?: string; county?: string; subCounty?: string; facilityLevel?: string; facilityType?: string; ownership?: string; phone?: string; email?: string; dhaRegistry?: { facilityRegistryCode?: string }; integrations: Record<string, boolean>; stats?: { branches: number; users: number; patients: number; lastActivityAt?: string }; createdAt: string };
@@ -17,7 +18,7 @@ interface Detail {
   branches: Branch[];
   users: Array<{ _id: string; name: string; email: string; status: string; branchAccess: string; lastLoginAt?: string; roleIds: Array<{ name: string }> }>;
 }
-type Tab = 'overview' | 'branches' | 'users' | 'domains' | 'subscription' | 'integrations' | 'health' | 'audit';
+type Tab = 'overview' | 'branches' | 'users' | 'domains' | 'branding' | 'subscription' | 'integrations' | 'health' | 'audit';
 
 export default function FacilityDetail({ params }: { params: Promise<{ id: string }> }) {
   const { id } = use(params);
@@ -64,7 +65,7 @@ export default function FacilityDetail({ params }: { params: Promise<{ id: strin
       />
       {tenant.suspendedReason && <div className="mb-4"><Alert tone="red" title="Suspended">{tenant.suspendedReason}</Alert></div>}
       <ErrorText error={statusMut.error || domainMut.error || verifyMut.error || removeDomain.error || intMut.error || subMut.error} />
-      <Tabs<Tab> value={tab} onChange={setTab} tabs={(['overview', 'branches', 'users', 'domains', 'subscription', 'integrations', 'health', 'audit'] as Tab[]).map((k) => ({ key: k, label: k[0].toUpperCase() + k.slice(1) }))} />
+      <Tabs<Tab> value={tab} onChange={setTab} tabs={(['overview', 'branches', 'users', 'domains', 'branding', 'subscription', 'integrations', 'health', 'audit'] as Tab[]).map((k) => ({ key: k, label: k[0].toUpperCase() + k.slice(1) }))} />
 
       {tab === 'overview' && (
         <Card>
@@ -142,6 +143,7 @@ export default function FacilityDetail({ params }: { params: Promise<{ id: strin
           </div>
         </Card>
       )}
+      {tab === 'branding' && <BrandingEditor tenantId={id} address={tenant.slug} />}
       {tab === 'health' && (
         <Card title="Database health">
           {health.isLoading ? <Loading /> : health.data && <KV items={[...Object.entries(health.data.database).map(([k, v]) => [k, String(v ?? '—')] as [string, string]), ['Integration failures (24h)', String(health.data.integrationFailures24h)], ['Last backup', fmtDateTime(health.data.lastBackupAt)]]} />}

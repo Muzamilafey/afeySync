@@ -25,7 +25,7 @@ describe('sign-in on the main domain', () => {
   it('tells the sign-in page what kind of address it is on', async () => {
     expect((await api().get('/api/v1/auth/context').set('Host', APEX)).body.data).toEqual({ kind: 'platform' });
     expect((await api().get('/api/v1/auth/context').set('Host', OWNER_HOST)).body.data).toEqual({ kind: 'owner' });
-    expect((await api().get('/api/v1/auth/context').set('Host', hostOf(A))).body.data).toEqual({ kind: 'facility', facility: { name: `${A} Hospital`, slug: A } });
+    expect((await api().get('/api/v1/auth/context').set('Host', hostOf(A))).body.data).toMatchObject({ kind: 'facility', facility: { name: `${A} Hospital`, slug: A } });
   });
 
   it('finds every facility where the email and password are valid, on the same scheme and port', async () => {
@@ -96,7 +96,7 @@ describe('facility address resolution', () => {
     clearDomainCache();
     for (const host of [hostOf(A), `${A}.localhost`, `${A}.localhost:3000`]) {
       const r = await api().get('/api/v1/auth/context').set('Host', host);
-      expect(r.body.data).toEqual({ kind: 'facility', facility: { name: `${A} Hospital`, slug: A } });
+      expect(r.body.data).toMatchObject({ kind: 'facility', facility: { name: `${A} Hospital`, slug: A } });
     }
     expect((await api().get('/api/v1/auth/context').set('Host', 'no-such-facility.localhost')).body.data.kind).toBe('unknown');
   });

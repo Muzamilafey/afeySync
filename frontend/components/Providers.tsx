@@ -2,6 +2,7 @@
 
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { PwaProvider } from '@/features/pwa/PwaProvider';
+import { BrandingApplier } from '@/features/branding/branding';
 import { useState, type ReactNode } from 'react';
 import { ApiError } from '@/services/api';
 
@@ -20,7 +21,10 @@ export function Providers({ children }: { children: ReactNode }) {
   );
   return (
     <QueryClientProvider client={client}>
-      <PwaProvider>{children}</PwaProvider>
+      <PwaProvider>
+        <BrandingApplier />
+        {children}
+      </PwaProvider>
     </QueryClientProvider>
   );
 }

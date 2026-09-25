@@ -5,8 +5,9 @@ import { InstallButton } from '@/features/pwa/InstallButton';
 import { usePathname, useRouter } from 'next/navigation';
 import { useEffect, useRef, useState, type ReactNode } from 'react';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
-import { Activity, Baby, Banknote, BedDouble, Bell, Cross, HeartHandshake, Smile, Boxes, Pill, ShoppingCart, FlaskConical, ScanLine, CalendarDays, ListOrdered, Stethoscope, Receipt, Building2, ChevronDown, ClipboardList, FileSearch, HeartPulse, LayoutDashboard, LogOut, Menu, Network, Search, Settings, ShieldCheck, UserPlus, Users, X, Wallet, BarChart3, IdCard, Umbrella, CreditCard } from 'lucide-react';
+import { Activity, Baby, Banknote, BedDouble, Bell, Cross, HeartHandshake, Smile, Boxes, Pill, ShoppingCart, FlaskConical, ScanLine, CalendarDays, ListOrdered, Stethoscope, Receipt, Building2, ChevronDown, ClipboardList, FileSearch, HeartPulse, LayoutDashboard, LogOut, Menu, Network, Search, Settings, ShieldCheck, UserPlus, Users, X, Wallet, BarChart3, IdCard, Umbrella, CreditCard, Palette } from 'lucide-react';
 import { useMe } from '@/hooks/useMe';
+import { useBranding } from '@/features/branding/branding';
 import { api } from '@/services/api';
 import { useSessionStore } from '@/stores/session';
 import { cn, fullName } from '@/lib/utils';
@@ -65,6 +66,7 @@ const NAV: Array<{ section: string; items: NavItem[] }> = [
     { href: '/admin/integrations', label: 'Integrations', icon: HeartPulse, any: ['admin.integrations'] },
     { href: '/admin/audit', label: 'Audit Trail', icon: FileSearch, any: ['admin.audit'] },
     { href: '/admin/security', label: 'Security', icon: Settings, any: ['admin.support_access', 'admin.settings'] },
+    { href: '/admin/branding', label: 'Branding', icon: Palette, any: ['admin.settings'] },
     { href: '/admin/subscription', label: 'Subscription', icon: CreditCard, any: ['subscription.view'] },
   ] },
 ];
@@ -215,6 +217,7 @@ function Notifications() {
 
 export function AppShell({ children }: { children: ReactNode }) {
   const { data: me, isLoading, error } = useMe();
+  const branding = useBranding();
   const router = useRouter();
   const pathname = usePathname();
   const [mobileOpen, setMobileOpen] = useState(false);
@@ -268,10 +271,14 @@ export function AppShell({ children }: { children: ReactNode }) {
           <Menu className="h-5 w-5" />
         </button>
         <Link href="/dashboard" className="flex items-center gap-2 font-semibold whitespace-nowrap">
-          <Activity className="h-5 w-5 text-brand-600" />
-          <span className="hidden sm:inline">AfeySync</span>
+          {branding?.logoUrl ? (
+            // eslint-disable-next-line @next/next/no-img-element
+            <img src={branding.logoUrl} alt="" className="h-7 w-7 rounded object-contain" />
+          ) : (
+            <Activity className="h-5 w-5 text-brand-600" />
+          )}
+          <span className="hidden max-w-[16rem] truncate sm:inline">{branding?.name ?? me.tenant.name}</span>
         </Link>
-        <span className="muted hidden text-sm lg:inline">| {me.tenant.name}</span>
         <div className="hidden md:block">
           <BranchSwitcher />
         </div>

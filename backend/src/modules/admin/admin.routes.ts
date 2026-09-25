@@ -2,6 +2,7 @@ import { tenantMfaPolicy } from '../auth/tenantAuth.routes';
 import { policySchema } from '../auth/mfa/mfaService';
 import { googleEnabled } from '../auth/google/googleOidc';
 import { Router } from 'express';
+import { brandingSchema, editorBranding, logoUploadSchema, removeLogo, setLogo, updateBranding } from '../branding/brandingService';
 import { isValidObjectId } from 'mongoose';
 import { z } from 'zod';
 import { h } from '../../utils/asyncHandler';
@@ -149,6 +150,47 @@ router.put(
     await FacilitySetting.updateOne({ key }, { $set: { value } }, { upsert: true });
     await audit(req, { action: 'settings.update', resource: 'setting', resourceId: key, oldValue: before?.value, newValue: value });
     res.json({ success: true });
+  }),
+);
+
+/* Branding shown on the facility's own address */
+router.get(
+  '/branding',
+  requirePermission('admin.settings'),
+  h(async (req, res) => {
+    res.json({ success: true, data: await editorBranding(req.tenant!.id) });
+  }),
+);
+
+router.put(
+  '/branding',
+  requirePermission('admin.settings'),
+  h(async (req, res) => {
+    const input = parse(brandingSchema, req.body);
+    const { before, after } = await updateBranding(req.tenant!.id, input);
+    await audit(req, { action: 'settings.branding', resource: 'setting', resourceId: 'branding', oldValue: before, newValue: after });
+    res.json({ success: true, data: await editorBranding(req.tenant!.id) });
+  }),
+);
+
+router.put(
+  '/branding/logo',
+  requirePermission('admin.settings'),
+  h(async (req, res) => {
+    const { dataBase64 } = parse(logoUploadSchema, req.body);
+    const r = await setLogo(req.tenant!.id, dataBase64);
+    await audit(req, { action: 'settings.branding_logo', resource: 'setting', resourceId: 'branding.logo', newValue: r });
+    res.json({ success: true, data: await editorBranding(req.tenant!.id) });
+  }),
+);
+
+router.delete(
+  '/branding/logo',
+  requirePermission('admin.settings'),
+  h(async (req, res) => {
+    await removeLogo(req.tenant!.id);
+    await audit(req, { action: 'settings.branding_logo_removed', resource: 'setting', resourceId: 'branding.logo' });
+    res.json({ success: true, data: await editorBranding(req.tenant!.id) });
   }),
 );
 
