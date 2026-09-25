@@ -1,4 +1,6 @@
 import { Router, type Request, type Response } from 'express';
+import type { Types } from 'mongoose';
+import { usablePasskeys } from './mfa/passkey';
 import { authConfig, accountsHost, env } from '../../config/env';
 import { explainUnknownHost, isLoopbackHost, platformSubdomain } from '../../middleware/tenantResolver';
 import { tenantsForEmail } from './directory';
@@ -88,6 +90,34 @@ function facilityOrigin(req: Request, slug: string) {
   return `${proto}//${host}${port ? `:${port}` : ''}`;
 }
 
+/**
+ * A one-time link to the facility's own address: 256-bit random (only the hash is stored), 60 seconds,
+ * this facility only, this browser only (IP + User-Agent). mfaDone when two-step verification was
+ * already completed on the accounts address.
+ */
+async function issueHandoff(req: Request, tenant: Tenant, user: { _id: Types.ObjectId; name?: string | null }, opts: { mfaDone?: boolean; amr?: string[] } = {}) {
+  const token = randomToken(32);
+  await meta().LoginHandoff.create({ tokenHash: sha256(`handoff:${token}`), purpose: 'handoff', tenantId: tenant.id, userId: user._id, ip: req.ip, uaHash: uaHash(req), facilitySlug: tenant.slug, mfaDone: !!opts.mfaDone, amr: opts.amr ?? ['password'], expiresAt: new Date(Date.now() + HANDOFF_TTL_MS) });
+  await tenant.models.AuditLog.create({ actorType: 'user', userId: user._id, userName: user.name, action: 'auth.handoff_issued', resource: 'user', resourceId: String(user._id), newValue: { via: 'accounts', mfaDone: !!opts.mfaDone }, ip: req.ip }).catch(() => undefined);
+  return `${facilityOrigin(req, tenant.slug)}/login#handoff=${token}`;
+}
+
+/**
+ * After the password on the accounts address: two-step verification right here when the user has a
+ * method usable here, otherwise straight to the facility (where enrollment, or an older passkey, is handled).
+ */
+async function continueAtAccounts(req: Request, tenant: Tenant, user: UserDoc) {
+  req.tenant = tenant;
+  user.failedLogins = 0;
+  user.lockedUntil = undefined;
+  await user.save();
+  const doc = user as unknown as MfaDoc;
+  const usableHere = enabledMethods(doc).filter((m) => m !== 'passkey' || usablePasskeys(req, doc.mfa?.passkeys ?? []).length > 0);
+  const facility = { name: tenant.name, slug: tenant.slug };
+  if (usableHere.length) return { ...(await beginLoginChallenge(req, tenantMfa, doc, tenant.id, await tenantMfaPolicy(tenant), 'password')), facility };
+  return { facilities: [{ ...facility, url: await issueHandoff(req, tenant, user) }] };
+}
+
 /** What kind of address the browser is on, so the sign-in page can adapt. Public, reveals only the facility name. */
 router.get(
   '/context',
@@ -134,13 +164,13 @@ router.post(
   '/find-facility',
   h(async (req, res) => {
     assertCsrfHeader(req);
-    const body = parse(z.object({ email: z.string().email().max(200), password: z.string().min(1).max(200) }), req.body);
+    const body = parse(z.object({ email: z.string().email().max(200), password: z.string().min(1).max(200), facility: z.string().regex(/^[a-z0-9][a-z0-9-]{0,62}$/).optional() }), req.body);
     if (!signInHost(req)) {
       if (authConfig.centralLogin) throw useAccounts(req);
       throw badRequest('Sign in at your facility address', undefined, 'NOT_PLATFORM_HOST');
     }
     const email = body.email.toLowerCase();
-    const matches: Array<{ name: string; slug: string; url: string }> = [];
+    const found: Array<{ tenant: Tenant; user: UserDoc }> = [];
     let locked = false;
     for (const tenantId of await tenantsForEmail(email)) {
       let tenant: Tenant;
@@ -149,7 +179,7 @@ router.post(
       } catch {
         continue; // suspended or unavailable facilities are skipped
       }
-      const user = await tenant.models.User.findOne({ email }).select('+passwordHash name status failedLogins lockedUntil');
+      const user = await tenant.models.User.findOne({ email }).select(MFA_SELECT);
       if (!user) continue;
       if (user.lockedUntil && user.lockedUntil > new Date()) {
         locked = true;
@@ -166,17 +196,46 @@ router.post(
         continue;
       }
       if (user.status !== 'active') continue;
-      const token = randomToken(32);
-      // Only the hash is stored; the link works once, for 60 seconds, from this browser (IP + User-Agent), on this facility only.
-      await meta().LoginHandoff.create({ tokenHash: sha256(`handoff:${token}`), tenantId, userId: user._id, ip: req.ip, uaHash: uaHash(req), facilitySlug: tenant.slug, expiresAt: new Date(Date.now() + HANDOFF_TTL_MS) });
-      await tenant.models.AuditLog.create({ actorType: 'user', userId: user._id, userName: user.name, action: 'auth.handoff_issued', resource: 'user', resourceId: String(user._id), newValue: { via: 'accounts' }, ip: req.ip }).catch(() => undefined);
-      matches.push({ name: tenant.name, slug: tenant.slug, url: `${facilityOrigin(req, tenant.slug)}/login#handoff=${token}` });
+      found.push({ tenant, user });
     }
-    if (!matches.length) {
+    if (!found.length) {
       if (locked) throw unauthorized('Account temporarily locked after failed attempts. Try again later.', 'ACCOUNT_LOCKED');
       throw unauthorized('Invalid email or password', 'INVALID_CREDENTIALS');
     }
-    res.json({ success: true, data: { facilities: matches } });
+    if (!authConfig.centralLogin) {
+      // Main-page sign-in without central sign-in: a link to each facility, where two-step verification happens.
+      const facilities = [];
+      for (const f of found) facilities.push({ name: f.tenant.name, slug: f.tenant.slug, url: await issueHandoff(req, f.tenant, f.user) });
+      return res.json({ success: true, data: { facilities } });
+    }
+    // Accounts address: continue with one facility (the one the user came from, or their only one) ...
+    const pick = found.find((f) => f.tenant.slug === body.facility) ?? (found.length === 1 ? found[0] : null);
+    if (pick) return res.json({ success: true, data: await continueAtAccounts(req, pick.tenant, pick.user) });
+    // ... or let them choose. Each choice is a single-use ticket bound to this browser.
+    const choices = [];
+    for (const f of found) {
+      const ticket = randomToken(32);
+      await meta().LoginHandoff.create({ tokenHash: sha256(`select:${ticket}`), purpose: 'select', tenantId: f.tenant.id, userId: f.user._id, ip: req.ip, uaHash: uaHash(req), facilitySlug: f.tenant.slug, expiresAt: new Date(Date.now() + 5 * 60_000) });
+      choices.push({ name: f.tenant.name, slug: f.tenant.slug, ticket });
+    }
+    res.json({ success: true, data: { choices } });
+  }),
+);
+
+/** Accounts address: the user picked a facility after signing in. Continues with its two-step verification. */
+router.post(
+  '/find-facility/select',
+  h(async (req, res) => {
+    assertCsrfHeader(req);
+    const { ticket } = parse(z.object({ ticket: z.string().min(20).max(100) }), req.body);
+    if (!signInHost(req)) throw useAccounts(req);
+    const invalid = () => unauthorized('This choice has expired. Sign in again.', 'HANDOFF_INVALID');
+    const t = await meta().LoginHandoff.findOneAndUpdate({ tokenHash: sha256(`select:${ticket}`), purpose: 'select', usedAt: null, expiresAt: { $gt: new Date() } }, { usedAt: new Date() }, { returnDocument: 'before' });
+    if (!t || t.ip !== req.ip || t.uaHash !== uaHash(req)) throw invalid();
+    const tenant = await loadTenant(String(t.tenantId)).catch(() => null);
+    const user = tenant ? await tenant.models.User.findById(t.userId).select(MFA_SELECT) : null;
+    if (!tenant || !user || user.status !== 'active') throw invalid();
+    res.json({ success: true, data: await continueAtAccounts(req, tenant, user) });
   }),
 );
 
@@ -190,7 +249,7 @@ router.post(
     const invalid = () => unauthorized('This sign-in link has expired. Sign in again.', 'HANDOFF_INVALID');
     // Consume atomically: a handoff works once, only on the facility it was issued for. Any attempt,
     // even a rejected one below, uses it up, so a leaked link cannot be retried.
-    const handoff = await meta().LoginHandoff.findOneAndUpdate({ tokenHash: sha256(`handoff:${token}`), usedAt: null, expiresAt: { $gt: new Date() } }, { usedAt: new Date() }, { returnDocument: 'before' });
+    const handoff = await meta().LoginHandoff.findOneAndUpdate({ tokenHash: sha256(`handoff:${token}`), purpose: { $ne: 'select' }, usedAt: null, expiresAt: { $gt: new Date() } }, { usedAt: new Date() }, { returnDocument: 'before' });
     if (!handoff || String(handoff.tenantId) !== req.hostTenantId) throw invalid();
     const tenant = await loadTenant(req.hostTenantId);
     req.tenant = tenant;
@@ -203,6 +262,8 @@ router.post(
     user.failedLogins = 0;
     user.lockedUntil = undefined;
     await user.save();
+    // Two-step verification already done on the accounts address: sign straight in.
+    if (handoff.mfaDone) return res.json({ success: true, data: await issueTenantSession(req, res, tenant, user, { amr: [...(handoff.amr ?? ['password']), 'accounts'] }) });
     res.json({ success: true, data: await afterPrimaryAuth(req, res, tenant, user, 'password') });
   }),
 );
@@ -299,7 +360,8 @@ const tenantMfa: MfaAdapter = {
   },
   policy: (req) => tenantMfaPolicy(req.tenant!),
   isRequired: (req, doc, policy) => mfaRequiredFor(req.tenant!, doc as unknown as { roleIds?: unknown[] }, policy),
-  completeLogin: async (req, res, doc, amr) => issueTenantSession(req, res, req.tenant!, doc as unknown as UserDoc, { amr }),
+  // On the accounts address the verified user gets a one-time link to their facility, not a session here.
+  completeLogin: async (req, res, doc, amr) => (req.isAccountsHost ? { handoffUrl: await issueHandoff(req, req.tenant!, doc as unknown as UserDoc, { mfaDone: true, amr }) } : issueTenantSession(req, res, req.tenant!, doc as unknown as UserDoc, { amr })),
   liftRestriction: async (req) => {
     const s = await meta().Session.findById(req.user!.sessionId);
     if (!s?.restricted) return undefined;

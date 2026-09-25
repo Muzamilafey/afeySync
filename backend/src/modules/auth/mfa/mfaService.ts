@@ -12,7 +12,7 @@ import { notifyEmail, enqueueSms } from '../../notifications/notify';
 import { normalizePhone } from '../../patients/patientService';
 import { verifyPassword } from '../password';
 import { generateTotpSecret, otpauthUri, verifyTotp } from './totp';
-import { MAX_PASSKEYS, plainPasskey, authenticationOptions, registrationOptions, verifyAuthentication, verifyRegistration, type StoredPasskey } from './passkey';
+import { MAX_PASSKEYS, plainPasskey, usablePasskeys, authenticationOptions, registrationOptions, verifyAuthentication, verifyRegistration, type StoredPasskey } from './passkey';
 
 export type MfaMethod = 'totp' | 'email' | 'sms' | 'passkey';
 export const ALL_METHODS: MfaMethod[] = ['totp', 'email', 'sms', 'passkey'];
@@ -182,9 +182,11 @@ export interface MfaAdapter {
 
 /** Starts the second step of a login. Returns the response payload for the client. */
 export async function beginLoginChallenge(req: Request, adapter: Pick<MfaAdapter, 'kind' | 'supported'>, doc: MfaDoc, tenantId: string | null, policy: MfaPolicy, via = 'password') {
-  const methods = enabledMethods(doc).filter((m) => adapter.supported.includes(m) && policy.methods.includes(m));
+  // Passkeys are only offered where one of them can actually be used (see usablePasskeys).
+  const here = enabledMethods(doc).filter((m) => m !== 'passkey' || usablePasskeys(req, doc.mfa?.passkeys ?? []).length > 0);
+  const methods = here.filter((m) => adapter.supported.includes(m) && policy.methods.includes(m));
   // A method disabled by policy after enrollment must not lock the user out: fall back to all enrolled methods.
-  const offered = methods.length ? methods : enabledMethods(doc).filter((m) => adapter.supported.includes(m));
+  const offered = methods.length ? methods : here.filter((m) => adapter.supported.includes(m));
   const { token } = await createChallenge({ subjectType: adapter.kind, subjectId: String(doc._id), tenantId, purpose: 'login', methods: offered, ip: req.ip, userAgent: req.get('user-agent'), via });
   const hasRecovery = (doc.mfa?.recoveryCodes ?? []).some((r) => !r.usedAt);
   return { mfaRequired: true, challengeToken: token, methods: offered, preferred: doc.mfa?.preferred && offered.includes(doc.mfa.preferred as MfaMethod) ? doc.mfa.preferred : offered[0], recoveryAvailable: hasRecovery, email: maskEmail(doc.email), phone: maskPhone(doc.mfa?.sms?.phone) };

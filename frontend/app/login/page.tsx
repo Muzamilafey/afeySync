@@ -1,5 +1,7 @@
 'use client';
 
+import { AuthBackground } from '@/features/auth/AuthBackground';
+
 import { Suspense, useEffect, useRef, useState } from 'react';
 import { useRouter, useSearchParams } from 'next/navigation';
 import { useForm } from 'react-hook-form';
@@ -19,6 +21,9 @@ import type { LoginResult, MfaChallengeData } from '@/features/auth/types';
 const schema = z.object({ email: z.string().email('Enter a valid email'), password: z.string().min(1, 'Password is required') });
 
 interface FacilityMatch { name: string; slug: string; url: string }
+interface FacilityChoice { name: string; slug: string; ticket: string }
+/** What the accounts sign-in answers: go to the facility, verify here first, or choose a facility. */
+type AccountsStep = { facilities?: FacilityMatch[]; choices?: FacilityChoice[]; facility?: { name: string; slug: string }; handoffUrl?: string } & Partial<MfaChallengeData>;
 const HANDOFF_URL = /^https?:\/\/[a-z0-9][a-z0-9-]{0,62}\.[a-z0-9.-]+(:\d{1,5})?\/login#handoff=[A-Za-z0-9_-]{20,100}$/;
 
 function LoginForm({ ctx }: { ctx: HostContext | null }) {
@@ -32,6 +37,9 @@ function LoginForm({ ctx }: { ctx: HostContext | null }) {
   const [handoffFailed, setHandoffFailed] = useState(false);
   const [challenge, setChallenge] = useState<MfaChallengeData | null>(null);
   const [choices, setChoices] = useState<FacilityMatch[] | null>(null);
+  const [tickets, setTickets] = useState<FacilityChoice[] | null>(null);
+  const [verifyingFor, setVerifyingFor] = useState<{ name: string; slug: string } | null>(null);
+  const [selecting, setSelecting] = useState<string | null>(null);
   const [handingOff, setHandingOff] = useState(false);
   const [leaving, setLeaving] = useState(false);
   const central = !!ctx?.centralLogin;
@@ -102,20 +110,47 @@ function LoginForm({ ctx }: { ctx: HostContext | null }) {
     router.replace(r.mfaEnrollmentRequired ? '/setup-2fa' : r.mustChangePassword ? '/account?first=1' : safeNext ?? '/dashboard');
   };
 
+  const withNext = (u: string) => (safeNext ? u.replace('/login#', `/login?next=${encodeURIComponent(safeNext)}#`) : u);
+  /** Leaves for the facility, but only for a link of the exact expected shape (facility sign-in page + one-time handoff). */
+  const goToFacility = (url: string) => {
+    if (!HANDOFF_URL.test(url)) return setError(new Error('Unexpected sign-in link. Please sign in again.'));
+    setLeaving(true);
+    window.location.assign(withNext(url));
+  };
+  const onAccountsStep = (d: AccountsStep) => {
+    if (d.handoffUrl) return goToFacility(d.handoffUrl);
+    if (d.mfaRequired) {
+      setTickets(null);
+      setVerifyingFor(d.facility ?? null);
+      return setChallenge(d as MfaChallengeData);
+    }
+    if (d.choices) return setTickets(d.choices);
+    const safe = (d.facilities ?? []).filter((f) => HANDOFF_URL.test(f.url));
+    const wanted = safe.find((f) => f.slug === params.get('facility'));
+    if (wanted || safe.length === 1) goToFacility((wanted ?? safe[0]).url);
+    else setChoices(safe.map((f) => ({ ...f, url: withNext(f.url) })));
+  };
+  const choose = async (c: FacilityChoice) => {
+    setError(null);
+    setSelecting(c.slug);
+    try {
+      onAccountsStep((await api<AccountsStep>('/auth/find-facility/select', { method: 'POST', body: { ticket: c.ticket }, auth: false })).data);
+    } catch (e) {
+      setTickets(null);
+      setError(e);
+    } finally {
+      setSelecting(null);
+    }
+  };
+
   const onSubmit = handleSubmit(async (values) => {
     setError(null);
     try {
       if (platform) {
         // Main domain: find the user's facility and continue on its own address.
-        const r = await api<{ facilities: FacilityMatch[] }>('/auth/find-facility', { method: 'POST', body: values, auth: false });
-        // Only follow links of the exact expected shape: a facility address, its sign-in page, a one-time handoff.
-        const safe = r.data.facilities.filter((f) => HANDOFF_URL.test(f.url));
-        const withNext = (u: string) => (safeNext ? u.replace('/login#', `/login?next=${encodeURIComponent(safeNext)}#`) : u);
-        const wanted = safe.find((f) => f.slug === params.get('facility'));
-        if (wanted || safe.length === 1) {
-          setLeaving(true);
-          window.location.assign(withNext((wanted ?? safe[0]).url));
-        } else setChoices(safe.map((f) => ({ ...f, url: withNext(f.url) })));
+        const facility = params.get('facility');
+        const r = await api<AccountsStep>('/auth/find-facility', { method: 'POST', body: { ...values, facility: facility && /^[a-z0-9-]{1,63}$/.test(facility) ? facility : undefined }, auth: false });
+        onAccountsStep(r.data);
         return;
       }
       const res = await api<LoginResult & Partial<MfaChallengeData>>('/auth/login', { method: 'POST', body: values, auth: false });
@@ -129,7 +164,29 @@ function LoginForm({ ctx }: { ctx: HostContext | null }) {
     }
   });
 
-  if (challenge) return <MfaChallenge realm="tenant" challenge={challenge} onSuccess={finish} onCancel={() => setChallenge(null)} />;
+  if (challenge)
+    return (
+      <div className="space-y-3">
+        {accounts && verifyingFor && verifyingFor.slug !== ctx?.facility?.slug && <p className="muted text-sm">Signing in to <strong>{verifyingFor.name}</strong></p>}
+        {/* On the accounts address a verified sign-in comes back as a one-time link to the facility. */}
+        <MfaChallenge realm="tenant" challenge={challenge} onSuccess={(r) => (accounts ? onAccountsStep(r as AccountsStep) : finish(r))} onCancel={() => { setChallenge(null); setVerifyingFor(null); }} />
+      </div>
+    );
+  if (tickets)
+    return (
+      <div className="space-y-3">
+        <div><p className="font-semibold">Choose a facility</p><p className="muted text-sm">Your account is active at more than one facility.</p></div>
+        <ErrorText error={error} />
+        {tickets.map((f) => (
+          <button key={f.slug} type="button" disabled={!!selecting} onClick={() => choose(f)} className="flex w-full items-center gap-3 rounded-xl border border-[var(--border)] p-3 text-left transition hover:border-brand-500 hover:bg-[var(--surface-2)] disabled:opacity-60">
+            <span className="grid h-10 w-10 place-items-center rounded-lg bg-brand-50 text-brand-700 dark:bg-brand-900/40"><Building2 className="h-5 w-5" /></span>
+            <span className="min-w-0 flex-1 truncate font-medium">{f.name}</span>
+            {selecting === f.slug ? <Loader2 className="h-4 w-4 animate-spin" /> : <ChevronRight className="h-4 w-4 text-slate-400" />}
+          </button>
+        ))}
+        <button type="button" className="muted w-full text-center text-xs underline" onClick={() => setTickets(null)}>Back to sign in</button>
+      </div>
+    );
   if (leaving) return <p className="flex items-center justify-center gap-2 py-10 text-sm"><Loader2 className="h-4 w-4 animate-spin" /> {accounts ? 'Taking you to your facility…' : 'Opening secure sign-in…'}</p>;
   if (handingOff || handoffFailed) return <p className="flex items-center justify-center gap-2 py-10 text-sm"><Loader2 className="h-4 w-4 animate-spin" /> Signing you in…</p>;
   if (choices)
@@ -179,8 +236,8 @@ export default function LoginPage() {
   const branding = context?.kind === 'facility' ? context.branding ?? null : null;
   const continuing = context?.kind === 'accounts' ? context.facility : null;
   return (
-    <div className="flex min-h-screen items-center justify-center bg-gradient-to-br from-brand-900 to-slate-900 p-4">
-      <div className="surface w-full max-w-sm rounded-2xl p-6 shadow-2xl">
+    <AuthBackground>
+      <div className="surface auth-card w-full max-w-sm rounded-2xl p-6 shadow-2xl">
         <BrandMark branding={branding} className="mb-4" />
         {context?.kind === 'accounts' && (
           <div className="mb-4">
@@ -201,6 +258,6 @@ export default function LoginPage() {
         <p className="muted mt-4 text-center text-xs">Access is logged and audited. Authorized personnel only.</p>
         <PoweredBy branding={branding} />
       </div>
-    </div>
+    </AuthBackground>
   );
 }

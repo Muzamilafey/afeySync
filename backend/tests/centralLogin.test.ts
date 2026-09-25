@@ -1,7 +1,9 @@
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
-import { api, createFacility, hostOf, OWNER_HOST, ownerToken, PASSWORD, setupApp, teardown } from './helpers';
+import { api, createFacility, createUser, hostOf, OWNER_HOST, ownerToken, PASSWORD, setupApp, teardown, tenantLogin } from './helpers';
 import { authConfig } from '../src/config/env';
 import { meta } from '../src/models/meta';
+import { IntegrationSecretService } from '../src/modules/integrations/secretService';
+import { loadTenant } from '../src/modules/tenants/tenantLoader';
 
 const A = 'ssofac';
 const B = 'ssoother';
@@ -100,9 +102,81 @@ describe('central sign-in on the accounts address', () => {
     expect((job!.payload as { text: string }).text).toMatch(new RegExp(`https?://${A}\\.afeysync\\.test(:\\d+)?/reset-password\\?token=`));
   });
 
-  it('keeps the accounts address (and other system names) from ever being a facility', async () => {
-    const res = await api().post('/api/v1/owner/tenants').set('Host', OWNER_HOST).set('Authorization', `Bearer ${owner}`).send({ facility: { name: 'Sneaky', slug: 'accounts', county: 'Mandera' }, administrator: { name: 'X', email: 'x@sneaky.test', password: PASSWORD }, branches: [{ branchName: 'Main', branchCode: 'MAIN' }], subscription: { plan: 'standard', maxBranches: 1, maxUsers: 5 } });
-    expect(res.status).toBe(400);
-    expect(JSON.stringify(res.body.error)).toContain('reserved');
+  it('keeps accounts, owner, app, identity, profile (and other system names) from ever being a facility: "already in use"', async () => {
+    for (const slug of ['accounts', 'account', 'app', 'owner', 'identity', 'profile']) {
+      const res = await api().post('/api/v1/owner/tenants').set('Host', OWNER_HOST).set('Authorization', `Bearer ${owner}`).send({ facility: { name: 'Sneaky', slug, county: 'Mandera' }, administrator: { name: 'Sneaky Admin', email: `x@${slug}.test`, password: PASSWORD }, branches: [{ branchName: 'Main', branchCode: 'MAIN' }], subscription: { plan: 'standard', maxBranches: 1, maxUsers: 5 } });
+      expect(res.status).toBe(409);
+      expect(res.body.error.message).toBe('This address is already in use. Please choose another.');
+    }
+  });
+});
+
+describe('two-step verification on the accounts address', () => {
+  const tenantOf = async (slug: string) => loadTenant(String((await meta().Tenant.findOne({ slug }).lean())!._id));
+  const emailCode = async (to: string) => {
+    const job = await meta().Job.findOne({ type: 'EMAIL', 'payload.to': to }).sort({ createdAt: -1, _id: -1 }).lean();
+    return /(\d{6})/.exec(IntegrationSecretService.decrypt((job!.payload as { textEnc: string }).textEnc))![1];
+  };
+  const onAccounts = (path: string, body: object, headers: Record<string, string> = CSRF) => api().post(`/api/v1/auth/${path}`).set('Host', ACCOUNTS).set(headers).send(body);
+
+  it('verifies on accounts, then the facility signs straight in without asking again', async () => {
+    const t = await tenantOf(A);
+    await t.models.User.updateOne({ email: `admin@${A}.test` }, { $set: { 'mfa.email.enabledAt': new Date() } });
+    const r = await findFacility(`admin@${A}.test`);
+    expect(r.body.data).toMatchObject({ mfaRequired: true, methods: ['email'], facility: { slug: A } });
+    expect(r.body.data.facilities).toBeUndefined(); // no link before the second step
+    const { challengeToken } = r.body.data;
+    expect((await onAccounts('mfa/challenge/send', { challengeToken, method: 'email' })).status).toBe(200);
+    expect((await onAccounts('mfa/challenge/verify', { challengeToken, method: 'email', code: '000000' })).status).toBe(401);
+    const v = await onAccounts('mfa/challenge/verify', { challengeToken, method: 'email', code: await emailCode(`admin@${A}.test`) });
+    expect(v.status).toBe(200);
+    expect(v.body.data.accessToken).toBeUndefined(); // no session on the accounts address
+    expect(String(v.headers['set-cookie'] ?? '')).not.toContain('afs_rt');
+    const url: string = v.body.data.handoffUrl;
+    expect(url).toMatch(new RegExp(`^https?://${A}\\.afeysync\\.test(:\\d+)?/login#handoff=`));
+    const done = await redeem(A, tokenOf(url));
+    expect(done.status).toBe(200);
+    expect(done.body.data.mfaRequired).toBeUndefined();
+    expect(done.body.data.accessToken).toBeTruthy();
+    const s = await meta().Session.findOne({ tenantId: t.id }).sort({ createdAt: -1 }).lean();
+    expect(s!.amr).toEqual(expect.arrayContaining(['password', 'email', 'accounts']));
+    await t.models.User.updateOne({ email: `admin@${A}.test` }, { $unset: { 'mfa.email': 1 } });
+  });
+
+  it('lets someone at several facilities choose one first, with a single-use ticket for this browser', async () => {
+    // The same person also works at facility B (B's administrator adds them).
+    authConfig.centralLogin = false;
+    const bAdmin = (await tenantLogin(B, `admin@${B}.test`)).token;
+    await createUser(B, bAdmin, { email: `nurse@${A}.test`, roleKey: 'nurse', branchAccess: 'all', branchIds: [] });
+    const aAdmin = (await tenantLogin(A, `admin@${A}.test`)).token;
+    await createUser(A, aAdmin, { email: `nurse@${A}.test`, roleKey: 'nurse', branchAccess: 'all', branchIds: [] });
+    authConfig.centralLogin = true;
+
+    const r = await findFacility(`nurse@${A}.test`);
+    expect(r.body.data.choices.map((c: { slug: string }) => c.slug).sort()).toEqual([A, B].sort());
+    expect(JSON.stringify(r.body.data)).not.toContain('handoff'); // nothing usable until a choice is made
+    const pickB = (x: typeof r) => x.body.data.choices.find((c: { slug: string }) => c.slug === B).ticket;
+    // Another browser cannot use the ticket, and trying uses it up.
+    const t1 = pickB(r);
+    expect((await onAccounts('find-facility/select', { ticket: t1 }, { ...CSRF, 'User-Agent': 'curl/8' })).body.error.code).toBe('HANDOFF_INVALID');
+    expect((await onAccounts('find-facility/select', { ticket: t1 })).body.error.code).toBe('HANDOFF_INVALID');
+    const t2 = pickB(await findFacility(`nurse@${A}.test`));
+    const sel = await onAccounts('find-facility/select', { ticket: t2 });
+    expect(sel.body.data.facilities[0]).toMatchObject({ slug: B });
+    expect((await redeem(B, tokenOf(sel.body.data.facilities[0].url))).body.data.accessToken).toBeTruthy();
+    expect((await onAccounts('find-facility/select', { ticket: t2 })).body.error.code).toBe('HANDOFF_INVALID');
+    // Arriving from facility A's page goes straight on to A.
+    const direct = await onAccounts('find-facility', { email: `nurse@${A}.test`, password: PASSWORD, facility: A });
+    expect(direct.body.data.facilities[0]).toMatchObject({ slug: A });
+  });
+
+  it('falls back to the facility for an older passkey that only works on the facility address', async () => {
+    const t = await tenantOf(A);
+    await t.models.User.updateOne({ email: `admin@${A}.test` }, { $set: { 'mfa.passkeys': [{ credentialId: 'legacy-cred', publicKey: 'x', counter: 0, name: 'Old laptop' }] } });
+    const r = await findFacility(`admin@${A}.test`);
+    expect(r.body.data.mfaRequired).toBeUndefined();
+    const at = await redeem(A, tokenOf(r.body.data.facilities[0].url));
+    expect(at.body.data).toMatchObject({ mfaRequired: true, methods: ['passkey'] });
+    await t.models.User.updateOne({ email: `admin@${A}.test` }, { $unset: { 'mfa.passkeys': 1 } });
   });
 });

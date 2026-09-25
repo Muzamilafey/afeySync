@@ -1,3 +1,4 @@
+import { ALREADY_IN_USE, isReservedSlug } from './reservedSlugs';
 import { ensureWallet } from '../sms/smsWallet';
 import { z } from 'zod';
 import { registerDirectoryEntry } from '../auth/directory';
@@ -36,13 +37,10 @@ export const branchInput = z.object({
   bedCapacity: z.number().int().min(0).max(5000).optional(),
 });
 
-/** Addresses the platform itself uses; a facility can never take them (accounts.* is the central sign-in). */
-export const SYSTEM_SLUGS = ['accounts', 'account', 'auth', 'sso', 'id', 'login', 'www', 'owner', 'api', 'admin', 'app', 'mail', 'static', 'cdn', 'assets'];
-
 export const createFacilitySchema = z.object({
   facility: z.object({
     name: z.string().min(2).max(160),
-    slug: z.string().toLowerCase().regex(/^[a-z0-9][a-z0-9-]{1,40}$/, 'Slug may contain lowercase letters, digits and hyphens').refine((v) => !SYSTEM_SLUGS.includes(v), 'This address is reserved for AfeySync'),
+    slug: z.string().toLowerCase().regex(/^[a-z0-9][a-z0-9-]{1,40}$/, 'Slug may contain lowercase letters, digits and hyphens'),
     legalName: z.string().max(200).optional(),
     facilityCode: z.string().max(40).optional(),
     registrationNumber: z.string().max(60).optional(),
@@ -106,7 +104,8 @@ export async function seedTenantRbac(m: TenantModels) {
 export async function provisionFacility(input: CreateFacilityInput, actorId?: string, opts: { adminPasswordHash?: string } = {}) {
   const { Tenant, TenantDatabase, TenantDomain, TenantSubscription } = meta();
   const slug = input.facility.slug;
-  if (await Tenant.exists({ slug })) throw conflict('A facility with this slug already exists', undefined, 'TENANT_EXISTS');
+  // Platform addresses (accounts, owner, app, identity, profile, …) answer exactly like a taken one.
+  if (isReservedSlug(slug) || (await Tenant.exists({ slug }))) throw conflict(ALREADY_IN_USE, undefined, 'TENANT_EXISTS');
   const hosts = [platformSubdomain(slug), ...input.domain.customDomains];
   const taken = await TenantDomain.find({ hostname: { $in: hosts } }).select('hostname').lean();
   if (taken.length) throw conflict('Domain already in use', taken.map((t) => t.hostname), 'DOMAIN_TAKEN');

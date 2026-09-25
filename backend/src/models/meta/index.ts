@@ -30,7 +30,7 @@ const platformUserSchema = new Schema(
       email: { enabledAt: Date },
       sms: { enabledAt: Date, phone: String },
       /** WebAuthn passkeys. Only the public key is stored; the private key never leaves the user's device. */
-      passkeys: [{ _id: false, credentialId: String, publicKey: String, counter: { type: Number, default: 0 }, transports: [String], deviceType: String, backedUp: Boolean, name: String, createdAt: Date, lastUsedAt: Date }],
+      passkeys: [{ _id: false, credentialId: String, publicKey: String, counter: { type: Number, default: 0 }, transports: [String], deviceType: String, backedUp: Boolean, name: String, rpId: String, createdAt: Date, lastUsedAt: Date }],
       recoveryCodes: { type: [{ _id: false, hash: String, usedAt: Date }], select: false },
       preferred: { type: String, enum: ['totp', 'email', 'sms', 'passkey'] },
     },
@@ -636,7 +636,7 @@ userDirectorySchema.index({ emailHash: 1, tenantId: 1 }, { unique: true });
 
 /** Single-use, short-lived handoff from the main-domain sign-in to a facility's own address. */
 const loginHandoffSchema = new Schema(
-  { tokenHash: { type: String, required: true, unique: true }, tenantId: { type: Schema.Types.ObjectId, required: true }, userId: { type: Schema.Types.ObjectId, required: true }, usedAt: Date, ip: String, uaHash: String, facilitySlug: String, expiresAt: { type: Date, required: true } },
+  { tokenHash: { type: String, required: true, unique: true }, tenantId: { type: Schema.Types.ObjectId, required: true }, userId: { type: Schema.Types.ObjectId, required: true }, usedAt: Date, ip: String, uaHash: String, facilitySlug: String, purpose: { type: String, enum: ['handoff', 'select'], default: 'handoff' }, mfaDone: Boolean, amr: [String], expiresAt: { type: Date, required: true } },
   { timestamps: true },
 );
 loginHandoffSchema.index({ expiresAt: 1 }, { expireAfterSeconds: 0 });

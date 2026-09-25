@@ -113,7 +113,7 @@ const userSchema = new Schema(
       email: { enabledAt: Date },
       sms: { enabledAt: Date, phone: String },
       /** WebAuthn passkeys. Only the public key is stored; the private key never leaves the user's device. */
-      passkeys: [{ _id: false, credentialId: String, publicKey: String, counter: { type: Number, default: 0 }, transports: [String], deviceType: String, backedUp: Boolean, name: String, createdAt: Date, lastUsedAt: Date }],
+      passkeys: [{ _id: false, credentialId: String, publicKey: String, counter: { type: Number, default: 0 }, transports: [String], deviceType: String, backedUp: Boolean, name: String, rpId: String, createdAt: Date, lastUsedAt: Date }],
       recoveryCodes: { type: [{ _id: false, hash: String, usedAt: Date }], select: false },
       preferred: { type: String, enum: ['totp', 'email', 'sms', 'passkey'] },
     },

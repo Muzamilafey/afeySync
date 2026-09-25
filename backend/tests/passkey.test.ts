@@ -53,7 +53,8 @@ const pk = (slug: string, path: string, body: unknown, o = `https://${hostOf(slu
 let F: Awaited<ReturnType<typeof createFacility>>;
 let admin: string;
 let user: string;
-const device = new SoftAuthenticator(hostOf(S));
+// Passkeys are registered for the shared platform domain; the origin is still the facility's own address.
+const device = new SoftAuthenticator('afeysync.test');
 
 beforeAll(async () => {
   await setupApp();
@@ -76,10 +77,10 @@ async function signInChallenge() {
 }
 
 describe('passkeys (WebAuthn) as a second factor', () => {
-  it('registers a passkey bound to this facility host with user verification required', async () => {
+  it('registers a passkey for the shared platform domain (works on accounts and every facility) with user verification required', async () => {
     const o = await t(S, user).post('/api/v1/auth/mfa/passkey/options').set('Origin', origin);
     expect(o.status).toBe(200);
-    expect(o.body.data.options.rp.id).toBe(hostOf(S));
+    expect(o.body.data.options.rp.id).toBe('afeysync.test');
     expect(o.body.data.options.authenticatorSelection.userVerification).toBe('required');
     // a response for another site is rejected
     const bad = await t(S, user).post('/api/v1/auth/mfa/passkey/confirm').set('Origin', `https://${hostOf(S2)}`).send({ challengeToken: o.body.data.challengeToken, name: 'Laptop', response: device.register(o.body.data.options.challenge, `https://${hostOf(S2)}`) });

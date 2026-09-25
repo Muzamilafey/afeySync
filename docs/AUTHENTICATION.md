@@ -167,3 +167,33 @@ be facility addresses, and the accounts address never resolves to a facility.
 Settings: `CENTRAL_LOGIN` (default `true`) and `ACCOUNTS_HOST` (default `accounts.<PLATFORM_DOMAIN>`).
 In production, point DNS and the TLS certificate for `accounts.afey.co.ke` at the same server as the
 facility subdomains. A wildcard `*.afey.co.ke` certificate covers both.
+
+### Two-step verification on the accounts address
+
+After the password, the second step (authenticator app, email or SMS code, passkey, or a recovery code)
+also happens **on the accounts address**. Only once it succeeds is the one-time link to the facility
+issued. That link is marked "verified", so the facility signs the user straight in without asking again.
+No session is ever created on the accounts address itself.
+
+* **Several facilities:** the user picks one first. Each choice is a single-use ticket bound to the
+  browser (IP + User-Agent) and valid for 5 minutes. Coming from a facility's page (`?facility=`) skips
+  the choice.
+* **Passkeys** are now registered for the shared domain (`afey.co.ke`; `localhost` locally), so they work
+  on the accounts address and on every facility address. The browser's exact origin is still checked on
+  every use. Passkeys registered before this change belong to the one facility address they were made
+  on: if that is someone's only second step, verification happens on the facility address instead, as
+  before. Adding a new passkey from **Security** moves them to the shared domain.
+
+### Reserved addresses
+
+A facility can never be given a platform address such as `accounts`, `account`, `identity`, `profile`,
+`app`, `owner`, `www`, `api`, `auth`, `login`, `admin`, `mail`, `billing`, `support`, `status`, `test`
+or `demo` (the full list is in `backend/src/modules/tenants/reservedSlugs.ts`). Registration and the
+owner portal answer "This address is already in use", exactly as for an address another facility has.
+Custom domains that are, or sit under, a platform address are refused as well.
+
+### Sign-in background
+
+The sign-in, forgot-password and reset-password pages show a mountain scene: a meadow by day (06:00–18:30
+on the device's clock) and a starry mountain lake by night. Put the photos in `frontend/public/` as
+`login-day.jpg` and `login-night.jpg`. Until then, a drawn version of each scene is shown.

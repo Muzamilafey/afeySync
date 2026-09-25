@@ -1,5 +1,7 @@
 'use client';
 
+import { AuthBackground } from '@/features/auth/AuthBackground';
+
 import { useState } from 'react';
 import Link from 'next/link';
 import { Alert, Button, ErrorText, Field, Input } from '@/components/ui';
@@ -26,8 +28,8 @@ export default function ForgotPasswordPage() {
   };
   const branding = useBranding();
   return (
-    <div className="flex min-h-screen items-center justify-center bg-gradient-to-br from-brand-900 to-slate-900 p-4">
-      <div className="surface w-full max-w-sm rounded-2xl p-6 shadow-2xl">
+    <AuthBackground>
+      <div className="surface auth-card w-full max-w-sm rounded-2xl p-6 shadow-2xl">
         <BrandMark branding={branding} subtitle={null} className="mb-3" />
         <p className="mb-4 text-lg font-semibold">Reset your password</p>
         {sent ? (
@@ -43,6 +45,6 @@ export default function ForgotPasswordPage() {
         <p className="mt-6 text-center text-sm"><Link className="text-brand-600" href="/login">Back to sign in</Link></p>
         <PoweredBy branding={branding} />
       </div>
-    </div>
+    </AuthBackground>
   );
 }

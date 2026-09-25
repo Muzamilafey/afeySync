@@ -94,3 +94,53 @@ body {
 @media (prefers-reduced-motion: reduce) {
   .animate-\[fadeUp_\.35s_ease-out\] { animation: none; }
 }
+
+/* ------------------------------------------------------------------ Sign-in scenery (day / night)
+   Photos: /login-day.jpg and /login-night.jpg in public/. Until they exist, the drawn scene below
+   them shows (the missing photo layer is simply skipped by the browser). */
+.auth-bg {
+  background-color: #0b1020;
+  background-repeat: no-repeat;
+  background-attachment: fixed;
+  transition: background 0.6s ease;
+}
+.auth-bg-night {
+  background-image:
+    linear-gradient(to bottom, rgba(4, 8, 24, 0.1), rgba(4, 8, 24, 0.45)),
+    url('/login-night.jpg'),
+    url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 1440 400' preserveAspectRatio='none'%3E%3Cpath d='M0 300 L180 210 L300 250 L470 120 L560 170 L640 90 L760 190 L880 150 L1010 230 L1160 170 L1300 240 L1440 200 L1440 400 L0 400Z' fill='%2311152b'/%3E%3Cpath d='M0 340 L160 300 L320 330 L520 290 L700 330 L900 300 L1100 335 L1300 305 L1440 330 L1440 400 L0 400Z' fill='%23070a18'/%3E%3C/svg%3E"),
+    radial-gradient(1.3px 1.3px at 20px 30px, #fff 50%, transparent 55%),
+    radial-gradient(1px 1px at 90px 120px, #e0e7ff 50%, transparent 55%),
+    radial-gradient(1.6px 1.6px at 160px 60px, #fff 50%, transparent 55%),
+    radial-gradient(1px 1px at 60px 170px, #c7d2fe 50%, transparent 55%),
+    radial-gradient(1.2px 1.2px at 140px 190px, #fff 50%, transparent 55%),
+    radial-gradient(ellipse 60% 45% at 12% 62%, rgba(236, 72, 153, 0.35), transparent 70%),
+    radial-gradient(ellipse 50% 60% at 70% 25%, rgba(129, 140, 248, 0.18), transparent 70%),
+    linear-gradient(to bottom, #050817 0%, #111338 45%, #3b1f4f 72%, #120c24 100%);
+  background-size: cover, cover, 100% 42%, 200px 200px, 230px 230px, 170px 170px, 260px 260px, 190px 190px, cover, cover, cover;
+  background-position: center, center 60%, bottom, 0 0, 40px 60px, 90px 20px, 10px 110px, 130px 80px, center, center, center;
+  background-repeat: no-repeat, no-repeat, no-repeat, repeat, repeat, repeat, repeat, repeat, no-repeat, no-repeat, no-repeat;
+}
+.auth-bg-day {
+  background-image:
+    linear-gradient(to bottom, rgba(0, 0, 0, 0), rgba(0, 0, 0, 0.18)),
+    url('/login-day.jpg'),
+    url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 1440 420' preserveAspectRatio='none'%3E%3Cpath d='M0 260 L150 170 L260 190 L420 70 L560 110 L700 40 L860 90 L1020 60 L1180 120 L1320 100 L1440 150 L1440 420 L0 420Z' fill='%23c9774a'/%3E%3Cpath d='M0 290 L200 230 L380 250 L600 200 L820 240 L1040 210 L1260 250 L1440 230 L1440 420 L0 420Z' fill='%239a9186'/%3E%3Cpath d='M0 330 L40 290 L60 320 L90 270 L120 320 L160 280 L200 330 L240 285 L280 325 L330 275 L370 330 L420 290 L470 330 L520 280 L570 325 L620 285 L680 330 L730 280 L790 325 L850 285 L910 330 L960 280 L1020 325 L1080 285 L1140 330 L1200 280 L1260 325 L1320 285 L1380 330 L1440 290 L1440 420 L0 420Z' fill='%231f4d2e'/%3E%3Cpath d='M0 370 Q360 330 720 360 T1440 350 L1440 420 L0 420Z' fill='%2366a83a'/%3E%3C/svg%3E"),
+    radial-gradient(ellipse 40% 30% at 80% 20%, rgba(255, 255, 255, 0.55), transparent 70%),
+    linear-gradient(to bottom, #4f8fcf 0%, #86b7e3 45%, #cfe3f3 75%, #e9f2e0 100%);
+  background-size: cover, cover, 100% 55%, cover, cover;
+  background-position: center, center 70%, bottom, center, center;
+  background-repeat: no-repeat;
+}
+/* The card lets a little of the scenery through without hurting legibility. */
+.auth-card {
+  background: color-mix(in srgb, var(--surface) 90%, transparent);
+  backdrop-filter: blur(12px);
+  -webkit-backdrop-filter: blur(12px);
+}
+@media (max-width: 640px) {
+  /* Fixed backgrounds jump on mobile browsers; let them scroll with the page. */
+  .auth-bg {
+    background-attachment: scroll;
+  }
+}

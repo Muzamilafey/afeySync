@@ -38,9 +38,7 @@ async function planFor(key: string | null | undefined) {
 
 export const INTERESTS = ['sha', 'dha', 'mpesa', 'sms', 'insurance', 'laboratory', 'pharmacy', 'inpatient', 'maternity', 'radiology'] as const;
 
-/** Names that can never be a facility web address. */
-const RESERVED = new Set(['accounts', 'account', 'auth', 'sso', 'id', 'login', 'www', 'owner', 'api', 'admin', 'app', 'mail', 'smtp', 'support', 'help', 'status', 'docs', 'static', 'cdn', 'assets', 'login', 'signup', 'get-started', 'onboarding', 'billing', 'afeysync', 'dashboard', 'test', 'demo', 'root', 'system']);
-export const RESERVED_SLUGS = RESERVED;
+import { ALREADY_IN_USE, isReservedSlug } from '../tenants/reservedSlugs';
 const SLUG_RE = /^[a-z0-9][a-z0-9-]{1,38}[a-z0-9]$/;
 
 const CODE_TTL_MS = 15 * 60_000;
@@ -65,14 +63,14 @@ async function approvalMode(): Promise<'manual' | 'automatic'> {
 /** Returns null when the address can be used, otherwise the reason. */
 async function slugProblem(slug: string): Promise<string | null> {
   if (!SLUG_RE.test(slug)) return 'Use 3–40 lowercase letters, digits or hyphens, starting and ending with a letter or digit.';
-  if (RESERVED.has(slug)) return 'This address is reserved.';
+  if (isReservedSlug(slug)) return ALREADY_IN_USE;
   const { Tenant, TenantDomain, FacilityApplication } = meta();
   const [tenant, domain, app] = await Promise.all([
     Tenant.exists({ slug }),
     TenantDomain.exists({ hostname: platformSubdomain(slug) }),
     FacilityApplication.exists({ slug, status: 'submitted' }),
   ]);
-  return tenant || domain || app ? 'This address is already taken.' : null;
+  return tenant || domain || app ? ALREADY_IN_USE : null;
 }
 
 async function suggestSlug(base: string) {

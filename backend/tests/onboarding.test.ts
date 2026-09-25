@@ -46,7 +46,9 @@ afterAll(teardown);
 
 describe('web address availability', () => {
   it('rejects reserved, taken and malformed addresses and suggests one', async () => {
-    expect((await pub().get('/onboarding/slug?slug=owner')).body.data).toMatchObject({ available: false, reason: 'This address is reserved.' });
+    for (const slug of ['owner', 'app', 'accounts', 'account', 'identity', 'profile']) {
+      expect((await pub().get(`/onboarding/slug?slug=${slug}`)).body.data).toMatchObject({ available: false, reason: 'This address is already in use. Please choose another.' });
+    }
     const taken = await pub().get('/onboarding/slug?slug=takenfac&name=Taken Fac');
     expect(taken.body.data.available).toBe(false);
     expect(taken.body.data.suggestion).toMatch(/^taken-fac/);

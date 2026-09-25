@@ -1,3 +1,4 @@
+import { isReservedHostname } from '../tenants/reservedSlugs';
 import { env } from '../../config/env';
 import { clearFacilityIdentityCache } from '../../integrations/hie/hieClient';
 import { platformMfaPolicy } from '../auth/ownerAuth.routes';
@@ -260,7 +261,7 @@ router.post(
     const body = parse(z.object({ hostname: z.string().toLowerCase().regex(/^(?=.{3,253}$)([a-z0-9]([a-z0-9-]{0,61}[a-z0-9])?\.)+[a-z]{2,63}$/), type: z.enum(['custom', 'branch']).default('custom'), branchId: z.string().optional() }), req.body);
     const { TenantDomain, Tenant } = meta();
     if (!(await Tenant.exists({ _id: id }))) throw notFound('Facility not found');
-    if (await TenantDomain.exists({ hostname: body.hostname })) throw conflict('Domain already in use', undefined, 'DOMAIN_TAKEN');
+    if (isReservedHostname(body.hostname) || (await TenantDomain.exists({ hostname: body.hostname }))) throw conflict('Domain already in use', undefined, 'DOMAIN_TAKEN');
     const d = await TenantDomain.create({ tenantId: id, hostname: body.hostname, type: body.type, branchId: body.branchId && isValidObjectId(body.branchId) ? body.branchId : undefined, verified: false, verificationToken: `afeysync-verify=${randomToken(16)}` });
     clearDomainCache();
     await platformAudit(req, { action: 'domain.add', resource: 'domain', resourceId: String(d._id), tenantId: id, newValue: { hostname: body.hostname } });

@@ -1,5 +1,7 @@
 'use client';
 
+import { AuthBackground } from '@/features/auth/AuthBackground';
+
 import { Suspense, useState } from 'react';
 import Link from 'next/link';
 import { useSearchParams } from 'next/navigation';
@@ -62,8 +64,8 @@ function Heading() {
 export default function ResetPasswordPage() {
   const branding = useBranding();
   return (
-    <div className="flex min-h-screen items-center justify-center bg-gradient-to-br from-brand-900 to-slate-900 p-4">
-      <div className="surface w-full max-w-sm rounded-2xl p-6 shadow-2xl">
+    <AuthBackground>
+      <div className="surface auth-card w-full max-w-sm rounded-2xl p-6 shadow-2xl">
         <BrandMark branding={branding} subtitle={null} className="mb-3" />
         <Suspense>
           <Heading />
@@ -71,6 +73,6 @@ export default function ResetPasswordPage() {
         </Suspense>
         <PoweredBy branding={branding} />
       </div>
-    </div>
+    </AuthBackground>
   );
 }
