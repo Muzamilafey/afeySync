@@ -137,4 +137,47 @@ describe('appointments', () => {
     const list = await t(S, reception).get(`/api/v1/appointments?patientId=${patientId}`);
     expect(list.body.data[0].status).toBe('checked_in');
   });
+
+  it('books by service into a free slot, shows taken slots, and refuses double-booking the patient', async () => {
+    await t(S, admin).post('/api/v1/billing/services').send({ code: 'PHYSIO', name: 'Physiotherapy session', category: 'procedure', prices: [{ priceList: 'cash', amount: 1500 }] });
+    const services = await t(S, reception).get('/api/v1/appointments/services');
+    expect(services.body.data.map((x: { code: string }) => x.code)).toContain('PHYSIO');
+    const providerId = (await t(S, admin).get('/api/v1/users?q=doc2@clin')).body.data[0]._id;
+    const day = new Date(Date.now() + 10 * 86400_000 + 3 * 3600_000).toISOString().slice(0, 10); // EAT date
+    const at10 = new Date(Date.parse(`${day}T10:00:00+03:00`));
+    expect((await t(S, reception).post('/api/v1/appointments').send({ patientId, scheduledAt: at10 })).body.error.message).toBe('Choose a service or a practitioner');
+    const svc = await t(S, reception).post('/api/v1/appointments').send({ patientId, scheduledAt: at10, serviceCode: 'physio', providerId, durationMinutes: 30 });
+    expect(svc.status).toBe(201);
+    expect(svc.body.data).toMatchObject({ bookBy: 'service', serviceCode: 'PHYSIO', serviceName: 'Physiotherapy session' });
+    const slots = (await t(S, reception).get('/api/v1/appointments/slots').query({ date: day, durationMinutes: 30, providerId })).body.data;
+    expect(slots.slots[0].label).toBe('08:00');
+    expect(slots.slots.at(-1).label).toBe('16:30');
+    expect(slots.slots.find((x: { label: string }) => x.label === '10:00')).toMatchObject({ available: false, reason: 'practitioner booked' });
+    expect(slots.slots.find((x: { label: string }) => x.label === '10:30').available).toBe(true);
+    // Same patient, another practitioner, overlapping time.
+    const doc1 = (await t(S, admin).get('/api/v1/users?q=doc@clin')).body.data[0]._id;
+    expect((await t(S, reception).post('/api/v1/appointments').send({ patientId, scheduledAt: new Date(at10.getTime() + 15 * 60_000), providerId: doc1 })).body.error.code).toBe('PATIENT_DOUBLE_BOOKED');
+  });
+
+  it('books a course all-or-nothing, and lists by tab, search and export', async () => {
+    const day = new Date(Date.now() + 20 * 86400_000 + 3 * 3600_000).toISOString().slice(0, 10);
+    const first = new Date(Date.parse(`${day}T09:00:00+03:00`));
+    const course = await t(S, reception).post('/api/v1/appointments/course').send({ patientId, scheduledAt: first, serviceCode: 'PHYSIO', sessions: 4, everyDays: 7, durationMinutes: 30 });
+    expect(course.status).toBe(201);
+    expect(course.body.data.appointments.map((x: { courseIndex: number; courseTotal: number }) => `${x.courseIndex}/${x.courseTotal}`)).toEqual(['1/4', '2/4', '3/4', '4/4']);
+    // A second course overlapping session 2 books nothing at all.
+    const before = (await t(S, reception).get('/api/v1/appointments').query({ scope: 'upcoming', patientId })).body.data.length;
+    const clash = await t(S, reception).post('/api/v1/appointments/course').send({ patientId, scheduledAt: new Date(first.getTime() + 7 * 86400_000), serviceCode: 'PHYSIO', sessions: 3, everyDays: 1, durationMinutes: 30 });
+    expect(clash.body.error.code).toBe('COURSE_CLASH');
+    expect(clash.body.error.message).toMatch(/^Nothing was booked\. 1 session\(s\) clash/);
+    expect((await t(S, reception).get('/api/v1/appointments').query({ scope: 'upcoming', patientId })).body.data).toHaveLength(before);
+    const up = await t(S, reception).get('/api/v1/appointments').query({ scope: 'upcoming', q: 'Queue' });
+    expect(up.body.data.length).toBeGreaterThanOrEqual(4);
+    expect(new Date(up.body.data[0].scheduledAt) <= new Date(up.body.data[1].scheduledAt)).toBe(true);
+    expect((await t(S, reception).get('/api/v1/appointments').query({ scope: 'past', q: 'Queue' })).body.data).toHaveLength(0);
+    const csv = await t(S, reception).get('/api/v1/appointments/export').query({ scope: 'upcoming', serviceCode: 'PHYSIO' });
+    expect(csv.headers['content-type']).toContain('text/csv');
+    expect(csv.text.split('\r\n')).toHaveLength(1 + 5);
+    expect(csv.text).toContain('Physiotherapy session');
+  });
 });

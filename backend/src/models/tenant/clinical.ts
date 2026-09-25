@@ -16,6 +16,15 @@ const appointmentSchema = new Schema(
     scheduledAt: { type: Date, required: true, index: true },
     durationMinutes: { type: Number, default: 15 },
     reason: String,
+    /** Booked for a service from the catalogue (e.g. CONS-GP) and/or a practitioner. */
+    bookBy: { type: String, enum: ['service', 'practitioner'], default: 'practitioner' },
+    serviceCode: String,
+    serviceName: String,
+    /** Part of a course of sessions (e.g. physiotherapy × 6): same courseId, 1-based index. */
+    courseId: { type: ObjectId, index: true, sparse: true },
+    courseIndex: Number,
+    courseTotal: Number,
+    notes: String,
     status: { type: String, enum: ['booked', 'checked_in', 'completed', 'cancelled', 'no_show'], default: 'booked', index: true },
     visitId: { type: ObjectId, ref: 'Visit' },
     cancelReason: String,

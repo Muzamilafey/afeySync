@@ -88,6 +88,7 @@ function Profile({ id }: { id: string }) {
             <p className="muted text-xs">Registered {fmtDate(p.createdAt)}</p>
             <div className="mt-2 flex flex-wrap justify-end gap-2">
               {can('queue.manage') && <Button size="sm" variant="outline" onClick={() => setCheckIn(true)}>Check in</Button>}
+              {can('appointments.manage') && <Link href={`/appointments/new?patientId=${p._id}`}><Button size="sm" variant="outline">Book appointment</Button></Link>}
               {can('sha.eligibility') && <Button size="sm" onClick={() => elig.mutate()} loading={elig.isPending}><ShieldCheck className="h-4 w-4" /> Check SHA eligibility</Button>}
               {can('sha.authorization') && p.clientRegistryId && p.sha?.isAlive !== false && <Link href={`/sha/visits/new?patientId=${p._id}`}><Button size="sm" variant="secondary">Start SHA visit</Button></Link>}
             </div>

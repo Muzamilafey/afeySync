@@ -77,4 +77,4 @@ export function buildSearchFilter(q: string): Record<string, unknown> {
   return or.length ? { $or: or } : { _id: null };
 }
 
-export const patientSummaryFields = 'patientNumber firstName middleName lastName gender dateOfBirth phone nationalId clientRegistryId shaNumber sha.status registeredBranchId branchIds status';
+export const patientSummaryFields = 'patientNumber firstName middleName lastName gender dateOfBirth phone email nationalId clientRegistryId shaNumber sha.status registeredBranchId branchIds status';
