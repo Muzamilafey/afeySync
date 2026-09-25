@@ -143,6 +143,12 @@ export async function startHieStub() {
       }
       if (url.pathname === '/api/v1/patients/benefits') return json(200, { data: [{ code: 'OP', name: 'Outpatient' }], pagination: { page: 1, total: 1 } });
       if (url.pathname === '/api/v1/patients/benefits/utilization') return json(200, { data: { individual_limit: 1000, individual_used: 200 } });
+      // Paths under /__test__/ exist only in this stub. Tests point a contract operation at them to exercise
+      // AfeySync's submission plumbing; they are not SHA endpoints.
+      if (url.pathname.startsWith('/api/v1/__test__/')) {
+        if (query.fail === '1' || body.includes('"FORCE_REJECT"')) return json(422, { message: 'Validation failed at SHA' });
+        return json(201, { claim_id: `EXT-${state.calls.length}` });
+      }
       return json(404, { message: 'no route' });
     });
   });

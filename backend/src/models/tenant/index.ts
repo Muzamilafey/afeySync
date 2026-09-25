@@ -228,6 +228,9 @@ const shaTransactionSchema = new Schema(
     patientId: { type: ObjectId, ref: 'Patient', required: true, index: true },
     branchId: { type: ObjectId, ref: 'Branch', required: true, index: true },
     visitId: { type: ObjectId, ref: 'Visit' },
+    invoiceId: { type: ObjectId, ref: 'Invoice', index: true },
+    /** For claims raised under a preauthorization / authorization. */
+    parentId: { type: ObjectId, ref: 'ShaTransaction' },
     benefitCode: String,
     interventionCode: String,
     accessPoint: String,
@@ -244,6 +247,13 @@ const shaTransactionSchema = new Schema(
     statusHistory: [{ _id: false, status: String, at: Date, source: String, note: String }],
     requestPayload: Mixed,
     lastResponse: Mixed,
+    submissions: { type: Number, default: 0 },
+    submittedAt: Date,
+    submittedBy: ObjectId,
+    decisionNote: String,
+    attachmentIds: [{ type: ObjectId, ref: 'Document' }],
+    /** SHA remittances recorded against this claim (each posts a Payment with method 'sha'). */
+    remittances: [{ _id: false, amount: Number, reference: String, paymentId: ObjectId, at: Date, by: ObjectId }],
     createdBy: ObjectId,
   },
   { timestamps: true },

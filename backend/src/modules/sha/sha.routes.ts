@@ -159,8 +159,8 @@ router.get(
 
 /* ---------------- Authorizations / preauths / claims: local workflow records.
    Submission to the HIE requires the corresponding contract operation to be configured by the owner. */
-const txKinds = ['authorization', 'visit_consent', 'preauthorization', 'claim', 'emergency_claim'] as const;
-const txPermission: Record<(typeof txKinds)[number], string> = {
+export const txKinds = ['authorization', 'visit_consent', 'preauthorization', 'claim', 'emergency_claim'] as const;
+export const txPermission: Record<(typeof txKinds)[number], string> = {
   authorization: 'sha.authorization',
   visit_consent: 'sha.authorization',
   preauthorization: 'sha.preauthorization',
