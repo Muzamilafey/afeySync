@@ -1,14 +1,14 @@
 import { registerHandler, PermanentJobError } from './queue';
 import { resolveIntegration } from '../modules/integrations/integrationConfigService';
 import { sendSms } from '../integrations/africastalking/smsService';
-import { sendMail } from '../integrations/smtp/smtpService';
+import { resolveMailConfig, sendMail } from '../integrations/smtp/smtpService';
 import { processCallbackEvent } from '../modules/callbacks/callbacks.routes';
 import { AppError } from '../utils/errors';
 import { loadTenant } from '../modules/tenants/tenantLoader';
 import { DHASharedHealthRecordService } from '../integrations/hie/services';
 
 const permanentIfConfig = (err: unknown) => {
-  if (err instanceof AppError && ['INTEGRATION_DISABLED', 'INTEGRATION_NOT_ENABLED_FOR_FACILITY', 'SMS_AUTH_ERROR'].includes(err.code)) throw new PermanentJobError(err.message);
+  if (err instanceof AppError && ['INTEGRATION_DISABLED', 'INTEGRATION_NOT_ENABLED_FOR_FACILITY', 'SMS_AUTH_ERROR', 'SMTP_NOT_CONFIGURED'].includes(err.code)) throw new PermanentJobError(err.message);
   throw err;
 };
 
@@ -22,7 +22,7 @@ export function registerJobHandlers() {
   });
 
   registerHandler('EMAIL', async (payload, job) => {
-    const cfg = await resolveIntegration('smtp', job.tenantId ?? null).catch(permanentIfConfig);
+    const cfg = await resolveMailConfig(job.tenantId ?? null).catch(permanentIfConfig);
     return sendMail(cfg!, { to: String(payload.to), subject: String(payload.subject), text: String(payload.text ?? ''), html: payload.html ? String(payload.html) : undefined, attachments: Array.isArray(payload.attachments) ? (payload.attachments as Array<{ filename: string; contentBase64: string; contentType?: string }>).map((a) => ({ filename: a.filename, content: Buffer.from(a.contentBase64, 'base64'), contentType: a.contentType })) : undefined });
   });
 

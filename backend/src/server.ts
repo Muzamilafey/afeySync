@@ -1,4 +1,5 @@
 import { env } from './config/env';
+import { backfillUserDirectory } from './modules/auth/directory';
 import { connectMeta, disconnectAll } from './db/connections';
 import { ensureMetaIndexes } from './models/meta';
 import { seedHieContracts } from './integrations/hie/contractService';
@@ -15,6 +16,8 @@ async function main() {
   await ensureMetaIndexes();
   await seedHieContracts();
   await seedPlans();
+  // Sign-in on the main domain looks facilities up by email; keep the directory complete.
+  void backfillUserDirectory();
   await bootstrapPlatformConfigsFromEnv();
   await runTenantMigrations();
   registerJobHandlers();

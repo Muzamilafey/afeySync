@@ -57,7 +57,7 @@ export async function runNextJob(): Promise<boolean> {
       job.status = 'queued';
       job.runAt = new Date(Date.now() + backoffMs(job.attempts));
     }
-    logger.warn({ job: String(job._id), type: job.type, attempts: job.attempts, permanent }, 'Job failed');
+    logger.warn({ job: String(job._id), type: job.type, attempts: job.attempts, permanent, error: job.lastError }, `Job failed: ${job.lastError}`);
   }
   job.lockedAt = undefined;
   await job.save();

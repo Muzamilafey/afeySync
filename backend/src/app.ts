@@ -98,6 +98,8 @@ export function createApp() {
   api.use(platformMpesaPublicRouter); // public callbacks for AfeySync subscription payments
   api.use(apiLimiter);
   api.use('/auth/login', authLimiter);
+  api.use('/auth/find-facility', authLimiter);
+  api.use('/auth/handoff', authLimiter);
   api.use('/owner/auth/login', authLimiter);
   api.use('/auth/forgot-password', authLimiter);
   api.use('/auth/reset-password', authLimiter);

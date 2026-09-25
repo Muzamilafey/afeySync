@@ -1,4 +1,5 @@
 import { Router } from 'express';
+import { registerDirectoryEntry } from '../auth/directory';
 import { isValidObjectId, Types } from 'mongoose';
 import { z } from 'zod';
 import { h } from '../../utils/asyncHandler';
@@ -95,6 +96,7 @@ usersRouter.post(
       defaultBranchId: body.branchIds[0],
       mustChangePassword: true,
     });
+    await registerDirectoryEntry(u.email, req.tenant!.id);
     await refreshTenantStats(req.tenant!.id, req.tenant!.models);
     await audit(req, { action: 'user.create', resource: 'user', resourceId: String(u._id), newValue: { ...body, password: undefined } });
     res.status(201).json({ success: true, data: { id: u._id, email: u.email, temporaryPassword } });

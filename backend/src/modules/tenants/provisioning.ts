@@ -1,4 +1,5 @@
 import { z } from 'zod';
+import { registerDirectoryEntry } from '../auth/directory';
 import { meta } from '../../models/meta';
 import { ensureTenantIndexes, tenantModels, type TenantModels } from '../../models/tenant';
 import { getTenantConnection, tenantDbName } from '../../db/tenantManager';
@@ -166,6 +167,7 @@ export async function provisionFacility(input: CreateFacilityInput, actorId?: st
       status: 'active',
     });
     steps.push('admin');
+    await registerDirectoryEntry(admin.email, String(tenantId));
 
     await TenantDomain.create({ tenantId, hostname: platformSubdomain(slug), type: 'platform_subdomain', verified: true, primary: true });
     for (const host of input.domain.customDomains) {
@@ -206,6 +208,7 @@ export async function provisionFacility(input: CreateFacilityInput, actorId?: st
       TenantDomain.deleteMany({ tenantId }),
       TenantSubscription.deleteMany({ tenantId }),
       Tenant.deleteOne({ _id: tenantId }),
+      meta().UserDirectory.deleteMany({ tenantId }),
     ]).catch(() => undefined);
     clearDomainCache();
     throw err;

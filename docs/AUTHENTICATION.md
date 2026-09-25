@@ -16,6 +16,25 @@ Google    ─┘                                   └─ otherwise ────
   `/auth/logout` and `/auth/mfa/*` work until a method is enrolled. Enrolling lifts the
   restriction and returns a fresh access token.
 
+## Signing in on the main domain
+
+Staff can sign in at the platform's main address (`afeysync.com`, or `localhost:3000` in
+development) as well as their facility's own address.
+
+* The email and password are checked against every facility where that email has an account. The
+  lookup uses a directory that stores only a hash of each email. It is filled in when users are
+  created and rebuilt at start-up.
+* The same lockout rules apply as on the facility's own sign-in page. An unknown email and a wrong
+  password get the same answer.
+* With one facility, the browser goes straight to `https://<facility>.afeysync.com/login` with a
+  one-time handoff code in the URL fragment. The code is never sent in a request URL, works once,
+  is bound to that facility and expires after 2 minutes. With several facilities, the user picks
+  one.
+* The facility page exchanges the code, then continues exactly like a normal sign-in: two-step
+  verification or passkey if enabled, and the forced password change if one is pending.
+* The facility address uses the same scheme and port as the main page, so it works on
+  `http://<slug>.localhost:3000` during development.
+
 ## Two-step verification (MFA)
 
 | Method | How | Notes |

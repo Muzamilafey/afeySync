@@ -1,4 +1,7 @@
 import { Router, type Request, type Response } from 'express';
+import { env } from '../../config/env';
+import { platformSubdomain } from '../../middleware/tenantResolver';
+import { tenantsForEmail } from './directory';
 import { tenantEntitlements } from '../plans/planService';
 import { z } from 'zod';
 import { h } from '../../utils/asyncHandler';
@@ -20,6 +23,112 @@ import { buildGoogleRouter, googleEnabled, type GoogleAdapter } from './google/g
 
 const COOKIE_PATH = '/api/v1/auth';
 const router = Router();
+
+/* ------------------------------------------------------------------ Main-domain sign-in (facility discovery) */
+const HANDOFF_TTL_MS = 2 * 60_000;
+const platformHost = (req: Request) => {
+  const host = (req.hostname || '').toLowerCase();
+  const apex = env.PLATFORM_DOMAIN.toLowerCase();
+  return host === apex || host === `www.${apex}`;
+};
+/** Builds a facility address on the same scheme and port the user is browsing (works on localhost too). */
+function facilityOrigin(req: Request, slug: string) {
+  let proto = new URL(env.FRONTEND_URL).protocol;
+  let port = new URL(env.FRONTEND_URL).port;
+  const origin = req.get('origin');
+  if (origin) {
+    try {
+      const u = new URL(origin);
+      if (u.hostname.toLowerCase() === (req.hostname || '').toLowerCase()) ({ protocol: proto, port } = u);
+    } catch {
+      /* use FRONTEND_URL */
+    }
+  }
+  return `${proto}//${platformSubdomain(slug)}${port ? `:${port}` : ''}`;
+}
+
+/** What kind of address the browser is on, so the sign-in page can adapt. Public, reveals only the facility name. */
+router.get(
+  '/context',
+  h(async (req, res) => {
+    if (req.isOwnerHost) return res.json({ success: true, data: { kind: 'owner' } });
+    if (req.hostTenantId) {
+      const t = await meta().Tenant.findById(req.hostTenantId).select('name slug status').lean();
+      return res.json({ success: true, data: { kind: 'facility', facility: t ? { name: t.name, slug: t.slug } : null } });
+    }
+    res.json({ success: true, data: { kind: platformHost(req) ? 'platform' : 'unknown' } });
+  }),
+);
+
+/**
+ * Sign-in on the main domain: finds the facilities where this email and password are valid and returns
+ * a single-use handoff link to each facility's own address. The same lockout rules as facility sign-in
+ * apply; an unknown email and a wrong password get the same answer.
+ */
+router.post(
+  '/find-facility',
+  h(async (req, res) => {
+    const body = parse(z.object({ email: z.string().email().max(200), password: z.string().min(1).max(200) }), req.body);
+    if (!platformHost(req)) throw badRequest('Sign in at your facility address', undefined, 'NOT_PLATFORM_HOST');
+    const email = body.email.toLowerCase();
+    const matches: Array<{ name: string; slug: string; url: string }> = [];
+    let locked = false;
+    for (const tenantId of await tenantsForEmail(email)) {
+      let tenant: Tenant;
+      try {
+        tenant = await loadTenant(tenantId);
+      } catch {
+        continue; // suspended or unavailable facilities are skipped
+      }
+      const user = await tenant.models.User.findOne({ email }).select('+passwordHash status failedLogins lockedUntil');
+      if (!user) continue;
+      if (user.lockedUntil && user.lockedUntil > new Date()) {
+        locked = true;
+        continue;
+      }
+      if (!(await verifyPassword(body.password, user.passwordHash))) {
+        user.failedLogins = (user.failedLogins ?? 0) + 1;
+        if (user.failedLogins >= MAX_FAILED_LOGINS) {
+          user.lockedUntil = new Date(Date.now() + LOCK_MINUTES * 60_000);
+          user.failedLogins = 0;
+        }
+        await user.save();
+        await tenant.models.AuditLog.create({ actorType: 'user', action: 'auth.login', resource: 'user', resourceId: String(user._id), newValue: { email, reason: 'bad_password', via: 'main_domain' }, result: 'failure', ip: req.ip }).catch(() => undefined);
+        continue;
+      }
+      if (user.status !== 'active') continue;
+      const token = randomToken(32);
+      await meta().LoginHandoff.create({ tokenHash: sha256(`handoff:${token}`), tenantId, userId: user._id, ip: req.ip, expiresAt: new Date(Date.now() + HANDOFF_TTL_MS) });
+      matches.push({ name: tenant.name, slug: tenant.slug, url: `${facilityOrigin(req, tenant.slug)}/login#handoff=${token}` });
+    }
+    if (!matches.length) {
+      if (locked) throw unauthorized('Account temporarily locked after failed attempts. Try again later.', 'ACCOUNT_LOCKED');
+      throw unauthorized('Invalid email or password', 'INVALID_CREDENTIALS');
+    }
+    res.json({ success: true, data: { facilities: matches } });
+  }),
+);
+
+/** Completes a main-domain sign-in on the facility's own address (then MFA, if enabled, as usual). */
+router.post(
+  '/handoff',
+  h(async (req, res) => {
+    const { token } = parse(z.object({ token: z.string().min(20).max(100) }), req.body);
+    if (!req.hostTenantId) throw badRequest('Facility could not be determined from this address.', undefined, 'TENANT_NOT_RESOLVED');
+    const invalid = () => unauthorized('This sign-in link has expired. Sign in again.', 'HANDOFF_INVALID');
+    // Consume atomically: a handoff works once, only on the facility it was issued for.
+    const handoff = await meta().LoginHandoff.findOneAndUpdate({ tokenHash: sha256(`handoff:${token}`), usedAt: null, expiresAt: { $gt: new Date() } }, { usedAt: new Date() }, { returnDocument: 'before' });
+    if (!handoff || String(handoff.tenantId) !== req.hostTenantId) throw invalid();
+    const tenant = await loadTenant(req.hostTenantId);
+    req.tenant = tenant;
+    const user = await tenant.models.User.findById(handoff.userId).select(MFA_SELECT);
+    if (!user || user.status !== 'active' || (user.lockedUntil && user.lockedUntil > new Date())) throw invalid();
+    user.failedLogins = 0;
+    user.lockedUntil = undefined;
+    await user.save();
+    res.json({ success: true, data: await afterPrimaryAuth(req, res, tenant, user, 'password') });
+  }),
+);
 
 router.post(
   '/login',
