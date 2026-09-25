@@ -8,9 +8,11 @@ import { Plus } from 'lucide-react';
 import { api } from '@/services/api';
 import { useCan } from '@/hooks/useMe';
 import { Badge, Button, Card, ErrorText, Field, Input, Loading, Modal, PageHeader, Select, Table, Tabs, Td } from '@/components/ui';
-import { fmtDate } from '@/lib/utils';
+import { fmtDate, fmtDateTime } from '@/lib/utils';
 import { PatientPicker } from '@/features/patients/PatientPicker';
 import type { Patient } from '@/types/api';
+import type { BirthNotification } from '@/features/maternity/types';
+import { Printer } from 'lucide-react';
 
 interface Preg { _id: string; ancNumber: string; edd?: string; gravida: number; para: number; riskLevel: string; riskFactors: string[]; status: string; gestation?: { weeks: number; days: number } | null; patientId: { _id: string; firstName: string; lastName: string; patientNumber: string; phone?: string } }
 const RISK_TONE: Record<string, 'green' | 'amber' | 'red'> = { low: 'green', moderate: 'amber', high: 'red' };
@@ -19,11 +21,13 @@ export default function MaternityPage() {
   const can = useCan();
   const qc = useQueryClient();
   const router = useRouter();
-  const [tab, setTab] = useState<'active' | 'in_labour' | 'delivered'>('active');
+  const [tab, setTab] = useState<'active' | 'in_labour' | 'delivered' | 'births'>('active');
+  const [search, setSearch] = useState('');
   const [open, setOpen] = useState(false);
   const [patient, setPatient] = useState<Patient | null>(null);
   const [f, setF] = useState({ lmp: '', gravida: '1', para: '0', riskFactors: '', bloodGroup: '', hivStatus: '' });
-  const q = useQuery({ queryKey: ['pregnancies', tab], queryFn: async () => (await api<Preg[]>('/maternity/pregnancies', { query: { status: tab, limit: 200 } })).data });
+  const q = useQuery({ queryKey: ['pregnancies', tab], enabled: tab !== 'births', queryFn: async () => (await api<Preg[]>('/maternity/pregnancies', { query: { status: tab, limit: 200 } })).data });
+  const births = useQuery({ queryKey: ['birth-notifications', 'register', search], enabled: tab === 'births', queryFn: async () => (await api<BirthNotification[]>('/maternity/birth-notifications', { query: { q: search || undefined, limit: 200 } })).data });
   const create = useMutation({
     mutationFn: async () => (await api<Preg>('/maternity/pregnancies', { method: 'POST', body: { patientId: patient!._id, lmp: f.lmp || undefined, gravida: Number(f.gravida), para: Number(f.para), riskFactors: f.riskFactors ? f.riskFactors.split(',').map((s) => s.trim()).filter(Boolean) : [], bloodGroup: f.bloodGroup || undefined, hivStatus: f.hivStatus || undefined } })).data,
     onSuccess: (p) => { qc.invalidateQueries({ queryKey: ['pregnancies'] }); setOpen(false); router.push(`/maternity/${p._id}`); },
@@ -31,7 +35,28 @@ export default function MaternityPage() {
   return (
     <>
       <PageHeader title="Maternity" crumbs={['Maternity']} actions={can('maternity.manage') && <Button onClick={() => setOpen(true)}><Plus className="h-4 w-4" /> Register pregnancy (ANC)</Button>} />
-      <Tabs value={tab} onChange={setTab} tabs={[{ key: 'active', label: 'Antenatal' }, { key: 'in_labour', label: 'In labour' }, { key: 'delivered', label: 'Delivered' }]} />
+      <Tabs value={tab} onChange={setTab} tabs={[{ key: 'active', label: 'Antenatal' }, { key: 'in_labour', label: 'In labour' }, { key: 'delivered', label: 'Delivered' }, { key: 'births', label: 'Birth notifications' }]} />
+      {tab === 'births' ? (
+        <Card>
+          <Input className="mb-3 max-w-sm" placeholder="Search child, mother, BN or Form B1 no." value={search} onChange={(e) => setSearch(e.target.value)} />
+          {births.isLoading && <Loading />}
+          <ErrorText error={births.error} />
+          <Table head={['Notification', 'Child', 'Born', 'Sex / nature', 'Mother', 'Issued to', 'Printed', '']} empty={(births.data ?? []).length === 0}>
+            {births.data?.map((b) => (
+              <tr key={b._id}>
+                <Td className="font-mono text-xs">{b.notificationNumber}{b.crsSerialNumber && <span className="muted block">B1 {b.crsSerialNumber}</span>}</Td>
+                <Td className="font-medium">{[b.child.firstName, b.child.otherName, b.child.fatherName].filter(Boolean).join(' ')}</Td>
+                <Td>{fmtDateTime(b.dateOfBirth)}</Td>
+                <Td className="capitalize">{b.sex} · <Badge tone={b.natureOfBirth === 'born_alive' ? 'green' : 'gray'}>{b.natureOfBirth.replace('_', ' ')}</Badge></Td>
+                <Td>{[b.mother.firstName, b.mother.lastName].filter(Boolean).join(' ')}</Td>
+                <Td className="capitalize">{b.issuedTo.relationship}{b.issuedTo.name ? ` · ${b.issuedTo.name}` : ''}</Td>
+                <Td>{b.printCount ? `${b.printCount}×` : <Badge tone="amber">not printed</Badge>}</Td>
+                <Td><Link href={`/print/birth-notification/${b._id}`} target="_blank"><Button size="sm" variant="outline"><Printer className="h-4 w-4" /> Print</Button></Link></Td>
+              </tr>
+            ))}
+          </Table>
+        </Card>
+      ) : (
       <Card>
         {q.isLoading && <Loading />}
         <Table head={['Mother', 'ANC no.', 'Gestation', 'EDD', 'G/P', 'Risk', '']} empty={(q.data ?? []).length === 0}>
@@ -48,6 +73,7 @@ export default function MaternityPage() {
           ))}
         </Table>
       </Card>
+      )}
       <Modal open={open} onClose={() => setOpen(false)} title="Register pregnancy" wide>
         <div className="grid gap-3 sm:grid-cols-3">
           <Field label="Mother" className="col-span-full"><PatientPicker value={patient} onChange={setPatient} /></Field>

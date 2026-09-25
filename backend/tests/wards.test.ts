@@ -129,6 +129,36 @@ describe('maternity', () => {
     const detail = await t(S, midwife).get(`/api/v1/maternity/pregnancies/${pid}`);
     expect(detail.body.data.pregnancy.status).toBe('delivered');
     expect(detail.body.data.labour.status).toBe('delivered');
+
+    // Baby registration + birth notification (Form B1 details), one per baby.
+    const did = d.body.data.delivery._id;
+    const bnUrl = `/api/v1/maternity/deliveries/${did}/birth-notifications`;
+    expect((await t(S, midwife).post(bnUrl).send({ babyIndex: 5, child: { firstName: 'Amina' }, issuedTo: { relationship: 'mother' } })).status).toBe(400);
+    expect((await t(S, midwife).post(bnUrl).send({ babyIndex: 0, child: { firstName: '<script>' }, issuedTo: { relationship: 'mother' } })).status).toBe(400);
+    const bn = await t(S, midwife).post(bnUrl).send({ babyIndex: 0, child: { firstName: 'Amina', otherName: 'Wanjiku', fatherName: 'Hassan' }, motherIdNumber: '34543802', issuedTo: { relationship: 'mother' }, sex: 'male', typeOfBirth: 'single' });
+    expect(bn.status).toBe(201);
+    expect(bn.body.data).toMatchObject({ notificationNumber: expect.stringMatching(/^BN-\d{6}$/), sex: 'female', typeOfBirth: 'twin', natureOfBirth: 'born_alive', birthWeightGrams: 2300, mother: { firstName: 'Halima', lastName: 'Ali', idNumber: '34543802' } });
+    expect(bn.body.data.crsSerialNumber).toBeUndefined(); // never generated
+    expect(bn.body.data.placeOfBirth).toContain(`${S} Hospital`);
+    const named = await t(S, admin).get(`/api/v1/patients/${baby.newbornPatientId}`);
+    expect(named.body.data).toMatchObject({ firstName: 'Amina', middleName: 'Wanjiku', lastName: 'Hassan' });
+    expect((await t(S, midwife).post(bnUrl).send({ babyIndex: 0, child: { firstName: 'Again' }, issuedTo: { relationship: 'mother' } })).body.error.code).toBe('BIRTH_NOTIFICATION_EXISTS');
+    // Stillbirth: notified as born dead, no newborn record.
+    const still = await t(S, midwife).post(bnUrl).send({ babyIndex: 1, child: { firstName: 'Baraka' }, issuedTo: { relationship: 'father', name: 'Hassan Ali' } });
+    expect(still.body.data).toMatchObject({ natureOfBirth: 'born_dead', sex: 'male' });
+    expect(still.body.data.newbornPatientId).toBeUndefined();
+    // Corrections need a reason and keep the old values.
+    const id = bn.body.data._id;
+    expect((await t(S, midwife).patch(`/api/v1/maternity/birth-notifications/${id}`).send({ child: { firstName: 'Aminah', fatherName: 'Hassan' } })).status).toBe(400);
+    const fix = await t(S, midwife).patch(`/api/v1/maternity/birth-notifications/${id}`).send({ child: { firstName: 'Aminah', fatherName: 'Hassan' }, crsSerialNumber: 'BG 933306', reason: 'Spelling corrected by mother' });
+    expect(fix.status).toBe(200);
+    expect(fix.body.data.corrections[0]).toMatchObject({ reason: 'Spelling corrected by mother', changes: { before: { child: { firstName: 'Amina' } } } });
+    expect((await t(S, admin).get(`/api/v1/patients/${baby.newbornPatientId}`)).body.data).toMatchObject({ firstName: 'Aminah', lastName: 'Hassan' });
+    expect((await t(S, midwife).post(`/api/v1/maternity/birth-notifications/${id}/printed`)).body.data.printCount).toBe(1);
+    expect((await t(S, midwife).post(`/api/v1/maternity/birth-notifications/${id}/printed`)).body.data.printCount).toBe(2);
+    const reg = await t(S, midwife).get('/api/v1/maternity/birth-notifications').query({ q: 'aminah' });
+    expect(reg.body.data.map((x: { _id: string }) => x._id)).toEqual([id]);
+    expect((await t(S, midwife).get(bnUrl)).body.data).toHaveLength(2);
   });
 });
 

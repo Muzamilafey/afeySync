@@ -188,7 +188,43 @@ const fpVisitSchema = new Schema(
   { timestamps: true },
 );
 
+/**
+ * The facility's acknowledgement of a birth notification (the Form B1 details), one per baby.
+ * The birth is registered, and the certificate issued, by the Civil Registration Service. This
+ * record only captures what the facility notified and handed to the parent.
+ */
+const birthNotificationSchema = new Schema(
+  {
+    notificationNumber: { type: String, required: true, unique: true },
+    deliveryId: { type: ObjectId, ref: 'Delivery', required: true, index: true },
+    babyIndex: { type: Number, required: true, min: 0 },
+    newbornPatientId: { type: ObjectId, ref: 'Patient' },
+    motherId: { type: ObjectId, ref: 'Patient', required: true, index: true },
+    branchId: { type: ObjectId, ref: 'Branch', required: true, index: true },
+    /** Serial number of the official Form B1, if the facility filled one in. Typed in by staff, never generated. */
+    crsSerialNumber: String,
+    child: { firstName: { type: String, required: true }, otherName: String, fatherName: String },
+    sex: { type: String, enum: ['male', 'female', 'unknown'], required: true },
+    dateOfBirth: { type: Date, required: true },
+    typeOfBirth: { type: String, enum: ['single', 'twin', 'triplet', 'other'], required: true },
+    typeOfBirthOther: String,
+    natureOfBirth: { type: String, enum: ['born_alive', 'born_dead'], required: true },
+    placeOfBirth: { type: String, required: true },
+    birthWeightGrams: Number,
+    mother: { firstName: { type: String, required: true }, middleName: String, lastName: String, idNumber: String },
+    issuedTo: { relationship: { type: String, required: true }, name: String, idNumber: String },
+    issuedBy: ObjectId,
+    issuedByName: String,
+    printCount: { type: Number, default: 0 },
+    lastPrintedAt: Date,
+    corrections: [{ _id: false, at: Date, by: ObjectId, byName: String, reason: String, changes: Schema.Types.Mixed }],
+  },
+  { timestamps: true },
+);
+birthNotificationSchema.index({ deliveryId: 1, babyIndex: 1 }, { unique: true });
+
 export const maternitySchemas = {
+  BirthNotification: birthNotificationSchema,
   Pregnancy: pregnancySchema,
   AncVisit: ancVisitSchema,
   Labour: labourSchema,

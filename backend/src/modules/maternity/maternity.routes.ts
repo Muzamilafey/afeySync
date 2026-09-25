@@ -1,7 +1,7 @@
 import { Router, type Request } from 'express';
 import { z } from 'zod';
 import { h } from '../../utils/asyncHandler';
-import { pagination, parse } from '../../utils/validate';
+import { escapeRegex, pagination, parse } from '../../utils/validate';
 import { badRequest, conflict, forbidden, notFound } from '../../utils/errors';
 import { authenticateTenant, requireAnyPermission, requireBranch, requirePermission } from '../../middleware/auth';
 import { branchFilter, canAccessAnyBranch } from '../../middleware/branchScope';
@@ -251,6 +251,148 @@ maternityRouter.post(
     await m.Labour.updateMany({ pregnancyId: preg._id, status: 'in_progress' }, { status: 'delivered' });
     await audit(req, { action: 'maternity.delivery', resource: 'pregnancy', resourceId: String(preg._id), newValue: { mode: body.mode, babies: babies.length, flags } });
     res.status(201).json({ success: true, data: { delivery: d, flags } });
+  }),
+);
+
+/* ------------------------------------------------------------ Baby registration & birth notification */
+const nameText = z.string().trim().min(1).max(60).regex(/^[\p{L}' .-]+$/u, 'Use letters only');
+const bnInput = z.object({
+  child: z.object({ firstName: nameText, otherName: nameText.optional(), fatherName: nameText.optional() }),
+  motherIdNumber: z.string().trim().max(20).optional(),
+  issuedTo: z.object({ relationship: z.enum(['mother', 'father', 'guardian', 'other']), name: z.string().trim().max(120).optional(), idNumber: z.string().trim().max(20).optional() }),
+  crsSerialNumber: z.string().trim().max(30).optional(),
+});
+const BIRTH_TYPES = ['single', 'twin', 'triplet'] as const;
+
+/** Names the newborn's patient record after the child's registered names (First / Other / Father's name). */
+async function registerBabyName(req: Request, patientId: unknown, child: { firstName: string; otherName?: string; fatherName?: string }, motherLastName: string) {
+  if (!patientId) return null;
+  const baby = await req.tenant!.models.Patient.findById(patientId);
+  if (!baby) return null;
+  const before = { firstName: baby.firstName, middleName: baby.middleName, lastName: baby.lastName };
+  const rest = [child.otherName, child.fatherName].filter(Boolean) as string[];
+  baby.firstName = child.firstName;
+  baby.middleName = rest.length === 2 ? rest[0] : undefined;
+  baby.lastName = rest.at(-1) ?? motherLastName;
+  await baby.save();
+  return { before, after: { firstName: baby.firstName, middleName: baby.middleName, lastName: baby.lastName } };
+}
+
+async function placeOfBirth(req: Request, branchId: unknown) {
+  const b = await req.tenant!.models.Branch.findById(branchId).select('branchName county subCounty').lean();
+  return [req.tenant!.name, b?.branchName, b?.subCounty, b?.county].filter(Boolean).join(', ');
+}
+
+maternityRouter.get(
+  '/deliveries/:id/birth-notifications',
+  requireAnyPermission('maternity.view', 'mch.view'),
+  h(async (req, res) => {
+    const m = req.tenant!.models;
+    const d = await loadScoped(req, m.Delivery, req.params.id, 'Delivery');
+    res.json({ success: true, data: await m.BirthNotification.find({ deliveryId: d._id }).sort({ babyIndex: 1 }).lean() });
+  }),
+);
+
+maternityRouter.post(
+  '/deliveries/:id/birth-notifications',
+  requirePermission('maternity.manage'),
+  h(async (req, res) => {
+    const body = parse(bnInput.extend({ babyIndex: z.number().int().min(0).max(5) }), req.body);
+    const m = req.tenant!.models;
+    const d = await loadScoped(req, m.Delivery, req.params.id, 'Delivery');
+    const baby = d.babies[body.babyIndex];
+    if (!baby) throw badRequest('That baby is not on this delivery record');
+    if (await m.BirthNotification.exists({ deliveryId: d._id, babyIndex: body.babyIndex })) throw conflict('A birth notification already exists for this baby. Open it to reprint or correct it.', undefined, 'BIRTH_NOTIFICATION_EXISTS');
+    const mother = await m.Patient.findById(d.motherId).select('firstName middleName lastName nationalId').lean();
+    if (!mother) throw notFound('Mother not found');
+    // Sex, date, type and nature of birth come from the delivery record, never from the form.
+    const count = d.babies.length;
+    const bn = await m.BirthNotification.create({
+      notificationNumber: await nextNumber(m, 'birth_notification', 'BN'),
+      deliveryId: d._id,
+      babyIndex: body.babyIndex,
+      newbornPatientId: baby.newbornPatientId,
+      motherId: d.motherId,
+      branchId: d.branchId,
+      crsSerialNumber: body.crsSerialNumber || undefined,
+      child: body.child,
+      sex: baby.sex ?? 'unknown',
+      dateOfBirth: d.deliveredAt,
+      typeOfBirth: BIRTH_TYPES[count - 1] ?? 'other',
+      typeOfBirthOther: count > 3 ? `${count} babies` : undefined,
+      natureOfBirth: baby.outcome === 'fresh_stillbirth' || baby.outcome === 'macerated_stillbirth' ? 'born_dead' : 'born_alive',
+      placeOfBirth: await placeOfBirth(req, d.branchId),
+      birthWeightGrams: baby.birthWeightGrams,
+      mother: { firstName: mother.firstName, middleName: mother.middleName, lastName: mother.lastName, idNumber: body.motherIdNumber || mother.nationalId || undefined },
+      issuedTo: body.issuedTo,
+      issuedBy: req.user!.id,
+      issuedByName: req.user!.name,
+    });
+    const renamed = await registerBabyName(req, baby.newbornPatientId, body.child, mother.lastName);
+    await audit(req, { action: 'maternity.birth_notification', resource: 'birth_notification', resourceId: String(bn._id), newValue: { notificationNumber: bn.notificationNumber, babyIndex: body.babyIndex, newborn: renamed?.after } });
+    res.status(201).json({ success: true, data: bn });
+  }),
+);
+
+maternityRouter.get(
+  '/birth-notifications',
+  requireAnyPermission('maternity.view', 'mch.view'),
+  h(async (req, res) => {
+    const m = req.tenant!.models;
+    const { page, limit, skip } = pagination(req.query, 200);
+    const filter: Record<string, unknown> = { ...branchFilter(req) };
+    const q = String(req.query.q ?? '').trim();
+    if (q) {
+      const rx = new RegExp(escapeRegex(q), 'i');
+      filter.$or = [{ notificationNumber: rx }, { crsSerialNumber: rx }, { 'child.firstName': rx }, { 'child.fatherName': rx }, { 'mother.firstName': rx }, { 'mother.lastName': rx }];
+    }
+    const [items, total] = await Promise.all([m.BirthNotification.find(filter).sort({ dateOfBirth: -1 }).skip(skip).limit(limit).lean(), m.BirthNotification.countDocuments(filter)]);
+    res.json({ success: true, data: items, meta: { page, limit, total } });
+  }),
+);
+
+maternityRouter.get(
+  '/birth-notifications/:id',
+  requireAnyPermission('maternity.view', 'mch.view'),
+  h(async (req, res) => {
+    const bn = await loadScoped(req, req.tenant!.models.BirthNotification, req.params.id, 'Birth notification');
+    res.json({ success: true, data: bn });
+  }),
+);
+
+/** Corrections are allowed but never silent: a reason is required and the old values are kept. */
+maternityRouter.patch(
+  '/birth-notifications/:id',
+  requirePermission('maternity.manage'),
+  h(async (req, res) => {
+    const body = parse(bnInput.partial().extend({ reason: z.string().trim().min(5, 'Give the reason for the correction').max(300) }), req.body);
+    const m = req.tenant!.models;
+    const bn = await loadScoped(req, m.BirthNotification, req.params.id, 'Birth notification');
+    const before = { child: { ...bn.toObject().child }, motherIdNumber: bn.mother?.idNumber, issuedTo: { ...bn.toObject().issuedTo }, crsSerialNumber: bn.crsSerialNumber };
+    if (body.child) bn.child = body.child as never;
+    if (body.motherIdNumber !== undefined) bn.set('mother.idNumber', body.motherIdNumber || undefined);
+    if (body.issuedTo) bn.issuedTo = body.issuedTo as never;
+    if (body.crsSerialNumber !== undefined) bn.crsSerialNumber = body.crsSerialNumber || undefined;
+    const after = { child: body.child, motherIdNumber: body.motherIdNumber, issuedTo: body.issuedTo, crsSerialNumber: body.crsSerialNumber };
+    bn.corrections.push({ at: new Date(), by: req.user!.id, byName: req.user!.name, reason: body.reason, changes: { before, after } } as never);
+    await bn.save();
+    if (body.child) await registerBabyName(req, bn.newbornPatientId, body.child, bn.mother?.lastName ?? '');
+    await audit(req, { action: 'maternity.birth_notification_correct', resource: 'birth_notification', resourceId: String(bn._id), oldValue: before, newValue: { ...after, reason: body.reason } });
+    res.json({ success: true, data: bn });
+  }),
+);
+
+/** Records each print so reprints are traceable. */
+maternityRouter.post(
+  '/birth-notifications/:id/printed',
+  requireAnyPermission('maternity.view', 'maternity.manage'),
+  h(async (req, res) => {
+    const bn = await loadScoped(req, req.tenant!.models.BirthNotification, req.params.id, 'Birth notification');
+    bn.printCount = (bn.printCount ?? 0) + 1;
+    bn.lastPrintedAt = new Date();
+    await bn.save();
+    await audit(req, { action: bn.printCount > 1 ? 'maternity.birth_notification_reprint' : 'maternity.birth_notification_print', resource: 'birth_notification', resourceId: String(bn._id), newValue: { printCount: bn.printCount } });
+    res.json({ success: true, data: { printCount: bn.printCount } });
   }),
 );
 

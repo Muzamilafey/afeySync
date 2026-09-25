@@ -5,7 +5,10 @@ import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { CartesianGrid, Line, LineChart, ReferenceLine, ResponsiveContainer, Tooltip, XAxis, YAxis } from 'recharts';
 import { api } from '@/services/api';
 import { useCan } from '@/hooks/useMe';
-import { Alert, Badge, Button, Card, ErrorText, Field, Input, KV, Loading, Select, Stat, Table, Tabs, Td } from '@/components/ui';
+import { Alert, Badge, Button, Card, ErrorText, Field, Input, KV, Loading, Modal, Select, Stat, Table, Tabs, Td } from '@/components/ui';
+import { Printer } from 'lucide-react';
+import { BirthNotificationForm } from '@/features/maternity/BirthNotificationForm';
+import type { BirthNotification } from '@/features/maternity/types';
 import { age, fmtDate, fmtDateTime } from '@/lib/utils';
 import Link from 'next/link';
 
@@ -15,7 +18,7 @@ interface Bundle {
   patient: { _id: string; firstName: string; lastName: string; patientNumber: string; dateOfBirth?: string; phone?: string };
   anc: Array<{ _id: string; contactNumber: number; gestationWeeks?: number; weightKg?: number; systolic?: number; diastolic?: number; fundalHeightCm?: number; fetalHeartRate?: number; haemoglobin?: number; notes?: string; createdAt: string; byName?: string }>;
   labour: { _id: string; status: string; startedAt: string; activePhaseAt?: string; partograph: Entry[] } | null;
-  delivery: { deliveredAt: string; mode: string; bloodLossMl?: number; complications: string[]; babies: Array<{ sex: string; birthWeightGrams: number; apgar1?: number; apgar5?: number; outcome: string; newbornPatientId?: string }> } | null;
+  delivery: { _id: string; deliveredAt: string; mode: string; bloodLossMl?: number; complications: string[]; babies: Array<{ sex: string; birthWeightGrams: number; apgar1?: number; apgar5?: number; outcome: string; newbornPatientId?: string }> } | null;
 }
 type Tab = 'anc' | 'labour' | 'delivery';
 
@@ -67,6 +70,9 @@ export default function PregnancyPage({ params }: { params: Promise<{ id: string
   const [del, setDel] = useState({ mode: 'SVD', deliveredAt: '', bloodLossMl: '', indication: '', csType: 'emergency', placenta: 'Complete', perineum: 'Intact', attendantName: '' });
   const [babies, setBabies] = useState([{ sex: 'female', birthWeightGrams: '', apgar1: '', apgar5: '', outcome: 'live_birth' }]);
   const q = useQuery({ queryKey: ['pregnancy', id], queryFn: async () => (await api<Bundle>(`/maternity/pregnancies/${id}`)).data });
+  const deliveryId = q.data?.delivery?._id;
+  const bns = useQuery({ queryKey: ['birth-notifications', deliveryId], enabled: !!deliveryId, queryFn: async () => (await api<BirthNotification[]>(`/maternity/deliveries/${deliveryId}/birth-notifications`)).data });
+  const [bnFor, setBnFor] = useState<{ babyIndex: number; existing?: BirthNotification } | null>(null);
   const refresh = () => qc.invalidateQueries({ queryKey: ['pregnancy', id] });
   const num = (o: Record<string, string>) => Object.fromEntries(Object.entries(o).filter(([, v]) => v !== '').map(([k, v]) => [k, ['presentation', 'urineProtein', 'fetalMovement', 'notes', 'liquor', 'moulding', 'oxytocin', 'drugs', 'urine'].includes(k) ? v : Number(v)]));
   const addAnc = useMutation({ mutationFn: () => api(`/maternity/pregnancies/${id}/anc`, { method: 'POST', body: num(anc) }), onSuccess: () => { setAnc({}); refresh(); } });
@@ -146,9 +152,44 @@ export default function PregnancyPage({ params }: { params: Promise<{ id: string
           {q.data.delivery ? (
             <div className="space-y-3">
               <KV items={[['Delivered', fmtDateTime(q.data.delivery.deliveredAt)], ['Mode', q.data.delivery.mode.replace('_', ' ')], ['Blood loss', `${q.data.delivery.bloodLossMl ?? '—'} ml`], ['Complications / flags', q.data.delivery.complications.join('; ') || 'None']]} />
-              <Table head={['Baby', 'Sex', 'Weight (g)', 'APGAR 1/5', 'Outcome', '']}>
-                {q.data.delivery.babies.map((b, i) => <tr key={i}><Td>{i + 1}</Td><Td className="capitalize">{b.sex}</Td><Td className={b.birthWeightGrams < 2500 ? 'font-semibold text-red-600' : ''}>{b.birthWeightGrams}</Td><Td>{b.apgar1 ?? '—'}/{b.apgar5 ?? '—'}</Td><Td>{b.outcome.replace(/_/g, ' ')}</Td><Td>{b.newbornPatientId && <Link href={`/patients/${b.newbornPatientId}`} className="text-brand-600">Newborn record</Link>}</Td></tr>)}
+              <Table head={['Baby', 'Sex', 'Weight (g)', 'APGAR 1/5', 'Outcome', 'Registration & birth notification', '']}>
+                {q.data.delivery.babies.map((b, i) => {
+                  const bn = bns.data?.find((x) => x.babyIndex === i);
+                  return (
+                    <tr key={i}>
+                      <Td>{i + 1}</Td><Td className="capitalize">{b.sex}</Td><Td className={b.birthWeightGrams < 2500 ? 'font-semibold text-red-600' : ''}>{b.birthWeightGrams}</Td><Td>{b.apgar1 ?? '—'}/{b.apgar5 ?? '—'}</Td><Td>{b.outcome.replace(/_/g, ' ')}</Td>
+                      <Td>
+                        {bn ? (
+                          <div className="flex flex-wrap items-center gap-2">
+                            <span className="text-sm font-medium">{[bn.child.firstName, bn.child.otherName, bn.child.fatherName].filter(Boolean).join(' ')}</span>
+                            <span className="muted font-mono text-xs">{bn.notificationNumber}</span>
+                            <Link href={`/print/birth-notification/${bn._id}`} target="_blank"><Button size="sm" variant="outline"><Printer className="h-4 w-4" /> Print ({bn.printCount ? 'reprint' : '2 copies'})</Button></Link>
+                            {manage && <Button size="sm" variant="ghost" onClick={() => setBnFor({ babyIndex: i, existing: bn })}>Correct</Button>}
+                          </div>
+                        ) : manage ? (
+                          <Button size="sm" onClick={() => setBnFor({ babyIndex: i })}>Register baby &amp; birth notice</Button>
+                        ) : <span className="muted text-xs">Not yet issued</span>}
+                      </Td>
+                      <Td>{b.newbornPatientId && <Link href={`/patients/${b.newbornPatientId}`} className="text-brand-600">Newborn record</Link>}</Td>
+                    </tr>
+                  );
+                })}
               </Table>
+              <Modal open={!!bnFor} onClose={() => setBnFor(null)} title={bnFor?.existing ? `Correct ${bnFor.existing.notificationNumber}` : 'Register baby & issue birth notification'} wide>
+                {bnFor && q.data.delivery && (
+                  <BirthNotificationForm
+                    deliveryId={q.data.delivery._id}
+                    babyIndex={bnFor.babyIndex}
+                    existing={bnFor.existing}
+                    babyLabel={`Baby ${bnFor.babyIndex + 1} of ${q.data.delivery.babies.length}: ${q.data.delivery.babies[bnFor.babyIndex].sex}, ${q.data.delivery.babies[bnFor.babyIndex].birthWeightGrams} g, ${q.data.delivery.babies[bnFor.babyIndex].outcome.replace(/_/g, ' ')}, born ${fmtDateTime(q.data.delivery.deliveredAt)}`}
+                    onDone={(bn) => {
+                      setBnFor(null);
+                      qc.invalidateQueries({ queryKey: ['birth-notifications'] });
+                      if (!bnFor.existing) window.open(`/print/birth-notification/${bn._id}`, '_blank');
+                    }}
+                  />
+                )}
+              </Modal>
             </div>
           ) : manage && ['active', 'in_labour'].includes(p.status) ? (
             <div className="space-y-3">
