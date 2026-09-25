@@ -84,7 +84,7 @@ describe('SHA claims', () => {
   });
 
   it('submits through the configured operation and locks the claim', async () => {
-    await setOp('sha.claim.discharge', '/__test__/claims');
+    await setOp('sha.virtualClaim.submit', '/__test__/claims');
     const s = await t(S, shaOfficer).post(`/api/v1/sha/transactions/${claimId}/submit`);
     expect(s.status).toBe(200);
     expect(s.body.data.status).toBe('submitted');

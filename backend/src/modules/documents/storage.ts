@@ -32,6 +32,9 @@ export const localStorageDriver = {
   stream(key: string) {
     return fs.createReadStream(resolveKey(key));
   },
+  async read(key: string) {
+    return fsp.readFile(resolveKey(key));
+  },
   async exists(key: string) {
     return fsp.access(resolveKey(key)).then(() => true, () => false);
   },

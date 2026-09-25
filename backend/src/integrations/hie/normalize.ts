@@ -108,12 +108,37 @@ export function normalizeEligibility(body: unknown) {
     if (/not|inelig|inactive|suspend/i.test(statusText)) eligible = false;
     else if (/elig|active|covered|true/i.test(statusText)) eligible = true;
   }
+  const bool = (...keys: string[]) => {
+    for (const k of keys) if (typeof o[k] === 'boolean') return o[k] as boolean;
+    return null;
+  };
+  // schemes may be an array of strings or objects; POMSF variants carry suffixes, so match by prefix.
+  const schemesRaw = Array.isArray(o.schemes) ? (o.schemes as unknown[]) : [];
+  const schemes = schemesRaw.map((sc) => {
+    if (!isObj(sc)) return { code: String(sc), name: String(sc) };
+    return { code: pick(sc, 'code', 'scheme_code', 'schemeCode', 'name'), name: pick(sc, 'name', 'scheme_name', 'schemeName', 'code'), policyNumber: pick(sc, 'policy_number', 'policyNumber'), principalCrId: pick(sc, 'principal_cr_id', 'principalCrId', 'principal_member_cr_id'), raw: sc };
+  });
+  const pomsf = schemes.find((sc) => /^POMSF/i.test(sc.code ?? '') || /^POMSF/i.test(sc.name ?? ''));
+  const statusDesc = pick(o, 'statusDesc', 'status_desc');
+  if (eligible === null && statusDesc) {
+    if (/not|inelig|inactive|suspend/i.test(statusDesc)) eligible = false;
+    else if (/elig|active|covered/i.test(statusDesc)) eligible = true;
+  }
   return {
     eligible,
-    statusText,
-    memberName: pick(o, 'full_name', 'name', 'member_name', 'patient_name'),
-    clientRegistryId: pick(o, 'client_registry_id', 'cr_id', 'patient_id', 'id'),
-    scheme: pick(o, 'scheme', 'scheme_name', 'coverage', 'payer'),
+    statusText: statusText ?? statusDesc,
+    statusCode: pick(o, 'statusCode', 'status_code'),
+    memberName: pick(o, 'fullName', 'full_name', 'name', 'member_name', 'patient_name'),
+    clientRegistryId: pick(o, 'memberCrNumber', 'member_cr_number', 'client_registry_id', 'cr_id', 'patient_id', 'id'),
+    scheme: pick(o, 'scheme', 'scheme_name', 'coverage', 'payer') ?? schemes.map((sc) => sc.name).filter(Boolean).join(', '),
+    schemes,
+    pomsf: pomsf ? { code: pomsf.code, policyNumber: pomsf.policyNumber, principalCrId: pomsf.principalCrId } : null,
+    isAlive: bool('isAlive', 'is_alive'),
+    whitelistedForOTP: bool('whitelistedForOTP', 'whitelisted_for_otp'),
+    facilityBiometricsEnforced: bool('facilityBiometricsEnforced', 'facility_biometrics_enforced'),
+    age: pick(o, 'age'),
+    dateOfBirth: pick(o, 'dateOfBirth', 'date_of_birth'),
+    gender: pick(o, 'gender'),
     reason: pick(o, 'reason', 'message', 'remarks'),
     raw: o,
   };

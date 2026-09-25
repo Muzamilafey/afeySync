@@ -14,6 +14,7 @@ import { meta } from '../../models/meta';
 import { nextSequence } from '../../models/tenant';
 import { randomToken, sha256 } from '../../utils/crypto';
 import { env } from '../../config/env';
+import { assertShaTransactable } from './shaWorkflow';
 import { IntegrationSecretService } from '../integrations/secretService';
 
 const router = Router();
@@ -82,11 +83,14 @@ router.post(
         identificationNumberMasked: masked,
         eligible: result.eligible ?? undefined,
         status,
-        summary: { statusText: result.statusText, memberName: result.memberName, clientRegistryId: result.clientRegistryId, scheme: result.scheme, reason: result.reason },
+        summary: { statusText: result.statusText, memberName: result.memberName, clientRegistryId: result.clientRegistryId, scheme: result.scheme, reason: result.reason, isAlive: result.isAlive, whitelistedForOTP: result.whitelistedForOTP, facilityBiometricsEnforced: result.facilityBiometricsEnforced, schemes: result.schemes.map(({ raw: _r, ...x }) => x), pomsf: result.pomsf },
         raw: result.raw,
         checkedBy: req.user!.id,
       });
-      if (patient) await Patient.updateOne({ _id: patient._id }, { 'sha.status': status, 'sha.lastCheckedAt': new Date(), 'sha.lastCheckId': check._id });
+      if (patient) {
+        await Patient.updateOne({ _id: patient._id }, { 'sha.status': status, 'sha.lastCheckedAt': new Date(), 'sha.lastCheckId': check._id, 'sha.isAlive': result.isAlive ?? undefined, 'sha.whitelistedForOTP': result.whitelistedForOTP ?? undefined, 'sha.facilityBiometricsEnforced': result.facilityBiometricsEnforced ?? undefined, 'sha.schemes': result.schemes.map(({ raw: _r, ...x }) => x), 'sha.pomsf': result.pomsf });
+        if (result.isAlive === false) await audit(req, { action: 'sha.beneficiary_deceased', resource: 'patient', resourceId: String(patient._id), newValue: { source: 'SHA eligibility isAlive=false' } });
+      }
       await audit(req, { action: 'sha.eligibility.check', resource: 'patient', resourceId: patient ? String(patient._id) : null, newValue: { identificationType: ident.type, status } });
       res.json({ success: true, data: { id: check._id, status, eligible: result.eligible, identificationType: ident.type, ...check.summary, raw: result.raw, checkedAt: check.createdAt } });
     } catch (err) {
@@ -207,6 +211,7 @@ router.post(
     );
     if (!req.permissions!.has(txPermission[body.kind])) throw forbidden(`Missing permission: ${txPermission[body.kind]}`);
     const p = await accessiblePatient(req, body.patientId);
+    assertShaTransactable(p);
     const { ShaTransaction } = req.tenant!.models;
     const idempotencyKey = body.idempotencyKey ?? randomToken(16);
     const existing = await ShaTransaction.findOne({ idempotencyKey }).lean();

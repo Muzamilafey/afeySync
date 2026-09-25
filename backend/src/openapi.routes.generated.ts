@@ -1754,6 +1754,20 @@ export const generatedRoutes: Record<string, Record<string, RouteDoc>> = {
       "permission": "sha.eligibility"
     }
   },
+  "/api/v1/sha/biometrics/matches": {
+    "post": {
+      "summary": "Create/perform sha biometrics matches",
+      "tag": "SHA",
+      "permission": "sha.authorization"
+    }
+  },
+  "/api/v1/sha/biometrics/matches/{matchId}": {
+    "get": {
+      "summary": "Get sha biometrics matches",
+      "tag": "SHA",
+      "permission": "sha.authorization"
+    }
+  },
   "/api/v1/sha/callback-endpoints": {
     "get": {
       "summary": "Get sha callback endpoints",
@@ -1771,6 +1785,20 @@ export const generatedRoutes: Record<string, Record<string, RouteDoc>> = {
       "summary": "Get sha callback events",
       "tag": "SHA",
       "permission": "sha.view"
+    }
+  },
+  "/api/v1/sha/connection": {
+    "get": {
+      "summary": "Get sha connection",
+      "tag": "SHA",
+      "permission": "sha.view | admin.integrations"
+    }
+  },
+  "/api/v1/sha/connection/test": {
+    "post": {
+      "summary": "Create/perform sha connection test",
+      "tag": "SHA",
+      "permission": "admin.integrations"
     }
   },
   "/api/v1/sha/eligibility": {
@@ -1815,11 +1843,25 @@ export const generatedRoutes: Record<string, Record<string, RouteDoc>> = {
       "permission": "sha.eligibility"
     }
   },
+  "/api/v1/sha/pomsf-balances": {
+    "get": {
+      "summary": "Get sha pomsf balances",
+      "tag": "SHA",
+      "permission": "sha.eligibility"
+    }
+  },
   "/api/v1/sha/status": {
     "get": {
       "summary": "Get sha status",
       "tag": "SHA",
       "permission": "sha.view"
+    }
+  },
+  "/api/v1/sha/sub-benefits": {
+    "get": {
+      "summary": "Get sha sub benefits",
+      "tag": "SHA",
+      "permission": "sha.eligibility"
     }
   },
   "/api/v1/sha/transactions": {
@@ -1923,6 +1965,116 @@ export const generatedRoutes: Record<string, Record<string, RouteDoc>> = {
   "/api/v1/sha/utilization": {
     "get": {
       "summary": "Get sha utilization",
+      "tag": "SHA",
+      "permission": "sha.eligibility"
+    }
+  },
+  "/api/v1/sha/visits": {
+    "get": {
+      "summary": "Get sha visits",
+      "tag": "SHA",
+      "permission": "sha.view"
+    },
+    "post": {
+      "summary": "Create/perform sha visits",
+      "tag": "SHA",
+      "permission": "sha.authorization"
+    }
+  },
+  "/api/v1/sha/visits/{id}": {
+    "get": {
+      "summary": "Get sha visits",
+      "tag": "SHA",
+      "permission": "sha.view"
+    }
+  },
+  "/api/v1/sha/visits/{id}/authorize": {
+    "post": {
+      "summary": "Create/perform sha visits authorize",
+      "tag": "SHA",
+      "permission": "sha.authorization"
+    }
+  },
+  "/api/v1/sha/visits/{id}/claim-steps/{step}": {
+    "post": {
+      "summary": "Create/perform sha visits claim steps",
+      "tag": "SHA",
+      "permission": "sha.claim"
+    }
+  },
+  "/api/v1/sha/visits/{id}/contacts": {
+    "get": {
+      "summary": "Get sha visits contacts",
+      "tag": "SHA",
+      "permission": "sha.authorization"
+    }
+  },
+  "/api/v1/sha/visits/{id}/effective-coverage": {
+    "post": {
+      "summary": "Create/perform sha visits effective coverage",
+      "tag": "SHA",
+      "permission": "sha.claim"
+    }
+  },
+  "/api/v1/sha/visits/{id}/interventions/{op}": {
+    "post": {
+      "summary": "Create/perform sha visits interventions",
+      "tag": "SHA",
+      "permission": "sha.claim"
+    }
+  },
+  "/api/v1/sha/visits/{id}/link-claim": {
+    "post": {
+      "summary": "Create/perform sha visits link claim",
+      "tag": "SHA",
+      "permission": "sha.claim"
+    }
+  },
+  "/api/v1/sha/visits/{id}/otp": {
+    "post": {
+      "summary": "Create/perform sha visits otp",
+      "tag": "SHA",
+      "permission": "sha.authorization"
+    }
+  },
+  "/api/v1/sha/visits/{id}/preauths": {
+    "post": {
+      "summary": "Create/perform sha visits preauths",
+      "tag": "SHA",
+      "permission": "sha.preauthorization"
+    }
+  },
+  "/api/v1/sha/visits/{id}/preauths/{code}": {
+    "get": {
+      "summary": "Get sha visits preauths",
+      "tag": "SHA",
+      "permission": "sha.view"
+    }
+  },
+  "/api/v1/sha/visits/{id}/preauths/{code}/{what}": {
+    "delete": {
+      "summary": "Delete sha visits preauths",
+      "tag": "SHA",
+      "permission": "sha.preauthorization"
+    }
+  },
+  "/api/v1/sha/visits/{id}/preauths/{code}/cancel": {
+    "post": {
+      "summary": "Create/perform sha visits preauths cancel",
+      "tag": "SHA",
+      "permission": "sha.preauthorization"
+    }
+  },
+  "/api/v1/sha/visits/{id}/start": {
+    "post": {
+      "summary": "Create/perform sha visits start",
+      "tag": "SHA",
+      "permission": "sha.authorization"
+    }
+  },
+  "/api/v1/sha/workflow": {
+    "post": {
+      "summary": "Create/perform sha workflow",
       "tag": "SHA",
       "permission": "sha.eligibility"
     }

@@ -1,5 +1,6 @@
 import crypto from 'node:crypto';
 import { meta } from '../../models/meta';
+import { env } from '../../config/env';
 import { AppError } from '../../utils/errors';
 import { logger } from '../../utils/logger';
 import { resolveIntegration, type ResolvedIntegration } from '../../modules/integrations/integrationConfigService';
@@ -25,6 +26,7 @@ const tokenCache = new Map<string, CachedToken>();
 const inflight = new Map<string, Promise<CachedToken>>();
 
 export function clearTokenCache() {
+  frCache.clear();
   tokenCache.clear();
   inflight.clear();
 }
@@ -148,6 +150,27 @@ export async function hieRequest<T = unknown>(provider: HieProvider, ctx: HieCal
   return hieRequestWithConfig<T>(provider, cfg, ctx, req);
 }
 
+/**
+ * The facility's own Facility Registry code (per tenant), falling back to the integration configuration
+ * (single-facility deployments). Never the Mongo tenant ID, a CR ID or a member number.
+ */
+const frCache = new Map<string, { code: string; type: string } | null>();
+export function clearFacilityIdentityCache() {
+  frCache.clear();
+}
+async function facilityIdentity(tenantId: string | null | undefined, cfg: ResolvedIntegration) {
+  if (tenantId) {
+    if (!frCache.has(tenantId)) {
+      const t = await meta().Tenant.findById(tenantId).select('dhaRegistry').lean();
+      const code = (t?.dhaRegistry as { facilityRegistryCode?: string } | undefined)?.facilityRegistryCode;
+      frCache.set(tenantId, code ? { code, type: 'fr-code' } : null);
+    }
+    const hit = frCache.get(tenantId);
+    if (hit) return hit;
+  }
+  return cfg.settings.facilityRegistryCode ? { code: cfg.settings.facilityRegistryCode, type: cfg.settings.facilityIdType || 'fr-code' } : null;
+}
+
 export async function hieRequestWithConfig<T = unknown>(provider: HieProvider, cfg: ResolvedIntegration, ctx: HieCallContext, req: HieRequest): Promise<HieResponse<T>> {
   const op = await getOperation(provider, cfg.environment, req.operation);
   let path = op.path!;
@@ -167,10 +190,15 @@ export async function hieRequestWithConfig<T = unknown>(provider: HieProvider, c
     const headers: Record<string, string> = { Authorization: `Bearer ${token}`, Accept: 'application/json', 'X-Request-Id': requestId };
     if (req.body !== undefined) headers['Content-Type'] = op.contentType ?? 'application/json';
     if (req.idempotencyKey) headers['Idempotency-Key'] = req.idempotencyKey;
-    if (op.requiresFacilityHeaders && cfg.settings.facilityRegistryCode) {
-      headers['X-Facility-Id'] = cfg.settings.facilityRegistryCode;
-      headers['X-Facility-Id-Type'] = cfg.settings.facilityIdType || 'fr-code';
+    if (op.requiresFacilityHeaders) {
+      const fr = await facilityIdentity(ctx.tenantId, cfg);
+      if (fr) {
+        headers['X-Facility-Id'] = fr.code;
+        headers['X-Facility-Id-Type'] = fr.type;
+      }
     }
+    const multipart = typeof FormData !== 'undefined' && req.body instanceof FormData;
+    if (multipart) delete headers['Content-Type']; // fetch sets the multipart boundary
     const started = Date.now();
     let res: Response | null = null;
     let networkError: Error | null = null;
@@ -178,8 +206,8 @@ export async function hieRequestWithConfig<T = unknown>(provider: HieProvider, c
       res = await fetch(url, {
         method: op.method,
         headers,
-        body: req.body === undefined ? undefined : op.contentType === 'application/x-www-form-urlencoded' ? new URLSearchParams(req.body as Record<string, string>) : JSON.stringify(req.body),
-        signal: AbortSignal.timeout(req.timeoutMs ?? 30_000),
+        body: req.body === undefined ? undefined : multipart ? (req.body as FormData) : op.contentType === 'application/x-www-form-urlencoded' ? new URLSearchParams(req.body as Record<string, string>) : JSON.stringify(req.body),
+        signal: AbortSignal.timeout(req.timeoutMs ?? env.DHA_TIMEOUT_MS),
       });
     } catch (err) {
       networkError = err as Error;

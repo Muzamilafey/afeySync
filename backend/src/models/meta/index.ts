@@ -91,6 +91,12 @@ const tenantSchema = new Schema(
     name: { type: String, required: true, trim: true },
     legalName: String,
     facilityCode: { type: String, trim: true, index: true },
+    /** DHA HIE connection status for this facility (the FR code itself lives in dhaRegistry.facilityRegistryCode). */
+    hie: {
+      lastSuccessfulConnectionAt: Date,
+      lastError: String,
+      lastErrorAt: Date,
+    },
     registrationNumber: String,
     facilityLevel: String,
     facilityType: String,
@@ -238,6 +244,7 @@ const contractOperationSchema = new Schema(
     requiresFacilityHeaders: { type: Boolean, default: false },
     documented: { type: Boolean, default: false },
     documentationRef: String,
+    verification: { type: String, enum: ['documented', 'spec_unverified', 'owner_verified'] },
   },
   { _id: false },
 );

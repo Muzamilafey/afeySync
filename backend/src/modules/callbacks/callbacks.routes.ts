@@ -1,3 +1,4 @@
+import { env } from '../../config/env';
 import { Router, type Request } from 'express';
 import rateLimit from 'express-rate-limit';
 import { h } from '../../utils/asyncHandler';
@@ -79,6 +80,7 @@ for (const provider of ['sha', 'dha'] as const) {
   router.post(
     `/${provider}/callbacks/:token`,
     h(async (req, res) => {
+      if (env.DHA_ENABLE_CALLBACKS !== 'true') return res.status(503).json({ success: false, error: { code: 'CALLBACKS_DISABLED', message: 'Status callbacks are disabled on this deployment' } });
       const token = String(req.params.token ?? '');
       if (!/^[A-Za-z0-9_-]{20,100}$/.test(token)) return res.status(404).json({ success: false, error: { code: 'NOT_FOUND', message: 'Unknown callback endpoint' } });
       const { CallbackEndpoint, CallbackEvent } = meta();

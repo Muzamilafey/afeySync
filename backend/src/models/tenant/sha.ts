@@ -1,0 +1,122 @@
+import { Schema } from 'mongoose';
+
+const { ObjectId, Mixed } = Schema.Types;
+
+/**
+ * SHA visit / virtual claim (DHA eClaims). Keeps every DHA identifier and a trail of DHA responses for
+ * audit and reconciliation. The consent token is encrypted and hidden by default; OTPs are never stored.
+ */
+const shaVisitSchema = new Schema(
+  {
+    reference: { type: String, required: true, unique: true },
+    patientId: { type: ObjectId, ref: 'Patient', required: true, index: true },
+    branchId: { type: ObjectId, ref: 'Branch', required: true, index: true },
+    visitId: { type: ObjectId, ref: 'Visit', index: true },
+    admissionId: { type: ObjectId, ref: 'Admission' },
+    patientCrId: { type: String, required: true },
+    serviceType: { type: String, enum: ['OUTPATIENT', 'INPATIENT', 'EMERGENCY', 'CAPITATION'], required: true },
+    interventions: [
+      {
+        _id: false,
+        code: String,
+        name: String,
+        subBenefitCode: String,
+        paymentMechanism: String,
+        accessPoint: String,
+        fund: String,
+        needsPreauth: Boolean,
+        needsManualPreauthApproval: Boolean,
+        needsDoctorAuthorization: Boolean,
+        needsMemberAuthorization: Boolean,
+        needApprovalBeforeClaimSubmission: Boolean,
+        specialPreauth: [String],
+        requiredPreauthDocumentTypes: [String],
+        applicableDocumentTypes: [String],
+        state: { type: String, enum: ['active', 'retired'], default: 'active' },
+        raw: Mixed,
+      },
+    ],
+    decision: Mixed,
+    eligibility: { checkId: ObjectId, schemes: Mixed, whitelistedForOTP: Boolean, facilityBiometricsEnforced: Boolean, pomsf: Mixed },
+    consent: {
+      method: { type: String, enum: ['otp', 'biometric', 'minor_biometric'] },
+      beneficiaryContactId: String,
+      status: String,
+      authCode: String,
+      authGuid: String,
+      shaGuid: String,
+      expiry: Date,
+      verificationRequestId: String,
+      verificationUrl: String,
+      authorizedAt: Date,
+      authorizedBy: ObjectId,
+    },
+    consentToken: { type: { ciphertext: String, keyId: String }, select: false },
+    dha: {
+      claimId: String,
+      ediClaimGuid: String,
+      authorizationCode: String,
+      authorizationGuid: String,
+      beneficiaryGuid: String,
+      invoiceId: String,
+      invoiceNumber: String,
+      patientNumber: String,
+      memberNumber: String,
+      payerCode: String,
+      payerName: String,
+      payerSladeCode: String,
+      providerName: String,
+      providerSladeCode: String,
+      providerFid: String,
+      schemeCode: String,
+      schemeName: String,
+      visitNumber: String,
+      visitStart: String,
+      workflowState: String,
+      totalClaimAmount: Number,
+      totalClaimNetAmount: Number,
+      totalClaimCopay: Number,
+    },
+    practitioner: { identificationType: String, identificationNumber: String, regulationBody: String, userId: ObjectId, name: String },
+    preauths: [
+      {
+        _id: false,
+        interventionCode: String,
+        status: String,
+        preauthType: String,
+        totalEstimated: Number,
+        interimApproved: Number,
+        finalApproved: Number,
+        doctorApproved: Mixed,
+        doctorReviewStatus: String,
+        documentIds: [ObjectId],
+        submittedAt: Date,
+        submittedBy: ObjectId,
+        lastFetchedAt: Date,
+        cancelledAt: Date,
+        cancelledBy: ObjectId,
+        cancelReason: String,
+        lastResponse: Mixed,
+      },
+    ],
+    effectiveCoverage: { policyNumber: String, principalCrId: String, response: Mixed, at: Date },
+    claimTransactionId: { type: ObjectId, ref: 'ShaTransaction' },
+    claimSteps: [{ _id: false, step: String, at: Date, by: ObjectId, ok: Boolean, error: String }],
+    status: {
+      type: String,
+      enum: ['consent_pending', 'biometric_pending', 'authorized', 'visit_started', 'preauth_pending', 'in_progress', 'submitted', 'discharged', 'closed', 'cancelled'],
+      default: 'consent_pending',
+      index: true,
+    },
+    history: [{ _id: false, at: Date, action: String, by: ObjectId, byName: String, note: String }],
+    /** Recent DHA exchanges (operation, HTTP outcome and body) kept for audit/reconciliation. */
+    responses: [{ _id: false, at: Date, operation: String, ok: Boolean, code: String, data: Mixed }],
+    lastDhaError: String,
+    createdBy: ObjectId,
+  },
+  { timestamps: true },
+);
+shaVisitSchema.index({ 'dha.claimId': 1 }, { sparse: true });
+shaVisitSchema.index({ createdAt: -1 });
+
+export const shaSchemas = { ShaVisit: shaVisitSchema };

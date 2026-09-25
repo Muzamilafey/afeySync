@@ -6,6 +6,7 @@ import { pharmacySchemas } from './pharmacy';
 import { inpatientSchemas } from './inpatient';
 import { maternitySchemas } from './maternity';
 import { miscSchemas } from './misc';
+import { shaSchemas } from './sha';
 
 const { ObjectId, Mixed } = Schema.Types;
 
@@ -182,6 +183,12 @@ const patientSchema = new Schema(
       status: { type: String, enum: ['unknown', 'eligible', 'not_eligible', 'error'], default: 'unknown' },
       lastCheckedAt: Date,
       lastCheckId: ObjectId,
+      /** From SHA eligibility (isAlive). false blocks every SHA transaction for this patient. */
+      isAlive: Boolean,
+      whitelistedForOTP: Boolean,
+      facilityBiometricsEnforced: Boolean,
+      schemes: Mixed,
+      pomsf: Mixed,
     },
     consent: {
       dataSharing: { type: Boolean, default: false },
@@ -245,6 +252,7 @@ const shaTransactionSchema = new Schema(
     branchId: { type: ObjectId, ref: 'Branch', required: true, index: true },
     visitId: { type: ObjectId, ref: 'Visit' },
     invoiceId: { type: ObjectId, ref: 'Invoice', index: true },
+    shaVisitId: { type: ObjectId, ref: 'ShaVisit', index: true },
     /** For claims raised under a preauthorization / authorization. */
     parentId: { type: ObjectId, ref: 'ShaTransaction' },
     benefitCode: String,
@@ -339,7 +347,7 @@ const coreSchemas = {
   FacilitySetting: facilitySettingsSchema,
 };
 
-const schemas = { ...coreSchemas, ...billingSchemas, ...clinicalSchemas, ...labSchemas, ...pharmacySchemas, ...inpatientSchemas, ...maternitySchemas, ...miscSchemas };
+const schemas = { ...coreSchemas, ...billingSchemas, ...clinicalSchemas, ...labSchemas, ...pharmacySchemas, ...inpatientSchemas, ...maternitySchemas, ...miscSchemas, ...shaSchemas };
 
 type Schemas = typeof schemas;
 export type TenantModels = { [K in keyof Schemas]: Model<InferSchemaType<Schemas[K]>> };

@@ -38,7 +38,10 @@ const schema = z.object({
   RUN_WORKERS: bool(true),
   LOG_LEVEL: z.string().default('info'),
   // Optional bootstrap of platform-level integration credentials (imported encrypted on first boot).
+  DHA_ENV: z.enum(['uat', 'production']).default('uat'),
   DHA_BASE_URL: z.string().optional(),
+  DHA_TIMEOUT_MS: z.coerce.number().int().min(1000).max(120_000).default(30_000),
+  DHA_ENABLE_CALLBACKS: z.enum(['true', 'false']).default('true'),
   DHA_CLIENT_ID: z.string().optional(),
   DHA_CLIENT_SECRET: z.string().optional(),
   DHA_FACILITY_ID: z.string().optional(),

@@ -1,4 +1,5 @@
 import { env } from '../../config/env';
+import { clearFacilityIdentityCache } from '../../integrations/hie/hieClient';
 import { platformMfaPolicy } from '../auth/ownerAuth.routes';
 import { policySchema } from '../auth/mfa/mfaService';
 import { Router } from 'express';
@@ -165,6 +166,7 @@ router.patch(
     if (dhaFacilityRegistryCode !== undefined) update['dhaRegistry.facilityRegistryCode'] = dhaFacilityRegistryCode;
     const after = await Tenant.findByIdAndUpdate(id, { $set: update }, { returnDocument: 'after' }).lean();
     invalidateTenantCache(id);
+    clearFacilityIdentityCache();
     await platformAudit(req, { action: 'tenant.update', resource: 'tenant', resourceId: id, tenantId: id, oldValue: before, newValue: after });
     res.json({ success: true, data: after });
   }),
@@ -484,6 +486,7 @@ router.patch(
       existing.path = op.path;
       existing.method = op.method;
       existing.documented = Boolean(op.path);
+      existing.verification = op.path ? 'owner_verified' : undefined;
       if (op.documentationRef) existing.documentationRef = op.documentationRef;
     }
     contract.contractVersion = body.contractVersion;

@@ -1,3 +1,4 @@
+import { assertShaTransactable } from '../sha/shaWorkflow';
 import { Router, type Request } from 'express';
 import { z } from 'zod';
 import { h } from '../../utils/asyncHandler';
@@ -30,6 +31,7 @@ async function accessiblePatient(req: Request, id: string) {
 /** SHA visits require an eligibility check in the last 24 hours showing the member is eligible. */
 async function shaGate(req: Request, patient: { _id: unknown; sha?: { status?: string | null; lastCheckedAt?: Date | null; lastCheckId?: unknown } | null }) {
   const fresh = patient.sha?.lastCheckedAt && Date.now() - new Date(patient.sha.lastCheckedAt).getTime() < 24 * 3600_000;
+  assertShaTransactable(patient as never);
   if (patient.sha?.status !== 'eligible' || !fresh) throw new AppError(422, 'SHA_ELIGIBILITY_REQUIRED', 'Check SHA eligibility (within the last 24 hours) before starting an SHA visit, or register the visit as cash.');
   return patient.sha?.lastCheckId;
 }

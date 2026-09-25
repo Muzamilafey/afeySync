@@ -14,6 +14,7 @@ import { fhirConfig } from '../fhir/outbox';
 import { validateResource } from '../fhir/validator';
 import { completePayment, recalcInvoice } from '../billing/billingService';
 import { txPermission } from './sha.routes';
+import { assertShaTransactable } from './shaWorkflow';
 
 /**
  * SHA claim lifecycle on top of the local transaction record:
@@ -33,7 +34,7 @@ const SUBMIT_OPERATION: Record<Kind, string> = {
   authorization: 'sha.authorization.create',
   visit_consent: 'sha.visit.consent.start',
   preauthorization: 'sha.preauth.create',
-  claim: 'sha.claim.discharge',
+  claim: 'sha.virtualClaim.submit', // inpatient claims are dispatched by discharge (see below)
   emergency_claim: 'sha.emergency.claim.create',
 };
 /** Errors that mean "not sent at all" (configuration), as opposed to a failed exchange with SHA. */
@@ -82,6 +83,7 @@ router.post(
     const inv = await loadScoped(req, m.Invoice, body.invoiceId, 'Invoice');
     if (inv.status === 'void') throw conflict('Invoice is void', undefined, 'INVOICE_VOID');
     if (inv.payer?.type !== 'sha') throw new AppError(422, 'INVOICE_NOT_SHA', 'Only invoices billed to SHA can be claimed. Change the visit payer to SHA first.');
+    assertShaTransactable(await m.Patient.findById(inv.patientId).select('sha deceasedAt').lean());
     const active = await m.ShaTransaction.findOne({ invoiceId: inv._id, kind: { $in: ['claim', 'emergency_claim'] }, status: { $nin: ['cancelled', 'rejected'] } }).select('reference').lean();
     if (active) throw conflict(`Claim ${active.reference} already exists for this invoice`, { id: active._id }, 'CLAIM_EXISTS');
     const lines = inv.lines.filter((l) => !l.voided && l.amount > 0).map((l) => ({ serviceCode: l.serviceCode, description: l.description, quantity: l.quantity, unitPrice: l.unitPrice, amount: round2(l.amount) }));
@@ -177,6 +179,8 @@ router.post(
   '/transactions/:id/submit',
   h(async (req, res) => {
     const tx = await loadTx(req, req.params.id, 'kind');
+    if (tx.shaVisitId) throw conflict('This claim belongs to an SHA visit (virtual claim). Submit it from the SHA visit workflow.', { shaVisitId: tx.shaVisitId }, 'SHA_USE_VISIT_WORKFLOW');
+    assertShaTransactable(await req.tenant!.models.Patient.findById(tx.patientId).select('sha deceasedAt').lean());
     if (!['draft', 'failed'].includes(tx.status)) throw conflict(`Transaction is already ${tx.status}`, undefined, 'SHA_TX_ALREADY_SUBMITTED');
     const kind = tx.kind as Kind;
     const problems: string[] = [];
@@ -191,7 +195,8 @@ router.post(
     const attempt = (tx.submissions ?? 0) + 1;
     tx.requestPayload = claim as never;
     try {
-      const r = await hieRequest('sha', ctx(req), { operation: SUBMIT_OPERATION[kind], body: claim, idempotencyKey: `${tx.idempotencyKey}:s${attempt}` });
+      const operation = kind === 'claim' && tx.accessPoint === 'IP' ? 'sha.claim.discharge' : SUBMIT_OPERATION[kind];
+      const r = await hieRequest('sha', ctx(req), { operation, body: claim, idempotencyKey: `${tx.idempotencyKey}:s${attempt}` });
       tx.submissions = attempt;
       tx.submittedAt = new Date();
       tx.submittedBy = req.user!.id as never;

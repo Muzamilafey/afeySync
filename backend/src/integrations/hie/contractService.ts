@@ -8,11 +8,38 @@ export function invalidateContractCache() {
   cache.clear();
 }
 
-/** Seed the default HIE contract for both SHA and DHA providers if none exists. */
+/**
+ * Seed the default HIE contract for both providers, or upgrade an existing one: operations that are new in the
+ * default set are added, and default paths are filled in only where the owner has not configured a path.
+ * Paths the owner entered are never overwritten.
+ */
 export async function seedHieContracts() {
   const { IntegrationContract } = meta();
   for (const provider of ['dha', 'sha'] as const) {
-    if (await IntegrationContract.exists({ provider, active: true })) continue;
+    const existing = await IntegrationContract.find({ provider, active: true });
+    for (const contract of existing) {
+      let changed = false;
+      const ops = contract.supportedOperations as unknown as ContractOperation[];
+      for (const def of DEFAULT_HIE_OPERATIONS) {
+        const cur = ops.find((o) => o.key === def.key);
+        if (!cur) {
+          (contract.supportedOperations as unknown as ContractOperation[]).push({ ...def });
+          changed = true;
+        } else if (!cur.path && def.path) {
+          Object.assign(cur, { path: def.path, method: def.method, contentType: def.contentType, verification: def.verification, documentationRef: def.documentationRef, requiresFacilityHeaders: def.requiresFacilityHeaders, idempotent: def.idempotent });
+          changed = true;
+        } else if (cur.verification === undefined && def.verification === 'documented' && cur.path === def.path) {
+          cur.verification = 'documented';
+          changed = true;
+        }
+      }
+      if (changed) {
+        contract.markModified('supportedOperations');
+        await contract.save();
+        invalidateContractCache();
+      }
+    }
+    if (existing.length) continue;
     await IntegrationContract.create({
       provider,
       environment: 'uat',
