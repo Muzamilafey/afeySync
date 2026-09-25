@@ -1,6 +1,6 @@
 import { Router, type Request, type Response } from 'express';
 import { env } from '../../config/env';
-import { platformSubdomain } from '../../middleware/tenantResolver';
+import { explainUnknownHost, platformSubdomain } from '../../middleware/tenantResolver';
 import { tenantsForEmail } from './directory';
 import { tenantEntitlements } from '../plans/planService';
 import { z } from 'zod';
@@ -56,7 +56,8 @@ router.get(
       const t = await meta().Tenant.findById(req.hostTenantId).select('name slug status').lean();
       return res.json({ success: true, data: { kind: 'facility', facility: t ? { name: t.name, slug: t.slug } : null } });
     }
-    res.json({ success: true, data: { kind: platformHost(req) ? 'platform' : 'unknown' } });
+    if (platformHost(req)) return res.json({ success: true, data: { kind: 'platform' } });
+    res.json({ success: true, data: { kind: 'unknown', message: await explainUnknownHost(req.hostname) } });
   }),
 );
 
@@ -114,7 +115,7 @@ router.post(
   '/handoff',
   h(async (req, res) => {
     const { token } = parse(z.object({ token: z.string().min(20).max(100) }), req.body);
-    if (!req.hostTenantId) throw badRequest('Facility could not be determined from this address.', undefined, 'TENANT_NOT_RESOLVED');
+    if (!req.hostTenantId) throw badRequest(await explainUnknownHost(req.hostname), undefined, 'TENANT_NOT_RESOLVED');
     const invalid = () => unauthorized('This sign-in link has expired. Sign in again.', 'HANDOFF_INVALID');
     // Consume atomically: a handoff works once, only on the facility it was issued for.
     const handoff = await meta().LoginHandoff.findOneAndUpdate({ tokenHash: sha256(`handoff:${token}`), usedAt: null, expiresAt: { $gt: new Date() } }, { usedAt: new Date() }, { returnDocument: 'before' });
@@ -134,7 +135,7 @@ router.post(
   '/login',
   h(async (req, res) => {
     const body = parse(z.object({ email: z.string().email().max(200), password: z.string().min(1).max(200) }), req.body);
-    if (!req.hostTenantId) throw badRequest('Facility could not be determined from this address. Use your facility URL.', undefined, 'TENANT_NOT_RESOLVED');
+    if (!req.hostTenantId) throw badRequest(await explainUnknownHost(req.hostname), undefined, 'TENANT_NOT_RESOLVED');
     const tenant = await loadTenant(req.hostTenantId);
     req.tenant = tenant;
     const { User } = tenant.models;
@@ -236,7 +237,7 @@ router.use(buildMfaRouter(tenantMfa));
 
 async function hostTenant(req: Request) {
   if (!req.tenant) {
-    if (!req.hostTenantId) throw badRequest('Facility could not be determined from this address.', undefined, 'TENANT_NOT_RESOLVED');
+    if (!req.hostTenantId) throw badRequest(await explainUnknownHost(req.hostname), undefined, 'TENANT_NOT_RESOLVED');
     req.tenant = await loadTenant(req.hostTenantId);
   }
   return req.tenant;
@@ -344,7 +345,7 @@ router.post(
   '/forgot-password',
   h(async (req, res) => {
     const { email } = parse(z.object({ email: z.string().email().max(200) }), req.body);
-    if (!req.hostTenantId) throw badRequest('Facility could not be determined from this address. Use your facility URL.', undefined, 'TENANT_NOT_RESOLVED');
+    if (!req.hostTenantId) throw badRequest(await explainUnknownHost(req.hostname), undefined, 'TENANT_NOT_RESOLVED');
     const tenant = await loadTenant(req.hostTenantId);
     req.tenant = tenant;
     const user = await tenant.models.User.findOne({ email: email.toLowerCase(), status: 'active' }).lean();
@@ -363,7 +364,7 @@ router.post(
   '/reset-password',
   h(async (req, res) => {
     const body = parse(z.object({ token: z.string().min(20).max(200), newPassword: passwordPolicy }), req.body);
-    if (!req.hostTenantId) throw badRequest('Facility could not be determined from this address.', undefined, 'TENANT_NOT_RESOLVED');
+    if (!req.hostTenantId) throw badRequest(await explainUnknownHost(req.hostname), undefined, 'TENANT_NOT_RESOLVED');
     const tenant = await loadTenant(req.hostTenantId);
     req.tenant = tenant;
     const reset = await tenant.models.PasswordReset.findOne({ tokenHash: sha256(body.token) });

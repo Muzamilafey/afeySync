@@ -17,7 +17,7 @@ import type { LoginResult, MfaChallengeData } from '@/features/auth/types';
 
 const schema = z.object({ email: z.string().email('Enter a valid email'), password: z.string().min(1, 'Password is required') });
 
-interface HostContext { kind: 'facility' | 'platform' | 'owner' | 'unknown'; facility?: { name: string; slug: string } | null }
+interface HostContext { kind: 'facility' | 'platform' | 'owner' | 'unknown'; facility?: { name: string; slug: string } | null; message?: string }
 interface FacilityMatch { name: string; slug: string; url: string }
 
 function LoginForm({ ctx }: { ctx: HostContext | null }) {
@@ -93,6 +93,12 @@ function LoginForm({ ctx }: { ctx: HostContext | null }) {
     );
   return (
     <form onSubmit={onSubmit} className="space-y-4">
+      {ctx?.kind === 'unknown' && !error && ctx.message && (
+        <div role="alert" className="rounded-lg border border-amber-300 bg-amber-50 p-3 text-sm text-amber-900 dark:border-amber-800 dark:bg-amber-950/40 dark:text-amber-100">
+          {ctx.message}
+          <a href={`${window.location.protocol}//${window.location.host.split('.').slice(1).join('.') || window.location.host}/login`} className="mt-2 block font-medium underline">Go to the main sign-in page</a>
+        </div>
+      )}
       <ErrorText error={error} />
       <Field label="Email" error={formState.errors.email?.message}>
         <Input type="email" autoComplete="username" autoFocus {...register('email')} />

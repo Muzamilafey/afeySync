@@ -90,3 +90,15 @@ describe('facility address resolution', () => {
     expect((await api().get('/api/v1/auth/context').set('Host', 'no-such-facility.localhost')).body.data.kind).toBe('unknown');
   });
 });
+
+describe('explaining an address that is not an active facility', () => {
+  it('says when a registration is still waiting for approval', async () => {
+    await meta().FacilityApplication.create({ reference: 'APP-TEST0001', tokenHash: 'x'.repeat(64), slug: 'pendingfac', status: 'submitted', facility: { name: 'Pending Clinic' }, admin: { email: 'p@pending.test' } });
+    const r = await api().get('/api/v1/auth/context').set('Host', 'pendingfac.localhost:3000');
+    expect(r.body.data.kind).toBe('unknown');
+    expect(r.body.data.message).toMatch(/Pending Clinic is registered but waiting for approval/);
+    const login = await api().post('/api/v1/auth/login').set('Host', 'pendingfac.localhost:3000').send({ email: 'p@pending.test', password: 'x' });
+    expect(login.body.error).toMatchObject({ code: 'TENANT_NOT_RESOLVED', message: expect.stringMatching(/waiting for approval/) });
+    expect((await api().get('/api/v1/auth/context').set('Host', 'nothing-here.localhost')).body.data.message).toMatch(/No facility uses the address nothing-here\.localhost/);
+  });
+});
