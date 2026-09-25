@@ -5,6 +5,7 @@ import { useQuery } from '@tanstack/react-query';
 import { api } from '@/services/api';
 import { fmtDateTime, money } from '@/lib/utils';
 import { PrintButton } from '@/components/PrintButton';
+import { Letterhead } from '@/features/branding/Letterhead';
 
 interface R { payment: { receiptNumber: string; amount: number; method: string; reference?: string; receivedByName?: string; completedAt?: string; createdAt: string; mpesa?: { receiptNumber?: string } }; invoice: { invoiceNumber: string; totals: { net: number; paid: number; balance: number } }; patient: { patientNumber: string; firstName: string; lastName: string }; branch: { branchName: string; phone?: string; physicalAddress?: string }; facility: string }
 
@@ -17,9 +18,7 @@ export default function ReceiptPrint({ params }: { params: Promise<{ id: string 
     <div className="font-mono text-sm">
       <PrintButton />
       <div className="mx-auto max-w-xs space-y-1 border border-dashed p-4">
-        <p className="text-center text-base font-bold">{r.facility}</p>
-        <p className="text-center text-xs">{r.branch.branchName} {r.branch.phone && `· ${r.branch.phone}`}</p>
-        <p className="border-y border-dashed py-1 text-center font-bold">OFFICIAL RECEIPT</p>
+        <Letterhead compact title="OFFICIAL RECEIPT" />
         <p>Receipt: {r.payment.receiptNumber}</p>
         <p>Date: {fmtDateTime(r.payment.completedAt ?? r.payment.createdAt)}</p>
         <p>Patient: {r.patient.firstName} {r.patient.lastName}</p>

@@ -5,6 +5,7 @@ import { useQuery } from '@tanstack/react-query';
 import { api } from '@/services/api';
 import { age, fmtDateTime } from '@/lib/utils';
 import { PrintButton } from '@/components/PrintButton';
+import { Letterhead } from '@/features/branding/Letterhead';
 import type { LabItem } from '@/features/lab/types';
 
 interface Report { orderNumber: string; orderedByName?: string; createdAt: string; clinicalNotes?: string; items: LabItem[]; pending: string[]; patient: { patientNumber: string; firstName: string; middleName?: string; lastName: string; gender: string; dateOfBirth?: string }; branch: { branchName: string; phone?: string; physicalAddress?: string }; facility: string }
@@ -17,11 +18,7 @@ export default function LabReportPrint({ params }: { params: Promise<{ id: strin
   return (
     <div className="text-sm">
       <PrintButton />
-      <div className="border-b-2 border-black pb-2 text-center">
-        <p className="text-xl font-bold">{r.facility}</p>
-        <p>{r.branch.branchName} {r.branch.physicalAddress && `· ${r.branch.physicalAddress}`} {r.branch.phone && `· ${r.branch.phone}`}</p>
-        <p className="mt-1 font-bold tracking-wide">LABORATORY REPORT</p>
-      </div>
+      <Letterhead title="LABORATORY REPORT" meta={<p className="text-xs">{r.orderNumber}</p>} />
       <div className="my-3 grid grid-cols-2 gap-1">
         <p>Patient: <strong>{r.patient.firstName} {r.patient.middleName} {r.patient.lastName}</strong></p>
         <p>Patient No: {r.patient.patientNumber}</p>

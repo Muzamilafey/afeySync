@@ -39,6 +39,28 @@
   --muted: #94a3b8;
 }
 
+/* Paper is always light: printing from dark mode must not produce white text on white paper. */
+@media print {
+  :root,
+  :root[data-theme='dark'],
+  :root:not([data-theme='light']) {
+    --bg: #ffffff;
+    --surface: #ffffff;
+    --surface-2: #ffffff;
+    --border: #cbd5e1;
+    --text: #000000;
+    --muted: #334155;
+    color-scheme: light;
+  }
+  .surface {
+    box-shadow: none !important;
+  }
+  .letterhead img {
+    print-color-adjust: exact;
+    -webkit-print-color-adjust: exact;
+  }
+}
+
 html,
 body {
   background: var(--bg);

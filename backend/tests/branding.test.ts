@@ -55,6 +55,21 @@ describe('facility branding', () => {
     expect((await api().get('/api/v1/auth/branding/logo').set('Host', hostOf(A))).status).toBe(404);
   });
 
+  it('gives every signed-in user the letterhead (logo inline) for printouts, from any address, never another facility\'s', async () => {
+    await t(A, admin).put('/api/v1/admin/branding/logo').send({ dataBase64: `data:image/png;base64,${PNG}` });
+    const clerk = await createUser(A, admin, { email: 'clerk@brandfac.test', roleKey: 'receptionist', branchAccess: 'all', branchIds: [] });
+    const r = await t(A, clerk).get('/api/v1/auth/letterhead');
+    expect(r.status).toBe(200);
+    expect(r.body.data.name).toBe('Brand Care');
+    expect(r.body.data.logoDataUrl).toBe(`data:image/png;base64,${PNG}`);
+    expect(r.body.data.branch?.name).toBeTruthy();
+    expect((await api().get('/api/v1/auth/letterhead').set('Host', hostOf(A))).status).toBe(401);
+    // A token from facility A is not accepted on facility B's address.
+    expect([401, 403]).toContain((await api().get('/api/v1/auth/letterhead').set('Host', hostOf(B)).set('Authorization', `Bearer ${clerk}`)).status);
+    await t(A, admin).del('/api/v1/admin/branding/logo');
+    expect((await t(A, clerk).get('/api/v1/auth/letterhead')).body.data.logoDataUrl).toBeNull();
+  });
+
   it('is limited to users who manage settings', async () => {
     const nurse = await createUser(A, admin, { email: 'nurse@brandfac.test', roleKey: 'nurse', branchAccess: 'all', branchIds: [] });
     expect((await t(A, nurse).put('/api/v1/admin/branding').send({ displayName: 'Hacked' })).status).toBe(403);

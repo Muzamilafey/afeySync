@@ -51,9 +51,9 @@ export default function ReportsPage() {
 
   return (
     <>
-      <PageHeader title="Reports" subtitle="Computed live for your branch scope" crumbs={['Finance', 'Reports']} />
-      <div className="grid gap-4 lg:grid-cols-[16rem_1fr]">
-        <Card title="Reports" bodyClass="p-2">
+      <div className="print:hidden"><PageHeader title="Reports" subtitle="Computed live for your branch scope" crumbs={['Finance', 'Reports']} /></div>
+      <div className="grid gap-4 lg:grid-cols-[16rem_1fr] print:block">
+        <Card title="Reports" bodyClass="p-2" className="print:hidden">
           {list.isLoading && <Loading />}
           <ErrorText error={list.error} />
           {groups.map(([g, items]) => (
@@ -68,7 +68,7 @@ export default function ReportsPage() {
           ))}
         </Card>
         <div className="space-y-4">
-          <Card>
+          <Card className="print:hidden">
             <div className="flex flex-wrap items-end gap-2">
               {PRESETS.map(([label, fn]) => <Button key={label} size="sm" variant="ghost" onClick={() => setRange(fn())}>{label}</Button>)}
               <Input type="date" value={range.from} onChange={(e) => setRange({ ...range, from: e.target.value })} className="w-40" aria-label="From" />

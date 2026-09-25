@@ -3,7 +3,7 @@ import { env } from '../../config/env';
 import { explainUnknownHost, isLoopbackHost, platformSubdomain } from '../../middleware/tenantResolver';
 import { tenantsForEmail } from './directory';
 import { requestOrigin } from '../../utils/origin';
-import { logoFile, publicBranding } from '../branding/brandingService';
+import { editorBranding, logoFile, publicBranding } from '../branding/brandingService';
 import { tenantEntitlements } from '../plans/planService';
 import { z } from 'zod';
 import { h } from '../../utils/asyncHandler';
@@ -314,6 +314,36 @@ router.post(
     const accessToken = signAccessToken({ sub: String(user._id), scope: 'tenant', sid: String(rotated.session._id), tid, ...(rotated.session.restricted ? { rst: rotated.session.restricted } : {}) });
     setRefreshCookie(res, TENANT_RT_COOKIE, rotated.refreshToken, COOKIE_PATH, rotated.session.expiresAt);
     res.json({ success: true, data: { accessToken } });
+  }),
+);
+
+/**
+ * The letterhead printed at the top of receipts, invoices, reports and summaries: the facility's
+ * logo (inline, so it prints whichever address the user signed in on) and the branch's contact details.
+ */
+router.get(
+  '/letterhead',
+  authenticateTenant,
+  h(async (req, res) => {
+    const { Branch } = req.tenant!.models;
+    const b = await editorBranding(req.tenant!.id);
+    const branch = await Branch.findOne(req.branch ? { _id: req.branch.id } : { isMain: true, status: 'active' })
+      .select('branchName physicalAddress phone email facilityCode county subCounty')
+      .lean();
+    res.setHeader('Cache-Control', 'private, max-age=300');
+    res.json({
+      success: true,
+      data: {
+        name: b.name,
+        legalName: b.legalName,
+        tagline: b.tagline,
+        primaryColor: b.primaryColor,
+        logoDataUrl: b.logoDataUrl,
+        branch: branch
+          ? { name: branch.branchName, address: branch.physicalAddress ?? null, phone: branch.phone ?? null, email: branch.email ?? null, facilityCode: branch.facilityCode ?? null, county: branch.county ?? null }
+          : null,
+      },
+    });
   }),
 );
 

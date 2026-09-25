@@ -40,3 +40,17 @@ Changes are recorded in the facility audit trail or the platform audit log.
 | GET/PUT, PUT/DELETE `/logo` | `/api/v1/owner/tenants/:id/branding` | Owner portal |
 | GET | `/api/v1/auth/context` | Public; `branding` for facility addresses |
 | GET | `/api/v1/auth/branding/logo?v=…` | Public; the logo for the current address, cached by version |
+
+## Printed documents (letterhead)
+
+Everything the facility prints starts with its letterhead: the logo, display name, legal name,
+and the branch name, MFL code, address, phone and email. This covers receipts, invoices, lab
+reports and discharge summaries, plus any HMIS page printed from the browser (reports, for example).
+
+- The letterhead comes from `GET /api/v1/auth/letterhead`, which works for any signed-in user.
+  The logo is returned inline as a data URL, so it also prints for users who signed in on the main
+  address rather than the facility's subdomain. A token only returns its own facility's letterhead.
+- The branch details are those of the active branch, or of the main branch if none is selected.
+- When printing, the sidebar, top bar and on-screen controls are hidden, and the page always prints light (even from dark mode).
+- The Print button on the document pages waits until the letterhead has loaded, so the logo is never missing.
+- Upload or change the logo in **Admin → Branding**.

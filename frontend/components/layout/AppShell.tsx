@@ -1,6 +1,7 @@
 'use client';
 
 import Link from 'next/link';
+import { Letterhead } from '@/features/branding/Letterhead';
 import { InstallButton } from '@/features/pwa/InstallButton';
 import { usePathname, useRouter } from 'next/navigation';
 import { useEffect, useRef, useState, type ReactNode } from 'react';
@@ -308,7 +309,7 @@ export function AppShell({ children }: { children: ReactNode }) {
 
   return (
     <div className="flex min-h-screen flex-col">
-      <header className="surface sticky top-0 z-30 flex h-14 items-center gap-3 border-x-0 border-t-0 px-3 md:px-4">
+      <header className="surface sticky top-0 z-30 flex h-14 items-center gap-3 border-x-0 border-t-0 px-3 md:px-4 print:hidden">
         <button className="rounded p-1.5 md:hidden" onClick={() => setMobileOpen(true)} aria-label="Open menu">
           <Menu className="h-5 w-5" />
         </button>
@@ -353,11 +354,11 @@ export function AppShell({ children }: { children: ReactNode }) {
           )}
         </div>
       </header>
-      {me.user.kind === 'support' && <div className="bg-amber-500 px-4 py-1 text-center text-xs font-semibold text-black">AfeySync support session — time-limited, audited access</div>}
+      {me.user.kind === 'support' && <div className="print:hidden bg-amber-500 px-4 py-1 text-center text-xs font-semibold text-black">AfeySync support session — time-limited, audited access</div>}
       <div className="flex flex-1">
-        <aside className="surface sticky top-14 hidden h-[calc(100dvh-3.5rem)] w-60 shrink-0 self-start overflow-y-auto overscroll-contain border-y-0 border-l-0 md:block">{sidebar}</aside>
+        <aside className="surface sticky top-14 hidden h-[calc(100dvh-3.5rem)] w-60 shrink-0 self-start overflow-y-auto overscroll-contain border-y-0 border-l-0 md:block print:!hidden">{sidebar}</aside>
         {mobileOpen && (
-          <div className="fixed inset-0 z-40 bg-slate-900/50 md:hidden" onClick={() => setMobileOpen(false)}>
+          <div className="fixed inset-0 z-40 bg-slate-900/50 md:hidden print:hidden" onClick={() => setMobileOpen(false)}>
             <aside className="surface h-full w-64 overflow-y-auto overscroll-contain" onClick={(e) => e.stopPropagation()}>
               <div className="flex justify-end p-2">
                 <button onClick={() => setMobileOpen(false)} aria-label="Close menu"><X className="h-5 w-5" /></button>
@@ -366,7 +367,10 @@ export function AppShell({ children }: { children: ReactNode }) {
             </aside>
           </div>
         )}
-        <main className="min-w-0 flex-1 p-4 md:p-6">{children}</main>
+        <main className="min-w-0 flex-1 p-4 md:p-6 print:p-0">
+          <Letterhead className="hidden print:block" />
+          {children}
+        </main>
       </div>
     </div>
   );
