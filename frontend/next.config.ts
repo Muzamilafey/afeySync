@@ -9,6 +9,8 @@ const API_INTERNAL_URL = process.env.API_INTERNAL_URL ?? 'http://127.0.0.1:4000'
 
 const config: NextConfig = {
   poweredByHeader: false,
+  // Hide the Next.js developer-tools badge (the round "N") in development; it never appears in production.
+  devIndicators: false,
   reactStrictMode: true,
   async rewrites() {
     return [{ source: '/api/:path*', destination: `${API_INTERNAL_URL}/api/:path*` }];
