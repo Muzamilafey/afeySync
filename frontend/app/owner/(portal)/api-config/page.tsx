@@ -11,7 +11,7 @@ interface Contract { provider: string; contractVersion: string; documentationURL
 
 export default function ApiConfigPage() {
   const qc = useQueryClient();
-  const [provider, setProvider] = useState<'dha' | 'sha'>('sha');
+  const [provider, setProvider] = useState<'dha' | 'sha' | 'slade360'>('sha');
   const q = useQuery({ queryKey: ['contract', provider], queryFn: async () => (await ownerApi<Contract>(`/contracts/${provider}`)).data });
   const [edits, setEdits] = useState<Record<string, { path: string; method: string }>>({});
   const [version, setVersion] = useState('');
@@ -26,11 +26,17 @@ export default function ApiConfigPage() {
   const groups = [...new Set(q.data?.supportedOperations.map((o) => o.group))];
   return (
     <>
-      <PageHeader title="API Contract Configuration" crumbs={['Owner', 'API Config']} actions={<Select value={provider} onChange={(e) => setProvider(e.target.value as 'dha' | 'sha')}><option value="sha">SHA (HIE eClaims)</option><option value="dha">DHA HIE</option></Select>} />
+      <PageHeader title="API Contract Configuration" crumbs={['Owner', 'API Config']} actions={<Select value={provider} onChange={(e) => setProvider(e.target.value as 'dha' | 'sha' | 'slade360')}><option value="sha">SHA (HIE eClaims)</option><option value="dha">DHA HIE</option><option value="slade360">Slade360 / HealthCloud</option></Select>} />
       <div className="mb-4">
-        <Alert tone="amber" title="Source of truth: official DHA HIE documentation">
-          Only enter endpoints exactly as published in the current HIE API catalog ({q.data?.documentationURL ?? 'https://hie-docs.dha.go.ke/'}). Operations without a path are declared but disabled — AfeySync never guesses government endpoints. Changes take effect immediately without code changes.
-        </Alert>
+        {provider === 'slade360' ? (
+          <Alert tone="amber" title="Source of truth: Slade360 / HealthCloud API reference">
+            Only enter endpoints exactly as published in the HealthCloud API reference ({q.data?.documentationURL ?? 'https://web.healthcloud.sh/api-reference'}). Operations without a path are declared but disabled. Base and token URLs are configured per facility under Admin → Integrations; they are never assumed for production.
+          </Alert>
+        ) : (
+          <Alert tone="amber" title="Source of truth: official DHA HIE documentation">
+            Only enter endpoints exactly as published in the current HIE API catalog ({q.data?.documentationURL ?? 'https://hie-docs.dha.go.ke/'}). Operations without a path are declared but disabled — AfeySync never guesses government endpoints. Changes take effect immediately without code changes.
+          </Alert>
+        )}
       </div>
       {q.isLoading && <Loading />}
       <ErrorText error={q.error || save.error} />

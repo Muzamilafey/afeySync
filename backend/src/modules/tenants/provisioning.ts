@@ -60,7 +60,7 @@ export const createFacilitySchema = z.object({
   domain: z.object({ customDomains: z.array(hostname).max(5).default([]) }).default({ customDomains: [] }),
   branches: z.array(branchInput).min(1).max(50),
   integrations: z
-    .object({ sha: z.boolean(), dha: z.boolean(), mpesa: z.boolean(), africastalking: z.boolean(), smtp: z.boolean() })
+    .object({ sha: z.boolean(), dha: z.boolean(), mpesa: z.boolean(), africastalking: z.boolean(), smtp: z.boolean(), slade360: z.boolean() })
     .partial()
     .default({}),
   subscription: z

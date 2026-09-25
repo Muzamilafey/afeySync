@@ -33,7 +33,7 @@ export interface Me {
   tenant: { id: string; name: string; slug: string };
   activeBranch: { id: string; name: string; code: string } | null;
   branches: Branch[];
-  integrations: Record<'sha' | 'dha' | 'mpesa' | 'africastalking' | 'smtp', IntegrationFlag>;
+  integrations: Record<'sha' | 'dha' | 'mpesa' | 'africastalking' | 'smtp' | 'slade360', IntegrationFlag>;
 }
 
 export interface Patient {

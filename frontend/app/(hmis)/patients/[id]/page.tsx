@@ -7,6 +7,7 @@ import { ShieldCheck } from 'lucide-react';
 import { api } from '@/services/api';
 import { useCan } from '@/hooks/useMe';
 import { DocumentsPanel } from '@/features/documents/DocumentsPanel';
+import { CoveragePanel } from '@/features/insurance/CoveragePanel';
 import { Alert, Badge, Button, Card, ErrorText, Field, Input, KV, Loading, Tabs, statusTone } from '@/components/ui';
 import { EligibilityResultCard, type EligibilityResult } from '@/features/sha/EligibilityChecker';
 import { BenefitsPanel } from '@/features/sha/BenefitsPanel';
@@ -142,10 +143,10 @@ function Profile({ id }: { id: string }) {
       )}
       {tab === 'sha' && <BenefitsPanel patientId={id} hasCrId={!!p.clientRegistryId} initialView={params.get('view') ?? undefined} />}
       {tab === 'insurance' && (
-        <Card title="Insurance">
-          {(p.insurance ?? []).length === 0 ? <p className="muted text-sm">No private insurance recorded.</p> : p.insurance!.map((i) => <KV key={i.memberNumber} items={[['Provider', i.provider], ['Scheme', i.scheme], ['Member number', i.memberNumber]]} />)}
-          <div className="mt-4"><KV items={[['SHA status', shaStatus], ['Last SHA check', fmtDateTime(p.sha?.lastCheckedAt)]]} /></div>
-        </Card>
+        <div className="space-y-5">
+          {can('insurance.view') ? <CoveragePanel patientId={id} /> : (p.insurance ?? []).length > 0 && <Card title="Insurance">{p.insurance!.map((i) => <KV key={i.memberNumber} items={[['Provider', i.provider], ['Scheme', i.scheme], ['Member number', i.memberNumber]]} />)}</Card>}
+          <Card title="SHA"><KV items={[['SHA status', shaStatus], ['Last SHA check', fmtDateTime(p.sha?.lastCheckedAt)]]} /></Card>
+        </div>
       )}
       {tab === 'documents' && <DocumentsPanel patientId={id} category="identification" />}
       {tab === 'edit' && <EditPatient p={p} />}
