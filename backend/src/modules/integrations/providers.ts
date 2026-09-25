@@ -88,6 +88,17 @@ export const PROVIDER_DEFINITIONS: Record<Provider, ProviderDefinition> = {
       { key: 'password', label: 'Password' },
     ],
   },
+  google: {
+    label: 'Google Sign-In (OpenID Connect)',
+    environments: ['production'],
+    settings: [
+      { key: 'clientId', label: 'OAuth client ID', required: true },
+      { key: 'discoveryUrl', label: 'OpenID discovery URL', default: 'https://accounts.google.com/.well-known/openid-configuration' },
+      { key: 'redirectUri', label: 'Authorized redirect URI (register this exact URL in Google Cloud Console)' },
+      { key: 'hostedDomain', label: 'Restrict to a Google Workspace domain (optional)' },
+    ],
+    secrets: [{ key: 'clientSecret', label: 'OAuth client secret', required: true }],
+  },
   storage: {
     label: 'Document Storage',
     environments: ['production'],

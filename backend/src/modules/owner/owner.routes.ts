@@ -598,7 +598,7 @@ router.get(
   '/users',
   requirePermission('owner.platform'),
   h(async (_req, res) => {
-    res.json({ success: true, data: await meta().PlatformUser.find({}).select('name email role status lastLoginAt createdAt').lean() });
+    res.json({ success: true, data: await meta().PlatformUser.find({}).select('name email role status lastLoginAt createdAt mfa.totp.confirmedAt mfa.email.enabledAt google.email').lean() });
   }),
 );
 

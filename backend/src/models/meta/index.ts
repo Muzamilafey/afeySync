@@ -39,6 +39,30 @@ const platformUserSchema = new Schema(
 );
 platformUserSchema.index({ 'google.sub': 1 }, { unique: true, partialFilterExpression: { 'google.sub': { $type: 'string' } } });
 
+/** OpenID Connect (Google) sign-in / linking state. Only hashes of state and completion code are stored. */
+const oauthStateSchema = new Schema(
+  {
+    provider: { type: String, enum: ['google'], required: true },
+    portal: { type: String, enum: ['tenant', 'platform'], required: true },
+    mode: { type: String, enum: ['login', 'link'], required: true },
+    tenantId: Schema.Types.ObjectId,
+    userId: Schema.Types.ObjectId,
+    stateHash: { type: String, required: true, unique: true },
+    nonce: { type: String, required: true },
+    codeVerifier: { ciphertext: String, keyId: String },
+    returnOrigin: { type: String, required: true },
+    next: String,
+    result: { sub: String, email: String, name: String },
+    completionHash: { type: String, index: true, sparse: true },
+    completedAt: Date,
+    consumedAt: Date,
+    error: String,
+    expiresAt: { type: Date, required: true },
+  },
+  { timestamps: true },
+);
+oauthStateSchema.index({ expiresAt: 1 }, { expireAfterSeconds: 0 });
+
 /** Short-lived second-factor challenge (login or enrollment). Only a hash of the token and code is stored. */
 const mfaChallengeSchema = new Schema(
   {
@@ -165,7 +189,7 @@ const tenantSubscriptionSchema = new Schema(
 );
 
 /* ---------------------------------------------------------------- Integrations */
-export const PROVIDERS = ['sha', 'dha', 'mpesa', 'africastalking', 'smtp', 'storage'] as const;
+export const PROVIDERS = ['sha', 'dha', 'mpesa', 'africastalking', 'smtp', 'storage', 'google'] as const;
 export type Provider = (typeof PROVIDERS)[number];
 
 const integrationConfigSchema = new Schema(
@@ -412,6 +436,7 @@ const schemas = {
   Job: jobSchema,
   BackupRun: backupRunSchema,
   MfaChallenge: mfaChallengeSchema,
+  OAuthState: oauthStateSchema,
 };
 
 type Schemas = typeof schemas;

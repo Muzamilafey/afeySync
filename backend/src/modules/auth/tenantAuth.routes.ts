@@ -15,6 +15,7 @@ import { integrationStatusForTenant } from '../integrations/integrationConfigSer
 import { randomToken, sha256 } from '../../utils/crypto';
 import { notifyEmail } from '../notifications/notify';
 import { revokeAllForSubject } from './tokens';
+import { buildGoogleRouter, googleEnabled, type GoogleAdapter } from './google/google.routes';
 
 const COOKIE_PATH = '/api/v1/auth';
 const router = Router();
@@ -122,6 +123,34 @@ const tenantMfa: MfaAdapter = {
 };
 
 router.use(buildMfaRouter(tenantMfa));
+
+async function hostTenant(req: Request) {
+  if (!req.tenant) {
+    if (!req.hostTenantId) throw badRequest('Facility could not be determined from this address.', undefined, 'TENANT_NOT_RESOLVED');
+    req.tenant = await loadTenant(req.hostTenantId);
+  }
+  return req.tenant;
+}
+
+const tenantGoogle: GoogleAdapter = {
+  portal: 'tenant',
+  authenticate: authenticateTenant,
+  allowed: async (req) => {
+    if (!(await googleEnabled())) return false;
+    const tenant = await hostTenant(req);
+    const setting = await tenant.models.FacilitySetting.findOne({ key: 'security.googleLogin' }).lean();
+    return setting?.value !== false;
+  },
+  tenantId: (req) => req.tenant!.id,
+  userId: (req) => tenantMfa.userId(req),
+  findBySub: async (req, sub) => (await (await hostTenant(req)).models.User.findOne({ 'google.sub': sub }).select(MFA_SELECT)) as never,
+  findById: async (req, id) => (await (await hostTenant(req)).models.User.findById(id).select(MFA_SELECT)) as never,
+  afterPrimary: async (req, res, user) => afterPrimaryAuth(req, res, await hostTenant(req), user as unknown as UserDoc, 'google'),
+  audit: async (req, action, userId, extra, failed) => audit(req, { action, resource: 'user', resourceId: userId, newValue: extra, result: failed ? 'failure' : 'success' }),
+  notify: async (req, user, subject, text) => notifyEmail(req.tenant!.id, `google:${String(user._id)}:${Date.now()}`, user.email, `${req.tenant!.name}: ${subject}`, text),
+};
+
+router.use(buildGoogleRouter(tenantGoogle));
 
 router.post(
   '/refresh',

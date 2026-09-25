@@ -8,6 +8,7 @@ import { darajaToken } from '../../integrations/mpesa/mpesaService';
 import { IntegrationSecretService, type EncryptedValue } from './secretService';
 import { recordHealth, type ResolvedIntegration } from './integrationConfigService';
 import { PROVIDER_DEFINITIONS } from './providers';
+import { defaultRedirectUri, discovery } from '../auth/google/googleOidc';
 
 /** Materialize a config document for testing even if it is not yet enabled. */
 export async function loadConfigForTest(scope: 'platform' | 'tenant', provider: Provider, tenantId: string | null): Promise<ResolvedIntegration> {
@@ -49,6 +50,12 @@ export async function testIntegration(cfg: ResolvedIntegration, kind: TestKind =
           detail.terminology = 'OK';
         }
         detail.facility = cfg.settings.facilityRegistryCode ? 'CONFIGURED' : 'NOT SET';
+        break;
+      }
+      case 'google': {
+        if (!cfg.settings.clientId || !cfg.secrets.clientSecret) throw badRequest('Client ID and secret are required');
+        const d = await discovery({ clientId: cfg.settings.clientId, clientSecret: cfg.secrets.clientSecret, discoveryUrl: cfg.settings.discoveryUrl, redirectUri: cfg.settings.redirectUri || defaultRedirectUri() });
+        detail = { issuer: d.issuer, redirectUri: cfg.settings.redirectUri || defaultRedirectUri(), note: 'Discovery OK. Complete a real sign-in to verify the client credentials.' };
         break;
       }
       case 'smtp': {

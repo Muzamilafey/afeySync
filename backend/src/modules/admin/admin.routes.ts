@@ -1,5 +1,6 @@
 import { tenantMfaPolicy } from '../auth/tenantAuth.routes';
 import { policySchema } from '../auth/mfa/mfaService';
+import { googleEnabled } from '../auth/google/googleOidc';
 import { Router } from 'express';
 import { isValidObjectId } from 'mongoose';
 import { z } from 'zod';
@@ -168,6 +169,27 @@ router.put(
     await FacilitySetting.updateOne({ key: 'security.mfa' }, { $set: { value: policy } }, { upsert: true });
     await audit(req, { action: 'settings.mfa_policy', resource: 'setting', resourceId: 'security.mfa', oldValue: before, newValue: policy });
     res.json({ success: true, data: policy });
+  }),
+);
+
+/* Sign in with Google (facility may turn it off even when the platform provides it) */
+router.put(
+  '/security/google-login',
+  requirePermission('admin.settings'),
+  h(async (req, res) => {
+    const { enabled } = parse(z.object({ enabled: z.boolean() }), req.body);
+    await req.tenant!.models.FacilitySetting.updateOne({ key: 'security.googleLogin' }, { $set: { value: enabled } }, { upsert: true });
+    await audit(req, { action: 'settings.google_login', resource: 'setting', resourceId: 'security.googleLogin', newValue: { enabled } });
+    res.json({ success: true });
+  }),
+);
+
+router.get(
+  '/security/google-login',
+  requirePermission('admin.settings'),
+  h(async (req, res) => {
+    const s = await req.tenant!.models.FacilitySetting.findOne({ key: 'security.googleLogin' }).lean();
+    res.json({ success: true, data: { enabled: s?.value !== false, platformEnabled: await googleEnabled() } });
   }),
 );
 

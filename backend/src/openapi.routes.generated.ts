@@ -30,6 +30,30 @@ export const generatedRoutes: Record<string, Record<string, RouteDoc>> = {
       "permission": "admin.integrations"
     }
   },
+  "/api/v1/admin/security/google-login": {
+    "put": {
+      "summary": "Replace admin security google login",
+      "tag": "Admin",
+      "permission": "admin.settings"
+    },
+    "get": {
+      "summary": "Get admin security google login",
+      "tag": "Admin",
+      "permission": "admin.settings"
+    }
+  },
+  "/api/v1/admin/security/mfa-policy": {
+    "get": {
+      "summary": "Get admin security mfa policy",
+      "tag": "Admin",
+      "permission": "admin.settings"
+    },
+    "put": {
+      "summary": "Replace admin security mfa policy",
+      "tag": "Admin",
+      "permission": "admin.settings"
+    }
+  },
   "/api/v1/admin/settings": {
     "get": {
       "summary": "Get admin settings",
@@ -1011,6 +1035,12 @@ export const generatedRoutes: Record<string, Record<string, RouteDoc>> = {
       "tag": "Notifications"
     }
   },
+  "/api/v1/oauth/google/callback": {
+    "get": {
+      "summary": "Get oauth google callback",
+      "tag": "Google"
+    }
+  },
   "/api/v1/opd/diagnoses/search": {
     "get": {
       "summary": "Get opd diagnoses search",
@@ -1155,6 +1185,18 @@ export const generatedRoutes: Record<string, Record<string, RouteDoc>> = {
       "permission": "owner.integrations"
     }
   },
+  "/api/v1/owner/security/mfa-policy": {
+    "get": {
+      "summary": "Get owner security mfa policy",
+      "tag": "Owner",
+      "permission": "owner.platform"
+    },
+    "put": {
+      "summary": "Replace owner security mfa policy",
+      "tag": "Owner",
+      "permission": "owner.platform"
+    }
+  },
   "/api/v1/owner/support-access": {
     "post": {
       "summary": "Create/perform owner support access",
@@ -1275,6 +1317,13 @@ export const generatedRoutes: Record<string, Record<string, RouteDoc>> = {
     },
     "post": {
       "summary": "Create/perform owner users",
+      "tag": "Owner",
+      "permission": "owner.platform"
+    }
+  },
+  "/api/v1/owner/users/{id}/mfa/reset": {
+    "post": {
+      "summary": "Create/perform owner users mfa reset",
       "tag": "Owner",
       "permission": "owner.platform"
     }
@@ -1826,6 +1875,13 @@ export const generatedRoutes: Record<string, Record<string, RouteDoc>> = {
   "/api/v1/users/{id}": {
     "patch": {
       "summary": "Update users",
+      "tag": "Users",
+      "permission": "admin.users"
+    }
+  },
+  "/api/v1/users/{id}/mfa/reset": {
+    "post": {
+      "summary": "Create/perform users mfa reset",
       "tag": "Users",
       "permission": "admin.users"
     }

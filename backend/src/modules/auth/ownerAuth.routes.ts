@@ -10,6 +10,8 @@ import { hashPassword, LOCK_MINUTES, MAX_FAILED_LOGINS, passwordPolicy, verifyPa
 import { assertCsrfHeader, clearRefreshCookie, OWNER_RT_COOKIE, setRefreshCookie } from './cookies';
 import { authenticatePlatform } from '../../middleware/auth';
 import { platformAudit } from '../audit/auditService';
+import { notifyEmail } from '../notifications/notify';
+import { buildGoogleRouter, googleEnabled, type GoogleAdapter } from './google/google.routes';
 
 const COOKIE_PATH = '/api/v1/owner/auth';
 const router = Router();
@@ -99,6 +101,21 @@ const ownerMfa: MfaAdapter = {
 };
 
 router.use(buildMfaRouter(ownerMfa));
+
+const ownerGoogle: GoogleAdapter = {
+  portal: 'platform',
+  authenticate: authenticatePlatform,
+  allowed: () => googleEnabled(),
+  tenantId: () => null,
+  userId: (req) => req.platformUser!.id,
+  findBySub: async (_req, sub) => (await meta().PlatformUser.findOne({ 'google.sub': sub }).select(MFA_SELECT)) as never,
+  findById: async (_req, id) => (await meta().PlatformUser.findById(id).select(MFA_SELECT)) as never,
+  afterPrimary: async (req, res, user) => afterOwnerPrimaryAuth(req, res, user as unknown as PlatformUserDoc, 'google'),
+  audit: async (req, action, userId, extra, failed) => platformAudit(req, { action: action.replace(/^auth\./, 'owner.'), resource: 'platform_user', resourceId: userId, newValue: extra, result: failed ? 'failure' : 'success' }),
+  notify: async (_req, user, subject, text) => notifyEmail(null, `google:${String(user._id)}:${Date.now()}`, user.email, `AfeySync Platform: ${subject}`, text),
+};
+
+router.use(buildGoogleRouter(ownerGoogle));
 
 router.post(
   '/refresh',
