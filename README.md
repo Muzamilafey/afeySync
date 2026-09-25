@@ -37,6 +37,8 @@ AfeySync Platform ──┬── Owner Portal (owner.afeysync.com)       → af
 | FHIR R4 mappers, validator, idempotent outbox to DHA SHR | ✅ (SHR write needs its operation path) |
 | Encrypted per-database backups with run tracking | ✅ |
 | DHA terminology browser, ePrescription (MedicationRequest/Dispense), emergency-claim protocols and doctors | ✅ (need their HIE operation paths) |
+| SHA eClaims visit workflow: consent (OTP / biometric / minor), start visit, interventions, preauthorization, effective coverage, deceased block, per-facility FR code | ✅ (paths from the spec must be confirmed; claim-step paths must be entered) |
+| Private insurance via Slade360 / HealthCloud: payers, coverages, eligibility, OTP, start visit, reservation, ICD-10 claims, invoices, attachments, credit notes, remittances, reconciliation, dashboard | ✅ (facility credentials; confirm paths in the sandbox) |
 
 **External API rule:** the HIE operations whose paths come from the DHA documentation are
 configured by default: token, Client Registry `GET /patients`, eligibility, benefits,
@@ -79,18 +81,20 @@ In development, set `PLATFORM_DOMAIN=localhost` and `OWNER_HOSTS=owner.localhost
 cd backend && npm test      # needs MongoDB on 127.0.0.1:27017 (or TEST_MONGO_URI)
 ```
 
-The suite (140 tests) covers authentication, two-step verification (TOTP vectors, replay, lockout, policy enforcement), Google OIDC (PKCE, token verification, no auto-linking), password reset, refresh-token reuse detection, RBAC
+The suite (164 tests) covers authentication, two-step verification (TOTP vectors, replay, lockout, policy enforcement), Google OIDC (PKCE, token verification, no auto-linking), password reset, refresh-token reuse detection, RBAC
 and escalation, **tenant isolation** (Tenant A user vs. Tenant B patient, claim, DHA record, SHA
 record, credentials and branch), **branch isolation**, support access, the DHA/SHA adapter (token
 caching, 401 renewal, retries, headers, error mapping, not-configured operations), callbacks (HMAC,
 dedupe, matching), secret encryption, billing and M-Pesa idempotency, clinical workflows (queues,
 immutable consultations, lab verification, FEFO dispensing, wards, maternity), documents, finance
 and HR segregation of duties, reports and CSV safety, FHIR mapping and outbox, the SHA claim
-lifecycle, ePrescription, emergency claims, M-Pesa B2C payouts and backup monitoring.
+lifecycle, the SHA eClaims visit workflow, Slade360 insurance (eligibility, reservation locking, ICD-10
+mapping, server-side invoice totals, reconciliation), ePrescription, emergency claims, M-Pesa B2C payouts
+and backup monitoring.
 
 ## Documentation
 
 [Architecture](docs/ARCHITECTURE.md) · [Multitenancy](docs/MULTITENANCY.md) · [RBAC](docs/RBAC.md) ·
-[Database](docs/DATABASE.md) · [Security](docs/SECURITY.md) · [SHA](docs/SHA.md) · [DHA](docs/DHA.md) ·
+[Database](docs/DATABASE.md) · [Security](docs/SECURITY.md) · [SHA](docs/SHA.md) · [DHA](docs/DHA.md) · [Insurance](docs/INSURANCE.md) ·
 [FHIR](docs/FHIR.md) · [M-Pesa](docs/M-PESA.md) · [SMS](docs/SMS.md) · [Email](docs/EMAIL.md) ·
 [Authentication](docs/AUTHENTICATION.md) · [Deployment](docs/DEPLOYMENT.md) · [Owner portal](docs/OWNER-PORTAL.md) · [Branches](docs/BRANCHES.md) · [API](docs/API.md)

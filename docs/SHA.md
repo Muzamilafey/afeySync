@@ -15,6 +15,52 @@ Patient → DHA Client Registry (CR ID) → Eligibility → Benefits → Interve
   returns (preauth, doctor or member authorization required) and draws utilization bars when limit
   and used values are present.
 
+## eClaims visit workflow (SHA Visits)
+
+The primary SHA path is the **SHA visit** (`ShaVisit`, `/api/v1/sha/visits`, UI: SHA → SHA Visits
+→ New, or *Start SHA visit* on the patient record). It follows the DHA HIE eClaims guide:
+
+| # | Step | AfeySync | HIE operation |
+|---|---|---|---|
+| 1 | Facility connection | `GET /sha/connection`, `POST /sha/connection/test` (NOT_CONFIGURED / PENDING / CONNECTED / ERROR, no secrets) | `auth.token` |
+| 2 | Find patient / CR ID | Client Registry search and import | `registry.client.search` |
+| 3 | Eligibility | stores `isAlive`, `whitelistedForOTP`, `facilityBiometricsEnforced`, schemes, POMSF | `sha.eligibility` |
+| 4 | Deceased block | `isAlive=false` blocks every SHA transaction (`409 SHA_BENEFICIARY_DECEASED`) | — |
+| 5–6 | Benefits, sub-benefits | benefits panel | `sha.benefits`, `sha.subBenefits` |
+| 7 | Interventions | flags drive the workflow — never hard-coded rules | `sha.interventions` |
+| 8 | Utilization, POMSF balances | utilization bars, `GET /sha/pomsf-balances` | `sha.utilization`, `sha.pomsf.balances` |
+| 9 | Workflow decision | `POST /sha/workflow` re-reads the flags from DHA per code (preauth, doctor or member authorization, emergency) | `sha.interventions` |
+| 10 | Contacts | masked contacts | `sha.contacts` |
+| 11 | OTP | refused (`SHA_BIOMETRICS_REQUIRED`) when biometrics are enforced and the member is not whitelisted. The OTP is never logged or stored. | `sha.otp.send` |
+| 12 | Authorize | OTP, biometric (`factors: ['SHA']`, `is_integration: true`, provider = facility FR code) or minor biometric (facility setting `sha.minorBiometrics`) | `sha.authorization.create`, `sha.biometrics.match.*` |
+| 13 | Start visit | OTP or `auth_guid` plus practitioner; all returned DHA identifiers are stored | `sha.visit.consent.start` |
+| 14 | Interventions on the claim | add / restore / retire / switch | `sha.intervention.*` |
+| 15 | Preauthorization | multipart with documents; get, cancel (reason), remove diagnoses/doctors. Claim submission is blocked while a preauth is pending. | `sha.preauth.*` |
+| 16 | Effective coverage (POMSF) | `POST /sha/visits/:id/effective-coverage` | `sha.coverage.effective` |
+| 17 | Diagnoses, billable items, attachments | claim steps | `sha.claim.diagnoses.add`, `sha.billing.lineItems`, `sha.claim.attachments.add` |
+| 18 | Preview | provider / payer preview | `sha.claim.preview.*` |
+| 19 | Submit (OP) / discharge (IP) | OP submits the virtual claim; IP discharges | `sha.virtualClaim.submit`, `sha.claim.discharge` |
+| 20 | Close, edit/resubmit lines, decisions, remittance | claim steps, callbacks, reconciliation | `sha.virtualClaim.close`, `sha.claim.lines.*` |
+
+**Operation status.** Operations marked `spec_unverified` (steps 5–16) carry the paths given in the
+integration specification; the HIE documentation host was not reachable from the build
+environment, so the platform owner must confirm each one against https://hie-docs.dha.go.ke/ in
+**Owner → API Config**. Saving a path there marks it `owner_verified`. Steps 17–20 have **no path**
+until the owner enters them and return `501 INTEGRATION_OPERATION_NOT_CONFIGURED`; the visit keeps
+its state and the step can be retried later.
+
+**Facility identity.** The `X-Facility-Id` header uses each facility's own DHA Facility Registry
+code (Owner → Facility → DHA registry), never a shared platform code.
+
+**Consent tokens** are AES-256-GCM encrypted, excluded from queries by default, and redacted from
+the stored response trail. Biometric verification and eKYC are never simulated.
+
+**Environment.** `DHA_ENV` (`uat` | `production`), `DHA_TIMEOUT_MS`, and `DHA_ENABLE_CALLBACKS`
+(callbacks return 503 unless it is `true`). Production URLs are configured, never assumed.
+
+Claims attached to a SHA visit must go through the visit workflow; the older transaction submit
+refuses them with `SHA_USE_VISIT_WORKFLOW`.
+
 ## Transactions and claims
 
 Authorizations, visit consents, preauthorizations, claims and emergency claims are
