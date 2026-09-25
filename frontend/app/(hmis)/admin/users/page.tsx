@@ -2,7 +2,7 @@
 
 import { useState } from 'react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
-import { Plus } from 'lucide-react';
+import { Pencil, Plus } from 'lucide-react';
 import { api } from '@/services/api';
 import { useCan, useMe } from '@/hooks/useMe';
 import { Alert, Badge, Button, Card, ErrorText, Field, Input, Loading, Modal, PageHeader, Select, statusTone, Table, Tabs, Td } from '@/components/ui';
@@ -10,29 +10,61 @@ import { ago } from '@/lib/utils';
 import type { Branch } from '@/types/api';
 
 interface Role { _id: string; key: string; name: string; scope: 'tenant' | 'branch'; system: boolean; permissions: string[] }
-interface User { _id: string; name: string; email: string; status: string; branchAccess: 'all' | 'specific'; roleIds: Role[]; branchIds: Array<{ _id: string; branchName: string }>; lastLoginAt?: string; mfa?: { totp?: { confirmedAt?: string }; email?: { enabledAt?: string }; sms?: { enabledAt?: string } }; google?: { email?: string } }
+interface User { _id: string; name: string; email: string; phone?: string; practitioner?: { cadre?: string; licenseNumber?: string }; status: string; branchAccess: 'all' | 'specific'; roleIds: Role[]; branchIds: Array<{ _id: string; branchName: string }>; lastLoginAt?: string; mfa?: { totp?: { confirmedAt?: string }; email?: { enabledAt?: string }; sms?: { enabledAt?: string } }; google?: { email?: string } }
 
 const mfaMethods = (u: User) => [u.mfa?.totp?.confirmedAt && 'App', u.mfa?.email?.enabledAt && 'Email', u.mfa?.sms?.enabledAt && 'SMS'].filter(Boolean) as string[];
 
-function UserForm({ roles, branches, onDone }: { roles: Role[]; branches: Branch[]; onDone: () => void }) {
+function UserForm({ roles, branches, onDone, user }: { roles: Role[]; branches: Branch[]; onDone: () => void; user?: User }) {
   const qc = useQueryClient();
   const { data: me } = useMe();
-  const [form, setForm] = useState({ name: '', email: '', phone: '', roleId: '', branchAccess: 'specific' as 'all' | 'specific', branchIds: [] as string[], cadre: '', licenseNumber: '' });
+  const editing = !!user;
+  const self = editing && me?.user.id === user!._id;
+  const [form, setForm] = useState({
+    name: user?.name ?? '',
+    email: user?.email ?? '',
+    phone: user?.phone ?? '',
+    roleIds: user?.roleIds.map((r) => r._id) ?? ([] as string[]),
+    branchAccess: user?.branchAccess ?? ('specific' as 'all' | 'specific'),
+    branchIds: user?.branchIds.map((b) => b._id) ?? ([] as string[]),
+    cadre: user?.practitioner?.cadre ?? '',
+    licenseNumber: user?.practitioner?.licenseNumber ?? '',
+  });
   const [temp, setTemp] = useState<{ password: string; email: string; emailed: boolean } | null>(null);
+  const [saved, setSaved] = useState<string | null>(null);
+  const practitioner = form.cadre || form.licenseNumber ? { cadre: form.cadre || undefined, licenseNumber: form.licenseNumber || undefined } : undefined;
   const m = useMutation({
-    mutationFn: async () =>
-      (
+    mutationFn: async () => {
+      if (editing) {
+        const body: Record<string, unknown> = { name: form.name, phone: form.phone, branchAccess: form.branchAccess, branchIds: form.branchAccess === 'all' ? [] : form.branchIds, practitioner: practitioner ?? { cadre: '', licenseNumber: '' } };
+        if (form.email.trim().toLowerCase() !== user!.email) body.email = form.email.trim();
+        if (!self) body.roleIds = form.roleIds;
+        await api(`/users/${user!._id}`, { method: 'PATCH', body });
+        return null;
+      }
+      return (
         await api<{ temporaryPassword?: string; email: string; welcomeEmail?: 'sent' | 'email_not_configured' }>('/users', {
           method: 'POST',
-          body: { name: form.name, email: form.email, phone: form.phone || undefined, roleIds: [form.roleId], branchAccess: form.branchAccess, branchIds: form.branchIds, practitioner: form.cadre || form.licenseNumber ? { cadre: form.cadre, licenseNumber: form.licenseNumber } : undefined },
+          body: { name: form.name, email: form.email, phone: form.phone || undefined, roleIds: form.roleIds, branchAccess: form.branchAccess, branchIds: form.branchIds, practitioner },
         })
-      ).data,
+      ).data;
+    },
     onSuccess: (d) => {
-      if (d.temporaryPassword) setTemp({ password: d.temporaryPassword, email: d.email, emailed: d.welcomeEmail === 'sent' });
-      else onDone();
       qc.invalidateQueries({ queryKey: ['users'] });
+      if (editing) {
+        setSaved(form.email.trim().toLowerCase() !== user!.email ? `Saved. The sign-in email is now ${form.email.trim().toLowerCase()}; we notified the old and new addresses.` : 'Saved.');
+        return;
+      }
+      if (d?.temporaryPassword) setTemp({ password: d.temporaryPassword, email: d.email, emailed: d.welcomeEmail === 'sent' });
+      else onDone();
     },
   });
+  const grantable = roles.filter((r) => me?.user.branchAccess === 'all' || r.scope === 'branch');
+  if (saved) return (
+    <div className="space-y-3">
+      <Alert tone="green" title="User updated">{saved} Role and branch changes apply straight away.</Alert>
+      <Button onClick={onDone}>Done</Button>
+    </div>
+  );
   if (temp) return (
     <div className="space-y-3">
       {temp.emailed ? (
@@ -57,12 +89,18 @@ function UserForm({ roles, branches, onDone }: { roles: Role[]; branches: Branch
       <Field label="Full name"><Input value={form.name} onChange={(e) => setForm({ ...form, name: e.target.value })} /></Field>
       <Field label="Email"><Input type="email" value={form.email} onChange={(e) => setForm({ ...form, email: e.target.value })} /></Field>
       <Field label="Phone"><Input value={form.phone} onChange={(e) => setForm({ ...form, phone: e.target.value })} /></Field>
-      <Field label="Role">
-        <Select value={form.roleId} onChange={(e) => setForm({ ...form, roleId: e.target.value })}>
-          <option value="">Select role…</option>
-          {roles.filter((r) => me?.user.branchAccess === 'all' || r.scope === 'branch').map((r) => <option key={r._id} value={r._id}>{r.name}{r.scope === 'tenant' ? ' (tenant-wide)' : ''}</option>)}
-        </Select>
-      </Field>
+      <div className="col-span-full">
+        <p className="label">Roles</p>
+        {self && <p className="muted mb-1 text-xs">You cannot change your own roles. Ask another administrator.</p>}
+        <div className="grid gap-1.5 sm:grid-cols-3">
+          {grantable.map((r) => (
+            <label key={r._id} className={`flex items-center gap-2 rounded-md border border-[var(--border)] px-2 py-1.5 text-sm ${self ? 'opacity-60' : ''}`}>
+              <input type="checkbox" disabled={self} checked={form.roleIds.includes(r._id)} onChange={(e) => setForm({ ...form, roleIds: e.target.checked ? [...form.roleIds, r._id] : form.roleIds.filter((x) => x !== r._id) })} />
+              <span>{r.name}{r.scope === 'tenant' && <span className="muted text-xs"> (all branches)</span>}</span>
+            </label>
+          ))}
+        </div>
+      </div>
       <Field label="Branch access">
         <Select value={form.branchAccess} onChange={(e) => setForm({ ...form, branchAccess: e.target.value as 'all' | 'specific' })} disabled={me?.user.branchAccess !== 'all'}>
           <option value="specific">Specific branches</option>
@@ -85,7 +123,8 @@ function UserForm({ roles, branches, onDone }: { roles: Role[]; branches: Branch
       <Field label="Licence number"><Input value={form.licenseNumber} onChange={(e) => setForm({ ...form, licenseNumber: e.target.value })} /></Field>
       <div className="col-span-full space-y-2">
         <ErrorText error={m.error} />
-        <Button type="submit" loading={m.isPending} disabled={!form.roleId}>Create user</Button>
+        {editing && form.email.trim().toLowerCase() !== user!.email && <Alert tone="amber">Changing the email changes how this person signs in. We will notify both the old and the new address.</Alert>}
+        <Button type="submit" loading={m.isPending} disabled={!form.roleIds.length || !form.name.trim() || !form.email.trim() || (form.branchAccess === 'specific' && !form.branchIds.length)}>{editing ? 'Save changes' : 'Create user'}</Button>
       </div>
     </form>
   );
@@ -132,6 +171,7 @@ export default function UsersPage() {
   const [tab, setTab] = useState<'users' | 'roles'>(can('admin.users') ? 'users' : 'roles');
   const [q, setQ] = useState('');
   const [modal, setModal] = useState<'user' | 'role' | null>(null);
+  const [editUser, setEditUser] = useState<User | null>(null);
   const [reset, setReset] = useState<{ password: string; emailed: boolean } | null>(null);
   const users = useQuery({ queryKey: ['users', q], queryFn: async () => (await api<User[]>('/users', { query: { q, limit: 100 } })).data, enabled: can('admin.users') });
   const roles = useQuery({ queryKey: ['roles'], queryFn: async () => (await api<Role[]>('/roles')).data });
@@ -170,6 +210,7 @@ export default function UsersPage() {
                   <Td><Badge tone={statusTone(u.status)}>{u.status}</Badge></Td>
                   <Td>{ago(u.lastLoginAt)}</Td>
                   <Td className="whitespace-nowrap">
+                    <Button size="sm" variant="ghost" onClick={() => setEditUser(u)}><Pencil className="h-3.5 w-3.5" /> Edit</Button>
                     <Button size="sm" variant="ghost" onClick={() => action.mutate({ id: u._id, act: u.status === 'active' ? 'suspend' : 'activate' })}>{u.status === 'active' ? 'Suspend' : 'Activate'}</Button>
                     <Button size="sm" variant="ghost" onClick={() => action.mutate({ id: u._id, act: 'reset-password' })}>Reset password</Button>
                     {mfaMethods(u).length > 0 && <Button size="sm" variant="ghost" onClick={() => { mfaReset.reset(); setMfaUser(u); }}>Reset 2-step</Button>}
@@ -204,6 +245,9 @@ export default function UsersPage() {
       </Modal>
       <Modal open={modal === 'user'} onClose={() => setModal(null)} title="Add user" wide>
         {roles.data && branches.data && <UserForm roles={roles.data} branches={branches.data} onDone={() => setModal(null)} />}
+      </Modal>
+      <Modal open={!!editUser} onClose={() => setEditUser(null)} title={`Edit user — ${editUser?.name ?? ''}`} wide>
+        {editUser && roles.data && branches.data && <UserForm key={editUser._id} user={editUser} roles={roles.data} branches={branches.data} onDone={() => setEditUser(null)} />}
       </Modal>
       <Modal open={modal === 'role'} onClose={() => setModal(null)} title="Create custom role" wide>
         <RoleForm onDone={() => setModal(null)} />

@@ -1,7 +1,7 @@
 import { sendAccountEmail } from './accountEmails';
 import { requestOrigin } from '../../utils/origin';
 import { Router } from 'express';
-import { registerDirectoryEntry } from '../auth/directory';
+import { registerDirectoryEntry, removeDirectoryEntry } from '../auth/directory';
 import { isValidObjectId, Types } from 'mongoose';
 import { z } from 'zod';
 import { h } from '../../utils/asyncHandler';
@@ -43,6 +43,23 @@ async function assertRolesGrantable(req: Request, roleIds: string[]) {
   // Nobody can grant permissions they do not hold themselves.
   const escalation = roles.flatMap((r) => r.permissions).filter((p) => !req.user!.permissions.has(p));
   if (escalation.length) throw forbidden(`Cannot grant permissions you do not hold: ${[...new Set(escalation)].slice(0, 5).join(', ')}`);
+}
+
+/**
+ * Keeps at least one active user who can manage users, so a facility can never lock itself out.
+ * `change` describes the target user after the edit.
+ */
+async function assertAdminRemains(req: Request, targetId: string, change: { roleIds?: string[]; status?: string }) {
+  const { User, Role } = req.tenant!.models;
+  const adminRoles = (await Role.find({ permissions: 'admin.users' }).select('_id').lean()).map((r) => String(r._id));
+  const target = await User.findById(targetId).select('roleIds status').lean();
+  if (!target) return;
+  const isAdminNow = target.status === 'active' && (target.roleIds ?? []).some((r) => adminRoles.includes(String(r)));
+  if (!isAdminNow) return;
+  const staysAdmin = (change.status ?? target.status) === 'active' && (change.roleIds ?? (target.roleIds ?? []).map(String)).some((r) => adminRoles.includes(String(r)));
+  if (staysAdmin) return;
+  const others = await User.countDocuments({ _id: { $ne: target._id }, status: 'active', roleIds: { $in: adminRoles } });
+  if (!others) throw forbidden('This is the only active administrator. Give another user an administrator role first.', 'LAST_ADMIN');
 }
 
 usersRouter.get(
@@ -112,19 +129,41 @@ usersRouter.patch(
   requirePermission('admin.users'),
   h(async (req, res) => {
     const id = oid(req.params.id as string);
-    const body = parsePatch(userSchema.omit({ password: true, email: true }).partial(), req.body);
+    const body = parsePatch(userSchema.omit({ password: true }).partial(), req.body);
     const { User } = req.tenant!.models;
     const user = await User.findById(id);
     if (!user) throw notFound('User not found');
     await assertCanManageUser(req, user);
+    if (body.branchAccess === 'specific' && !(body.branchIds ?? user.branchIds ?? []).length) throw badRequest('Select at least one branch');
     if (body.branchAccess || body.branchIds) await assertCanManageUser(req, { branchAccess: body.branchAccess ?? user.branchAccess, branchIds: body.branchIds ?? user.branchIds });
-    if (body.roleIds) await assertRolesGrantable(req, body.roleIds);
-    if (id === req.user!.id && body.roleIds) throw forbidden('You cannot change your own roles');
+    if (body.branchIds?.length && (await req.tenant!.models.Branch.countDocuments({ _id: { $in: body.branchIds } })) !== body.branchIds.length) throw badRequest('Unknown branch');
+    const rolesChanged = body.roleIds && JSON.stringify([...body.roleIds].sort()) !== JSON.stringify((user.roleIds ?? []).map(String).sort());
+    if (rolesChanged) {
+      if (id === req.user!.id) throw forbidden('You cannot change your own roles');
+      await assertRolesGrantable(req, body.roleIds!);
+      await assertAdminRemains(req, id, { roleIds: body.roleIds });
+    } else delete body.roleIds;
+    const oldEmail = user.email;
+    const newEmail = body.email?.toLowerCase().trim();
+    const emailChanged = !!newEmail && newEmail !== oldEmail;
+    if (emailChanged && (await User.exists({ email: newEmail, _id: { $ne: user._id } }))) throw conflict('Another user already has this email address', undefined, 'EMAIL_TAKEN');
+    delete body.email;
     const before = user.toObject();
     user.set(body);
+    if (emailChanged) user.email = newEmail!;
+    if (body.branchAccess === 'all') user.branchIds = [] as never;
+    if (body.branchIds?.length && !body.branchIds.includes(String(user.defaultBranchId ?? ''))) user.defaultBranchId = new Types.ObjectId(body.branchIds[0]) as never;
     await user.save();
+    if (emailChanged) {
+      await removeDirectoryEntry(oldEmail, req.tenant!.id);
+      await registerDirectoryEntry(newEmail!, req.tenant!.id);
+      const msg = `The sign-in email for your AfeySync account at ${req.tenant!.name} was changed from ${oldEmail} to ${newEmail} by ${req.user!.name}. If you did not expect this, contact your administrator.`;
+      await notifyEmail(req.tenant!.id, `email-changed:${id}:${Date.now()}:old`, oldEmail, `${req.tenant!.name}: your sign-in email was changed`, msg);
+      await notifyEmail(req.tenant!.id, `email-changed:${id}:${Date.now()}:new`, newEmail!, `${req.tenant!.name}: this is now your sign-in email`, msg);
+    }
+    // Role or branch changes take effect on the next request (access is read from the database each time).
     await audit(req, { action: 'user.update', resource: 'user', resourceId: id, oldValue: before, newValue: user.toObject() });
-    res.json({ success: true, data: { id } });
+    res.json({ success: true, data: { id, email: user.email } });
   }),
 );
 
@@ -139,6 +178,7 @@ for (const action of ['suspend', 'activate'] as const) {
       const user = await User.findById(id);
       if (!user) throw notFound('User not found');
       await assertCanManageUser(req, user);
+      if (action === 'suspend') await assertAdminRemains(req, id, { status: 'suspended' });
       user.status = action === 'suspend' ? 'suspended' : 'active';
       await user.save();
       if (action === 'suspend') await revokeAllForSubject(id, 'suspended');

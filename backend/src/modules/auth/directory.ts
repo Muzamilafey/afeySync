@@ -13,6 +13,11 @@ export async function registerDirectoryEntry(email: string, tenantId: string) {
   await meta().UserDirectory.updateOne({ emailHash: emailHash(email), tenantId }, { $setOnInsert: { emailHash: emailHash(email), tenantId } }, { upsert: true }).catch((err) => logger.warn({ err }, 'user directory write failed'));
 }
 
+/** Removes this facility's directory entry for an email (after the user's email changes). */
+export async function removeDirectoryEntry(email: string, tenantId: string) {
+  await meta().UserDirectory.deleteOne({ emailHash: emailHash(email), tenantId });
+}
+
 export async function tenantsForEmail(email: string): Promise<string[]> {
   const rows = await meta().UserDirectory.find({ emailHash: emailHash(email) }).select('tenantId').lean();
   return rows.map((r) => String(r.tenantId));
