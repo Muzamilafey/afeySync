@@ -1,6 +1,6 @@
 import { registerHandler, PermanentJobError } from './queue';
 import { resolveIntegration } from '../modules/integrations/integrationConfigService';
-import { sendSms } from '../integrations/africastalking/smsService';
+import { resolveSmsGateway, sendSmsVia } from '../integrations/sms/gateway';
 import { resolveMailConfig, sendMail } from '../integrations/smtp/smtpService';
 import { processCallbackEvent } from '../modules/callbacks/callbacks.routes';
 import { AppError } from '../utils/errors';
@@ -14,11 +14,11 @@ const permanentIfConfig = (err: unknown) => {
 
 export function registerJobHandlers() {
   registerHandler('SMS', async (payload, job) => {
-    const cfg = await resolveIntegration('africastalking', job.tenantId ?? null).catch(permanentIfConfig);
     const to = String(payload.to ?? '');
     if (!/^\+?\d{9,15}$/.test(to)) throw new PermanentJobError('Invalid recipient phone number');
-    const recipients = await sendSms(cfg!, [to.startsWith('+') ? to : `+${to}`], String(payload.message ?? '').slice(0, 918));
-    return { recipients };
+    const { gateway, cfg } = (await resolveSmsGateway(job.tenantId ? String(job.tenantId) : null).catch(permanentIfConfig))!;
+    const result = await sendSmsVia(gateway, cfg, to, String(payload.message ?? '').slice(0, 918));
+    return { gateway, result };
   });
 
   registerHandler('EMAIL', async (payload, job) => {

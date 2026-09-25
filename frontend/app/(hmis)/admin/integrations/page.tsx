@@ -19,7 +19,7 @@ interface PublicConfig {
   useTenantConfig: boolean;
 }
 
-const LABEL: Record<string, string> = { sha: 'SHA', dha: 'DHA', mpesa: 'M-Pesa', africastalking: 'SMS', smtp: 'Email' };
+const LABEL: Record<string, string> = { sha: 'SHA', dha: 'DHA', mpesa: 'M-Pesa', africastalking: "SMS (Africa's Talking)", talksasa: 'SMS (Talksasa)', smtp: 'Email' };
 
 function FacilityConfig({ cfg }: { cfg: PublicConfig }) {
   const qc = useQueryClient();

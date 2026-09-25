@@ -11,7 +11,7 @@ interface H {
   integrations: Array<{ provider: string; status: string; latencyMs?: number }>;
   resources: { cpuPct: number; ramPct: number; storagePct: number | null; uptimeSeconds: number; node: string };
 }
-const LABEL: Record<string, string> = { sha: 'SHA', dha: 'DHA', mpesa: 'M-Pesa', africastalking: 'SMS', smtp: 'SMTP' };
+const LABEL: Record<string, string> = { sha: 'SHA', dha: 'DHA', mpesa: 'M-Pesa', africastalking: "SMS (Africa's Talking)", talksasa: 'SMS (Talksasa)', smtp: 'SMTP' };
 
 function Meter({ label, pct }: { label: string; pct: number | null }) {
   return (

@@ -139,9 +139,12 @@ const tenantSchema = new Schema(
       dha: { type: Boolean, default: false },
       mpesa: { type: Boolean, default: false },
       africastalking: { type: Boolean, default: false },
+      talksasa: { type: Boolean, default: false },
       smtp: { type: Boolean, default: false },
       slade360: { type: Boolean, default: false },
     },
+    /** Which SMS gateway this facility uses: auto = Africa's Talking, then Talksasa, whichever is set up. */
+    smsGateway: { type: String, enum: ['auto', 'africastalking', 'talksasa'], default: 'auto' },
     stats: {
       branches: { type: Number, default: 0 },
       users: { type: Number, default: 0 },
@@ -211,7 +214,7 @@ const tenantSubscriptionSchema = new Schema(
 );
 
 /* ---------------------------------------------------------------- Integrations */
-export const PROVIDERS = ['sha', 'dha', 'mpesa', 'africastalking', 'smtp', 'storage', 'google', 'slade360', 'mpesa_billing'] as const;
+export const PROVIDERS = ['sha', 'dha', 'mpesa', 'africastalking', 'talksasa', 'smtp', 'storage', 'google', 'slade360', 'mpesa_billing'] as const;
 export type Provider = (typeof PROVIDERS)[number];
 
 const integrationConfigSchema = new Schema(

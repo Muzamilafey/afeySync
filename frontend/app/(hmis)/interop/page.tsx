@@ -13,7 +13,7 @@ interface Health { provider: string; enabled: boolean; message?: string; lastSuc
 interface CbEvent { _id: string; provider: string; eventType?: string; externalReference?: string; status?: string; verificationMethod?: string; processing: { state: string; error?: string }; createdAt: string }
 interface DhaStatus { enabled: boolean; message?: string; token: string; lastApiCall?: { createdAt: string; status: string; operation: string }; contract?: { version: string; lastVerified?: string; documentationURL: string; configuredOperations: number; totalOperations: number } }
 
-const LABEL: Record<string, string> = { sha: 'SHA', dha: 'DHA HIE', mpesa: 'M-Pesa', africastalking: 'SMS', smtp: 'SMTP' };
+const LABEL: Record<string, string> = { sha: 'SHA', dha: 'DHA HIE', mpesa: 'M-Pesa', africastalking: "SMS (Africa's Talking)", talksasa: 'SMS (Talksasa)', smtp: 'SMTP' };
 
 export default function InteropPage() {
   const can = useCan();

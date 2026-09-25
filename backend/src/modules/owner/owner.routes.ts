@@ -345,16 +345,20 @@ router.put(
   requirePermission('owner.integrations'),
   h(async (req, res) => {
     const id = oid(req.params.id as string);
-    const body = parse(z.object({ sha: z.boolean(), dha: z.boolean(), mpesa: z.boolean(), africastalking: z.boolean(), smtp: z.boolean(), slade360: z.boolean() }).partial(), req.body);
+    const { smsGateway, ...flags } = parse(
+      z.object({ sha: z.boolean(), dha: z.boolean(), mpesa: z.boolean(), africastalking: z.boolean(), talksasa: z.boolean(), smtp: z.boolean(), slade360: z.boolean(), smsGateway: z.enum(['auto', 'africastalking', 'talksasa']) }).partial(),
+      req.body,
+    );
     const { Tenant } = meta();
-    const before = await Tenant.findById(id).select('integrations').lean();
+    const before = await Tenant.findById(id).select('integrations smsGateway').lean();
     if (!before) throw notFound('Facility not found');
-    const set: Record<string, boolean> = {};
-    for (const [k, v] of Object.entries(body)) set[`integrations.${k}`] = v;
+    const set: Record<string, unknown> = {};
+    for (const [k, v] of Object.entries(flags)) set[`integrations.${k}`] = v;
+    if (smsGateway) set.smsGateway = smsGateway;
     await Tenant.updateOne({ _id: id }, { $set: set });
-    const after = await Tenant.findById(id).select('integrations').lean();
-    await platformAudit(req, { action: 'tenant.integrations', resource: 'tenant', resourceId: id, tenantId: id, oldValue: before.integrations, newValue: after?.integrations });
-    res.json({ success: true, data: after?.integrations });
+    const after = await Tenant.findById(id).select('integrations smsGateway').lean();
+    await platformAudit(req, { action: 'tenant.integrations', resource: 'tenant', resourceId: id, tenantId: id, oldValue: { ...before.integrations, smsGateway: before.smsGateway }, newValue: { ...after?.integrations, smsGateway: after?.smsGateway } });
+    res.json({ success: true, data: { ...after?.integrations, smsGateway: after?.smsGateway ?? 'auto' } });
   }),
 );
 
@@ -480,7 +484,13 @@ router.post(
   requirePermission('owner.integrations'),
   h(async (req, res) => {
     const provider = assertProvider(req.params.provider as string) as Provider;
-    const body = parse(z.object({ kind: z.enum(['auth', 'registry', 'eligibility', 'terminology', 'email']).default('auth'), to: z.string().email().optional(), sample: z.object({ type: z.string(), number: z.string() }).optional() }), req.body ?? {});
+    const body = parse(
+      z
+        .object({ kind: z.enum(['auth', 'registry', 'eligibility', 'terminology', 'email', 'sms']).default('auth'), to: z.string().trim().max(200).optional(), sample: z.object({ type: z.string(), number: z.string() }).optional() })
+        .refine((b) => !b.to || b.kind !== 'email' || z.string().email().safeParse(b.to).success, { message: 'Enter a valid email address', path: ['to'] })
+        .refine((b) => !b.to || b.kind !== 'sms' || /^\+?\d{9,15}$/.test(b.to.replace(/[\s-]/g, '')), { message: 'Enter a phone number such as 0712345678 or 254712345678', path: ['to'] }),
+      req.body ?? {},
+    );
     const cfg = await loadConfigForTest('platform', provider, null);
     const result = await testIntegration(cfg, body.kind, { to: body.to, sample: body.sample });
     await platformAudit(req, { action: 'integration.test', resource: 'integration', resourceId: provider, newValue: { kind: body.kind, ok: result.ok }, result: result.ok ? 'success' : 'failure' });

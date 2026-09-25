@@ -18,7 +18,7 @@ interface Dash {
   integrations?: Record<string, IntegrationFlag>;
 }
 
-const LABELS: Record<string, string> = { sha: 'SHA', dha: 'DHA HIE', mpesa: 'M-Pesa', africastalking: 'SMS', smtp: 'Email', slade360: 'Private insurance' };
+const LABELS: Record<string, string> = { sha: 'SHA', dha: 'DHA HIE', mpesa: 'M-Pesa', africastalking: "SMS (Africa's Talking)", talksasa: 'SMS (Talksasa)', smtp: 'Email', slade360: 'Private insurance' };
 /** First name for the greeting, skipping honorifics such as "Dr.". */
 const firstName = (name = '') => name.split(/\s+/).find((w) => !/^(dr|mr|mrs|ms|miss|prof|sr|rev)\.?$/i.test(w)) ?? '';
 

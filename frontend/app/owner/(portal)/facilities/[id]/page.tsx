@@ -11,13 +11,15 @@ import type { Branch } from '@/types/api';
 import { BrandingEditor } from '@/features/branding/BrandingEditor';
 
 interface Detail {
-  tenant: { _id: string; name: string; slug: string; status: string; suspendedReason?: string; facilityCode?: string; county?: string; subCounty?: string; facilityLevel?: string; facilityType?: string; ownership?: string; phone?: string; email?: string; dhaRegistry?: { facilityRegistryCode?: string }; integrations: Record<string, boolean>; stats?: { branches: number; users: number; patients: number; lastActivityAt?: string }; createdAt: string };
+  tenant: { _id: string; name: string; slug: string; status: string; suspendedReason?: string; facilityCode?: string; county?: string; subCounty?: string; facilityLevel?: string; facilityType?: string; ownership?: string; phone?: string; email?: string; dhaRegistry?: { facilityRegistryCode?: string }; integrations: Record<string, boolean>; smsGateway?: 'auto' | 'africastalking' | 'talksasa'; stats?: { branches: number; users: number; patients: number; lastActivityAt?: string }; createdAt: string };
   domains: Array<{ _id: string; hostname: string; type: string; verified: boolean; verificationToken?: string; primary: boolean }>;
   subscription: { plan: string; status: string; billingCycle: string; amount: number; maxBranches: number; maxUsers: number; endsAt?: string } | null;
   database: { dbName: string; status: string; lastBackupAt?: string } | null;
   branches: Branch[];
   users: Array<{ _id: string; name: string; email: string; status: string; branchAccess: string; lastLoginAt?: string; roleIds: Array<{ name: string }> }>;
 }
+const PROVIDER_LABEL: Record<string, string> = { sha: 'SHA', dha: 'DHA HIE', mpesa: 'M-Pesa', africastalking: "Africa's Talking SMS", talksasa: 'Talksasa SMS', smtp: 'Email (SMTP)', slade360: 'Slade360 private insurance' };
+
 type Tab = 'overview' | 'branches' | 'users' | 'domains' | 'branding' | 'subscription' | 'integrations' | 'health' | 'audit';
 
 export default function FacilityDetail({ params }: { params: Promise<{ id: string }> }) {
@@ -40,7 +42,7 @@ export default function FacilityDetail({ params }: { params: Promise<{ id: strin
   const domainMut = useMutation({ mutationFn: () => ownerApi(`/tenants/${id}/domains`, { method: 'POST', body: { hostname: domain } }), onSuccess: () => { setDomain(''); refresh(); } });
   const verifyMut = useMutation({ mutationFn: (domainId: string) => ownerApi(`/tenants/${id}/domains/${domainId}/verify`, { method: 'POST' }), onSuccess: refresh });
   const removeDomain = useMutation({ mutationFn: (domainId: string) => ownerApi(`/tenants/${id}/domains/${domainId}`, { method: 'DELETE' }), onSuccess: refresh });
-  const intMut = useMutation({ mutationFn: (body: Record<string, boolean>) => ownerApi(`/tenants/${id}/integrations`, { method: 'PUT', body }), onSuccess: refresh });
+  const intMut = useMutation({ mutationFn: (body: Record<string, boolean | string>) => ownerApi(`/tenants/${id}/integrations`, { method: 'PUT', body }), onSuccess: refresh });
   const subMut = useMutation({ mutationFn: (body: Record<string, unknown>) => ownerApi(`/tenants/${id}/subscription`, { method: 'PUT', body }), onSuccess: refresh });
   const branchMut = useMutation({ mutationFn: () => ownerApi(`/tenants/${id}/branches`, { method: 'POST', body: Object.fromEntries(Object.entries(branch).filter(([, v]) => v)) }), onSuccess: () => { setModal(null); refresh(); } });
 
@@ -136,10 +138,17 @@ export default function FacilityDetail({ params }: { params: Promise<{ id: strin
           <div className="space-y-3">
             {Object.entries(tenant.integrations).map(([k, v]) => (
               <label key={k} className="flex items-center justify-between rounded-md border border-[var(--border)] px-3 py-2 text-sm">
-                <span className="font-medium uppercase">{k === 'africastalking' ? 'SMS' : k === 'smtp' ? 'Email' : k}</span>
+                <span className="font-medium">{PROVIDER_LABEL[k] ?? k.toUpperCase()}</span>
                 <input type="checkbox" checked={v} onChange={(e) => intMut.mutate({ [k]: e.target.checked })} />
               </label>
             ))}
+            <Field label="SMS gateway for this facility" hint="Automatic uses Africa's Talking, or Talksasa when Africa's Talking is not set up. The chosen gateway must be enabled above and in Owner → Integrations.">
+              <Select value={tenant.smsGateway ?? 'auto'} onChange={(e) => intMut.mutate({ smsGateway: e.target.value })}>
+                <option value="auto">Automatic</option>
+                <option value="africastalking">Africa&apos;s Talking</option>
+                <option value="talksasa">Talksasa</option>
+              </Select>
+            </Field>
           </div>
         </Card>
       )}

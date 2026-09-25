@@ -4,6 +4,7 @@ import { AppError, badRequest } from '../../utils/errors';
 import { fetchToken, hieRequestWithConfig } from '../../integrations/hie/hieClient';
 import { createTransport, sendMail } from '../../integrations/smtp/smtpService';
 import { checkAccount } from '../../integrations/africastalking/smsService';
+import { checkAccount as checkTalksasa, sendSms as sendTalksasa } from '../../integrations/talksasa/smsService';
 import { darajaToken } from '../../integrations/mpesa/mpesaService';
 import { IntegrationSecretService, type EncryptedValue } from './secretService';
 import { recordHealth, type ResolvedIntegration } from './integrationConfigService';
@@ -25,7 +26,7 @@ export async function loadConfigForTest(scope: 'platform' | 'tenant', provider: 
   return { provider, source: scope, configId: String(doc._id), environment: doc.environment ?? 'uat', settings: { ...defaults, ...(doc.settings as Record<string, string>) }, secrets };
 }
 
-export type TestKind = 'auth' | 'registry' | 'eligibility' | 'terminology' | 'email';
+export type TestKind = 'auth' | 'registry' | 'eligibility' | 'terminology' | 'email' | 'sms';
 
 export async function testIntegration(cfg: ResolvedIntegration, kind: TestKind = 'auth', opts: { tenantId?: string | null; to?: string; sample?: { type: string; number: string } } = {}) {
   const started = Date.now();
@@ -78,6 +79,14 @@ export async function testIntegration(cfg: ResolvedIntegration, kind: TestKind =
       case 'africastalking':
         await checkAccount(cfg);
         break;
+      case 'talksasa': {
+        detail.balance = await checkTalksasa(cfg);
+        if (kind === 'sms') {
+          if (!opts.to) throw badRequest('Recipient phone number required');
+          detail.sent = await sendTalksasa(cfg, [opts.to], 'AfeySync test message: your Talksasa SMS gateway works.');
+        }
+        break;
+      }
       case 'mpesa':
       case 'mpesa_billing':
         await darajaToken(cfg);

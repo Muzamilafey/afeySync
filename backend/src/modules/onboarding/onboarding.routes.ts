@@ -129,7 +129,7 @@ function toProvisioningInput(app: App, plan: { key: string; maxBranches: number;
     administrator: clean({ name: app.admin!.name!, email: app.admin!.email!, phone: app.admin?.phone ?? undefined }),
     domain: { customDomains: [] },
     branches,
-    integrations: { sha: interests.has('sha'), dha: interests.has('sha') || interests.has('dha'), mpesa: interests.has('mpesa'), africastalking: interests.has('sms'), slade360: interests.has('insurance') },
+    integrations: { sha: interests.has('sha'), dha: interests.has('sha') || interests.has('dha'), mpesa: interests.has('mpesa'), africastalking: interests.has('sms'), talksasa: interests.has('sms'), slade360: interests.has('insurance') },
     // The chosen plan's modules and limits apply from day one; the first period is a free trial when the plan offers one.
     subscription: { plan: plan.key, status: plan.trialDays > 0 ? 'trialing' : 'active', billingCycle: 'monthly', amount: 0, maxBranches: Math.max(plan.maxBranches, branches.length), maxUsers: plan.maxUsers, endsAt: plan.trialDays > 0 ? new Date(Date.now() + plan.trialDays * 86_400_000) : undefined },
   };

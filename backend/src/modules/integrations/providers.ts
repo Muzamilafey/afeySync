@@ -82,6 +82,17 @@ export const PROVIDER_DEFINITIONS: Record<Provider, ProviderDefinition> = {
     ],
     secrets: [{ key: 'apiKey', label: 'API Key', required: true }],
   },
+  talksasa: {
+    label: 'Talksasa SMS',
+    environments: ['production'],
+    // The API host published in the Talksasa Bulk SMS API documentation (API v3).
+    defaultBaseUrls: { production: 'https://bulksms.talksasa.com/api/v3' },
+    settings: [
+      { key: 'baseUrl', label: 'API base URL', required: true, default: 'https://bulksms.talksasa.com/api/v3' },
+      { key: 'senderId', label: 'Sender ID (approved by Talksasa; up to 11 characters)', required: true },
+    ],
+    secrets: [{ key: 'apiToken', label: 'API token (Bearer)', required: true }],
+  },
   smtp: {
     label: 'SMTP Email',
     environments: ['production'],

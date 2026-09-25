@@ -44,7 +44,7 @@ are built on the same base the user is browsing (`localhost` → `<facility>.loc
 |---|---|---|
 | Authenticator app (TOTP) | RFC 6238, SHA-1, 6 digits, 30 s, ±1 step | Google Authenticator, Microsoft Authenticator, Authy… The secret is AES-256-GCM encrypted and `select: false`. Replay is blocked because a step can never be reused. |
 | Email code | 6 digits via the `EMAIL` job queue | Uses the platform/facility SMTP. |
-| SMS code | 6 digits via the `SMS` job queue | Uses Africa's Talking. Kenyan mobile numbers only. Facility portal only. |
+| SMS code | 6 digits via the `SMS` job queue | Uses the facility's SMS gateway (Africa's Talking or Talksasa). Kenyan mobile numbers only. Facility portal only. |
 | Passkey (WebAuthn) | Fingerprint, face, device PIN, phone or security key | Up to 10 per user, each named. The relying party is the exact host (facility subdomain, custom domain or owner portal), so a passkey only works where it was created. User verification is required. Only the public key and signature counter are stored; a counter that goes backwards (a cloned key) is refused. Both portals. |
 | Recovery codes | 10 single-use codes, hashed | Issued when the first method is enabled. They can be regenerated with the password. |
 

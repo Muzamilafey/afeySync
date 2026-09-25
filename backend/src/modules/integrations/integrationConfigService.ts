@@ -182,7 +182,7 @@ export async function integrationStatusForTenant(tenantId: string) {
   ]);
   const flags = (tenant?.integrations ?? {}) as Record<string, boolean>;
   const out: Record<string, { enabled: boolean; message?: string; tenantCredentialsAllowed: boolean; usingFacilityConfig: boolean; health?: string }> = {};
-  for (const provider of ['sha', 'dha', 'mpesa', 'africastalking', 'smtp', 'slade360'] as const) {
+  for (const provider of ['sha', 'dha', 'mpesa', 'africastalking', 'talksasa', 'smtp', 'slade360'] as const) {
     const p = platformCfgs.find((c) => c.provider === provider);
     const t = tenantCfgs.find((c) => c.provider === provider);
     const enabled = Boolean(p?.enabled && flags[provider]);
@@ -226,6 +226,7 @@ export async function bootstrapPlatformConfigsFromEnv() {
     { provider: 'sha', settings: { baseUrl: env.SHA_BASE_URL, facilityRegistryCode: env.SHA_FACILITY_ID }, secrets: { clientId: env.SHA_CLIENT_ID, clientSecret: env.SHA_CLIENT_SECRET } },
     { provider: 'mpesa', environment: env.MPESA_ENVIRONMENT, settings: { shortcode: env.MPESA_SHORTCODE, till: env.MPESA_TILL, paybill: env.MPESA_PAYBILL }, secrets: { consumerKey: env.MPESA_CONSUMER_KEY, consumerSecret: env.MPESA_CONSUMER_SECRET, passkey: env.MPESA_PASSKEY } },
     { provider: 'africastalking', settings: { username: env.AT_USERNAME, senderId: env.AT_SENDER_ID }, secrets: { apiKey: env.AT_API_KEY } },
+    { provider: 'talksasa', environment: 'production', settings: { baseUrl: env.TALKSASA_BASE_URL, senderId: env.TALKSASA_SENDER_ID }, secrets: { apiToken: env.TALKSASA_API_TOKEN } },
     { provider: 'smtp', settings: { host: env.SMTP_HOST, port: env.SMTP_PORT, encryption: env.SMTP_ENCRYPTION, fromEmail: env.SMTP_FROM }, secrets: { username: env.SMTP_USERNAME, password: env.SMTP_PASSWORD } },
   ];
   for (const c of candidates) {

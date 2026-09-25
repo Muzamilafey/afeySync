@@ -22,7 +22,7 @@ export default function NewFacilityWizard() {
   const [customDomains, setCustomDomains] = useState<string[]>([]);
   const [domainInput, setDomainInput] = useState('');
   const [branches, setBranches] = useState<BranchIn[]>([{ branchName: 'Main Branch', branchCode: 'MAIN', county: '', facilityLevel: '', facilityCode: '', bedCapacity: 0 }]);
-  const [integrations, setIntegrations] = useState({ sha: true, dha: true, mpesa: false, africastalking: false, smtp: false, slade360: false });
+  const [integrations, setIntegrations] = useState({ sha: true, dha: true, mpesa: false, africastalking: false, talksasa: false, smtp: false, slade360: false });
   const plans = useOwnerPlans();
   const [subscription, setSubscription] = useState({ plan: 'trial', billingCycle: 'monthly', amount: 0, maxBranches: 3, maxUsers: 25 });
 
@@ -133,7 +133,7 @@ export default function NewFacilityWizard() {
             {(Object.keys(integrations) as Array<keyof typeof integrations>).map((k) => (
               <label key={k} className="flex items-center gap-3 text-sm">
                 <input type="checkbox" checked={integrations[k]} onChange={(e) => setIntegrations({ ...integrations, [k]: e.target.checked })} />
-                <span className="font-medium">{{ sha: 'SHA', dha: 'DHA HIE', mpesa: 'M-Pesa', africastalking: "Africa's Talking SMS", smtp: 'SMTP email', slade360: 'Slade360 private insurance' }[k]}</span>
+                <span className="font-medium">{{ sha: 'SHA', dha: 'DHA HIE', mpesa: 'M-Pesa', africastalking: "Africa's Talking SMS", talksasa: 'Talksasa SMS', smtp: 'SMTP email', slade360: 'Slade360 private insurance' }[k]}</span>
               </label>
             ))}
             <p className="muted text-xs">Uses platform credentials configured in Owner → Integrations. Facilities never see platform secrets.</p>

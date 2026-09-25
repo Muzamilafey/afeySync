@@ -99,15 +99,16 @@ export default function ProviderConfig({ params }: { params: Promise<{ provider:
                 </div>
               )}
               {provider === 'smtp' && <Input type="email" placeholder="Send test email to…" value={testTo} onChange={(e) => setTestTo(e.target.value)} />}
+              {provider === 'talksasa' && <Input type="tel" placeholder="Send a test SMS to… (e.g. 0712345678), optional" value={testTo} onChange={(e) => setTestTo(e.target.value)} />}
               <div className="flex flex-wrap gap-2">
                 {isHie
                   ? HIE_TESTS.map(([k, l]) => <Button key={k} size="sm" variant="outline" onClick={() => test.mutate(k)} loading={test.isPending && test.variables === k}>{l}</Button>)
-                  : <Button size="sm" variant="outline" onClick={() => test.mutate(provider === 'smtp' && testTo ? 'email' : 'auth')} loading={test.isPending}>{provider === 'smtp' ? (testTo ? 'SEND TEST EMAIL' : 'Verify SMTP') : 'TEST CONNECTION'}</Button>}
+                  : <Button size="sm" variant="outline" onClick={() => test.mutate(provider === 'smtp' && testTo ? 'email' : provider === 'talksasa' && testTo ? 'sms' : 'auth')} loading={test.isPending}>{provider === 'smtp' ? (testTo ? 'SEND TEST EMAIL' : 'Verify SMTP') : provider === 'talksasa' ? (testTo ? 'Send test SMS' : 'Check balance') : 'TEST CONNECTION'}</Button>}
               </div>
               <ErrorText error={test.error} />
               {result && (
                 <Alert tone={result.ok ? 'green' : 'red'} title={result.ok ? `Success (${result.latencyMs} ms)` : result.error?.code}>
-                  {result.ok ? Object.entries(result).filter(([k]) => !['ok', 'latencyMs'].includes(k)).map(([k, v]) => <p key={k}>{k}: {String(v)}</p>) : result.error?.message}
+                  {result.ok ? Object.entries(result).filter(([k]) => !['ok', 'latencyMs'].includes(k)).map(([k, v]) => <p key={k} className="break-words">{k}: {v !== null && typeof v === 'object' ? JSON.stringify(v) : String(v)}</p>) : result.error?.message}
                 </Alert>
               )}
               {isHie && <p className="muted text-xs">Callback endpoints are created per facility (Interoperability → Callbacks). Passing these tests does not constitute DHA/SHA certification.</p>}

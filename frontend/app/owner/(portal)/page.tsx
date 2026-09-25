@@ -19,7 +19,7 @@ interface Dash {
   uptimeSeconds: number;
 }
 
-const LABEL: Record<string, string> = { sha: 'SHA', dha: 'DHA HIE', mpesa: 'M-Pesa', africastalking: "Africa's Talking", smtp: 'SMTP' };
+const LABEL: Record<string, string> = { sha: 'SHA', dha: 'DHA HIE', mpesa: 'M-Pesa', africastalking: "Africa's Talking", talksasa: 'Talksasa', smtp: 'SMTP' };
 const COLORS = ['#0fa588', '#0284c7', '#7c3aed', '#f59e0b', '#ef4444'];
 
 export default function OwnerDashboard() {

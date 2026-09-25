@@ -8,7 +8,7 @@ nginx ──► Next.js (UI)            ──► /api proxied to the API with X
    └────► Express API (TypeScript)
             ├─ middleware: requestId → helmet/CORS → sanitize → tenant resolver → auth → RBAC → branch scope
             ├─ modules: auth, owner, branches, users/roles, admin, patients, dha, sha, callbacks, dashboard, notifications
-            ├─ integrations: hie (DHA/SHA adapter), mpesa, africastalking, smtp
+            ├─ integrations: hie (DHA/SHA adapter), mpesa, africastalking, talksasa (sms gateway router in integrations/sms), smtp
             ├─ jobs: queue abstraction (Mongo today, BullMQ-ready) + handlers
             └─ MongoDB
                  ├─ afeysync_meta              (platform: tenants, domains, integration configs, logs, sessions, jobs)

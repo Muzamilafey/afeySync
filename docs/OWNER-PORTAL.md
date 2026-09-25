@@ -11,7 +11,7 @@
 * **Billing**: quotations, invoices and service agreements with automatic signature and stamp,
   email with PDF, M-Pesa prompts, manual payments, allocation of paybill payments, and business
   settings (see BILLING.md).
-* **Integrations**: SHA, DHA HIE, M-Pesa (including optional B2C payouts), Africa's Talking, SMTP, Google Sign-In, Slade360 (facility credentials only) and storage. Actions: enable or
+* **Integrations**: SHA, DHA HIE, M-Pesa (including optional B2C payouts), Africa's Talking and Talksasa SMS, SMTP, Google Sign-In, Slade360 (facility credentials only) and storage. Actions: enable or
   disable globally, set the environment, rotate credentials, allow facility credentials, and run
   tests (auth / registry / eligibility / terminology / email).
 * **API Config**: edit the SHA, DHA HIE and Slade360 contracts (operation paths from the official
