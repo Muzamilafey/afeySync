@@ -2,7 +2,7 @@ import { Router, type Request } from 'express';
 import { z } from 'zod';
 import { Types } from 'mongoose';
 import { h } from '../../utils/asyncHandler';
-import { pagination, parse } from '../../utils/validate';
+import { pagination, parse, parsePatch } from '../../utils/validate';
 import { AppError, badRequest, conflict, forbidden, notFound } from '../../utils/errors';
 import { authenticateTenant, requireAnyPermission, requireBranch, requirePermission } from '../../middleware/auth';
 import { branchFilter, canAccessAnyBranch } from '../../middleware/branchScope';
@@ -55,7 +55,7 @@ router.patch(
   '/wards/:id',
   requirePermission('inpatient.manage'),
   h(async (req, res) => {
-    const body = parse(wardSchema.omit({ code: true }).partial(), req.body);
+    const body = parsePatch(wardSchema.omit({ code: true }).partial(), req.body);
     const w = await loadScoped(req, req.tenant!.models.Ward, req.params.id, 'Ward');
     w.set(body);
     await w.save();

@@ -2,7 +2,7 @@ import { Router } from 'express';
 import { z } from 'zod';
 import { Types } from 'mongoose';
 import { h } from '../../utils/asyncHandler';
-import { escapeRegex, pagination, parse } from '../../utils/validate';
+import { escapeRegex, pagination, parse, parsePatch } from '../../utils/validate';
 import { AppError, badRequest, conflict, notFound } from '../../utils/errors';
 import { authenticateTenant, requireBranch, requirePermission } from '../../middleware/auth';
 import { branchFilter, canAccessAnyBranch } from '../../middleware/branchScope';
@@ -58,7 +58,7 @@ router.patch(
   '/services/:id',
   requirePermission('billing.prices'),
   h(async (req, res) => {
-    const body = parse(serviceSchema.omit({ code: true }).partial(), req.body);
+    const body = parsePatch(serviceSchema.omit({ code: true }).partial(), req.body);
     const { ServiceItem } = req.tenant!.models;
     const s = await ServiceItem.findById(oid(req.params.id, 'Service'));
     if (!s) throw notFound('Service not found');

@@ -8,7 +8,7 @@ import fs from 'node:fs/promises';
 import { z } from 'zod';
 import { isValidObjectId } from 'mongoose';
 import { h } from '../../utils/asyncHandler';
-import { escapeRegex, pagination, parse } from '../../utils/validate';
+import { escapeRegex, pagination, parse, parsePatch } from '../../utils/validate';
 import { badRequest, conflict, forbidden, notFound } from '../../utils/errors';
 import { authenticatePlatform, requirePermission } from '../../middleware/auth';
 import { meta, PROVIDERS, type Provider } from '../../models/meta';
@@ -157,7 +157,7 @@ router.patch(
   requirePermission('owner.tenants'),
   h(async (req, res) => {
     const id = oid(req.params.id as string);
-    const body = parse(tenantUpdate, req.body);
+    const body = parsePatch(tenantUpdate, req.body);
     const { Tenant } = meta();
     const before = await Tenant.findById(id).lean();
     if (!before) throw notFound('Facility not found');

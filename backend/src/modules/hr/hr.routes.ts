@@ -1,7 +1,7 @@
 import { Router } from 'express';
 import { z } from 'zod';
 import { h } from '../../utils/asyncHandler';
-import { escapeRegex, parse } from '../../utils/validate';
+import { escapeRegex, parse, parsePatch } from '../../utils/validate';
 import { badRequest, conflict, forbidden, notFound } from '../../utils/errors';
 import { authenticateTenant, requirePermission } from '../../middleware/auth';
 import { audit } from '../audit/auditService';
@@ -48,7 +48,7 @@ router.post('/staff', requirePermission('hr.manage'), h(async (req, res) => {
 }));
 
 router.patch('/staff/:id', requirePermission('hr.manage'), h(async (req, res) => {
-  const body = parse(staffSchema.partial(), req.body);
+  const body = parsePatch(staffSchema.partial(), req.body);
   const s = await req.tenant!.models.StaffProfile.findById(oid(req.params.id, 'Staff'));
   if (!s) throw notFound('Staff record not found');
   const before = s.toObject();

@@ -1,7 +1,7 @@
 import { Router } from 'express';
 import { z } from 'zod';
 import { h } from '../../utils/asyncHandler';
-import { pagination, parse } from '../../utils/validate';
+import { pagination, parse, parsePatch } from '../../utils/validate';
 import { badRequest, conflict, forbidden, notFound } from '../../utils/errors';
 import { authenticateTenant, requireAnyPermission, requirePermission } from '../../middleware/auth';
 import { branchFilter } from '../../middleware/branchScope';
@@ -28,7 +28,7 @@ router.post('/suppliers', requirePermission('procurement.manage'), h(async (req,
 }));
 
 router.patch('/suppliers/:id', requirePermission('procurement.manage'), h(async (req, res) => {
-  const body = parse(supplierSchema.partial(), req.body);
+  const body = parsePatch(supplierSchema.partial(), req.body);
   const s = await req.tenant!.models.Supplier.findByIdAndUpdate(oid(req.params.id, 'Supplier'), { $set: body }, { returnDocument: 'after' });
   if (!s) throw notFound('Supplier not found');
   await audit(req, { action: 'procurement.supplier_update', resource: 'supplier', resourceId: String(s._id), newValue: body });

@@ -2,7 +2,7 @@ import { Router } from 'express';
 import { isValidObjectId, Types } from 'mongoose';
 import { z } from 'zod';
 import { h } from '../../utils/asyncHandler';
-import { escapeRegex, pagination, parse } from '../../utils/validate';
+import { escapeRegex, pagination, parse, parsePatch } from '../../utils/validate';
 import { badRequest, conflict, forbidden, notFound } from '../../utils/errors';
 import { authenticateTenant, requirePermission } from '../../middleware/auth';
 import { hashPassword, passwordPolicy } from '../auth/password';
@@ -106,7 +106,7 @@ usersRouter.patch(
   requirePermission('admin.users'),
   h(async (req, res) => {
     const id = oid(req.params.id as string);
-    const body = parse(userSchema.omit({ password: true, email: true }).partial(), req.body);
+    const body = parsePatch(userSchema.omit({ password: true, email: true }).partial(), req.body);
     const { User } = req.tenant!.models;
     const user = await User.findById(id);
     if (!user) throw notFound('User not found');
@@ -221,7 +221,7 @@ rolesRouter.patch(
   requirePermission('admin.roles'),
   h(async (req, res) => {
     const id = oid(req.params.id as string);
-    const body = parse(roleSchema.partial(), req.body);
+    const body = parsePatch(roleSchema.partial(), req.body);
     const { Role } = req.tenant!.models;
     const role = await Role.findById(id);
     if (!role) throw notFound('Role not found');

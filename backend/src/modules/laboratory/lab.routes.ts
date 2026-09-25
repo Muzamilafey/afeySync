@@ -1,7 +1,7 @@
 import { Router, type Request } from 'express';
 import { z } from 'zod';
 import { h } from '../../utils/asyncHandler';
-import { escapeRegex, pagination, parse } from '../../utils/validate';
+import { escapeRegex, pagination, parse, parsePatch } from '../../utils/validate';
 import { AppError, badRequest, conflict, forbidden, notFound } from '../../utils/errors';
 import { authenticateTenant, requireBranch, requirePermission } from '../../middleware/auth';
 import { branchFilter } from '../../middleware/branchScope';
@@ -57,7 +57,7 @@ router.patch(
   '/tests/:code',
   requirePermission('lab.manage'),
   h(async (req, res) => {
-    const body = parse(testSchema.omit({ code: true }).partial(), req.body);
+    const body = parsePatch(testSchema.omit({ code: true }).partial(), req.body);
     const m = req.tenant!.models;
     const t = await m.LabTest.findOne({ code: String(req.params.code).toUpperCase() });
     if (!t) throw notFound('Test not found');

@@ -2,7 +2,7 @@ import { Router, type Request } from 'express';
 import { z } from 'zod';
 import { Types } from 'mongoose';
 import { h } from '../../utils/asyncHandler';
-import { escapeRegex, pagination, parse } from '../../utils/validate';
+import { escapeRegex, pagination, parse, parsePatch } from '../../utils/validate';
 import { AppError, badRequest, conflict, forbidden, notFound } from '../../utils/errors';
 import { authenticateTenant, requireAnyPermission, requireBranch, requirePermission } from '../../middleware/auth';
 import { branchFilter, canAccessBranch } from '../../middleware/branchScope';
@@ -71,7 +71,7 @@ router.patch(
   '/items/:id',
   requireAnyPermission(...STOCK_WRITE),
   h(async (req, res) => {
-    const body = parse(itemSchema.omit({ code: true }).partial(), req.body);
+    const body = parsePatch(itemSchema.omit({ code: true }).partial(), req.body);
     const i = await req.tenant!.models.Item.findByIdAndUpdate(oid(req.params.id, 'Item'), { $set: body }, { returnDocument: 'after' });
     if (!i) throw notFound('Item not found');
     await audit(req, { action: 'inventory.item_update', resource: 'item', resourceId: String(i._id), newValue: body });

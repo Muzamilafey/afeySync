@@ -2,7 +2,7 @@ import { Router } from 'express';
 import crypto from 'node:crypto';
 import { z } from 'zod';
 import { h } from '../../utils/asyncHandler';
-import { escapeRegex, pagination, parse } from '../../utils/validate';
+import { escapeRegex, pagination, parse, parsePatch } from '../../utils/validate';
 import { badRequest, conflict, forbidden, notFound } from '../../utils/errors';
 import { authenticateTenant, requireAnyPermission, requireBranch, requirePermission } from '../../middleware/auth';
 import { branchFilter } from '../../middleware/branchScope';
@@ -49,7 +49,7 @@ router.patch(
   '/exams/:code',
   requirePermission('radiology.manage'),
   h(async (req, res) => {
-    const body = parse(examSchema.omit({ code: true }).partial(), req.body);
+    const body = parsePatch(examSchema.omit({ code: true }).partial(), req.body);
     const e = await req.tenant!.models.ImagingExam.findOneAndUpdate({ code: String(req.params.code).toUpperCase() }, { $set: body }, { returnDocument: 'after' });
     if (!e) throw notFound('Exam not found');
     await audit(req, { action: 'radiology.exam_update', resource: 'imaging_exam', resourceId: e.code, newValue: body });

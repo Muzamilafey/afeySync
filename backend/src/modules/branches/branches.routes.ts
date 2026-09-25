@@ -1,7 +1,7 @@
 import { Router } from 'express';
 import { isValidObjectId } from 'mongoose';
 import { h } from '../../utils/asyncHandler';
-import { parse } from '../../utils/validate';
+import { parse, parsePatch } from '../../utils/validate';
 import { conflict, forbidden, notFound } from '../../utils/errors';
 import { authenticateTenant, requirePermission } from '../../middleware/auth';
 import { assertBranchAccess, branchFilter } from '../../middleware/branchScope';
@@ -65,7 +65,7 @@ router.patch(
   h(async (req, res) => {
     const id = oid(req.params.id as string);
     assertBranchAccess(req, id);
-    const body = parse(branchInput.partial().extend({ services: z.record(z.string(), z.boolean()).optional() }), req.body);
+    const body = parsePatch(branchInput.partial().extend({ services: z.record(z.string(), z.boolean()).optional() }), req.body);
     const { Branch } = req.tenant!.models;
     const before = await Branch.findById(id).lean();
     if (!before) throw notFound('Branch not found');

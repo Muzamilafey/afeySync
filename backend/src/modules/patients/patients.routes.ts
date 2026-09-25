@@ -3,7 +3,7 @@ import { isValidObjectId, Types } from 'mongoose';
 import { z } from 'zod';
 import crypto from 'node:crypto';
 import { h } from '../../utils/asyncHandler';
-import { pagination, parse } from '../../utils/validate';
+import { pagination, parse, parsePatch } from '../../utils/validate';
 import { AppError, badRequest, conflict, forbidden, notFound } from '../../utils/errors';
 import { authenticateTenant, requireAnyPermission, requireBranch, requirePermission } from '../../middleware/auth';
 import { branchFilter, canAccessAnyBranch } from '../../middleware/branchScope';
@@ -211,7 +211,7 @@ router.patch(
   requirePermission('patients.edit'),
   h(async (req, res) => {
     const p = await loadAccessiblePatient(req, req.params.id as string);
-    const body = parse(patientSchema.partial(), req.body);
+    const body = parsePatch(patientSchema.partial(), req.body);
     if (p.dha?.source === 'client_registry' && (body.clientRegistryId !== undefined && body.clientRegistryId !== p.clientRegistryId)) {
       throw forbidden('The Client Registry ID of an imported patient cannot be changed manually');
     }

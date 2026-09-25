@@ -1,7 +1,7 @@
 import { Router } from 'express';
 import { z } from 'zod';
 import { h } from '../../utils/asyncHandler';
-import { parse } from '../../utils/validate';
+import { parse, parsePatch } from '../../utils/validate';
 import { conflict, forbidden, notFound } from '../../utils/errors';
 import { authenticateTenant, requireBranch, requirePermission } from '../../middleware/auth';
 import { branchFilter, canAccessAnyBranch } from '../../middleware/branchScope';
@@ -88,7 +88,7 @@ router.patch(
   '/:id',
   requirePermission('appointments.manage'),
   h(async (req, res) => {
-    const body = parse(schema.pick({ scheduledAt: true, durationMinutes: true, reason: true, department: true }).partial(), req.body);
+    const body = parsePatch(schema.pick({ scheduledAt: true, durationMinutes: true, reason: true, department: true }).partial(), req.body);
     const a = await loadScoped(req, req.tenant!.models.Appointment, req.params.id, 'Appointment');
     if (a.status !== 'booked') throw conflict('Only booked appointments can be rescheduled');
     const before = a.toObject();

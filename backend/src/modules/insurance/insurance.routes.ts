@@ -1,7 +1,7 @@
 import { Router, type Request } from 'express';
 import { z } from 'zod';
 import { h } from '../../utils/asyncHandler';
-import { escapeRegex, parse } from '../../utils/validate';
+import { escapeRegex, parse, parsePatch } from '../../utils/validate';
 import { AppError, badRequest, conflict, notFound } from '../../utils/errors';
 import { authenticateTenant, requireAnyPermission, requireBranch, requirePermission } from '../../middleware/auth';
 import { branchFilter, canAccessAnyBranch, canAccessBranch } from '../../middleware/branchScope';
@@ -77,7 +77,7 @@ router.post('/payers', requireAnyPermission('insurance.manage', 'admin.integrati
   res.status(201).json({ success: true, data: p });
 }));
 router.patch('/payers/:id', requireAnyPermission('insurance.manage', 'admin.integrations'), h(async (req, res) => {
-  const body = parse(payerSchema.partial(), req.body);
+  const body = parsePatch(payerSchema.partial(), req.body);
   const p = await req.tenant!.models.InsurancePayer.findById(oid(req.params.id, 'Payer'));
   if (!p) throw notFound('Payer not found');
   const before = p.toObject();
@@ -161,7 +161,7 @@ router.post('/coverages', requirePermission('insurance.eligibility'), h(async (r
 }));
 
 router.patch('/coverages/:id', requirePermission('insurance.eligibility'), h(async (req, res) => {
-  const body = parse(coverageSchema.omit({ patientId: true, payerId: true, providerType: true }).partial(), req.body);
+  const body = parsePatch(coverageSchema.omit({ patientId: true, payerId: true, providerType: true }).partial(), req.body);
   const c = await loadCoverage(req, req.params.id);
   const changes = Object.fromEntries(Object.entries(body).map(([k, v]) => [k, { from: (c as unknown as Record<string, unknown>)[k], to: v }]));
   c.set(body);

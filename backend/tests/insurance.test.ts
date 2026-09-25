@@ -105,7 +105,11 @@ describe('connection and payers', () => {
     expect(jub.enabled).toBe(false);
     const c = await t(S, reception).post('/api/v1/insurance/coverages').send({ patientId, payerId: jub._id, memberNumber: 'JUB/123456' });
     expect(c.body.error.code).toBe('PAYER_NOT_AVAILABLE');
-    await t(S, admin).patch(`/api/v1/insurance/payers/${jub._id}`).send({ enabled: true, supported: true });
+    await t(S, admin).patch(`/api/v1/insurance/payers/${jub._id}`).send({ enabled: true });
+    // A partial update must not reset fields it did not send (Zod 4 applies defaults inside .partial()).
+    const upd = await t(S, admin).patch(`/api/v1/insurance/payers/${jub._id}`).send({ supported: true });
+    expect(upd.body.data.enabled).toBe(true);
+    expect(upd.body.data.supported).toBe(true);
     const ok = await t(S, reception).post('/api/v1/insurance/coverages').send({ patientId, payerId: jub._id, memberNumber: 'JUB/123456', relationship: 'principal' });
     expect(ok.status).toBe(201);
     coverageId = ok.body.data._id;
