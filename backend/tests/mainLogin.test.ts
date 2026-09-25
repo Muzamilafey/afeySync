@@ -75,3 +75,18 @@ describe('sign-in on the main domain', () => {
     expect(await meta().UserDirectory.countDocuments({})).toBe(rows.length);
   });
 });
+
+describe('facility address resolution', () => {
+  it('finds a facility by <slug>.<platform domain> and <slug>.localhost even when its saved address is stale', async () => {
+    const t = await meta().Tenant.findOne({ slug: A }).lean();
+    // simulate a facility created under another PLATFORM_DOMAIN
+    await meta().TenantDomain.updateOne({ tenantId: t!._id, type: 'platform_subdomain' }, { hostname: `${A}.afeysync.com` });
+    const { clearDomainCache } = await import('../src/middleware/tenantResolver');
+    clearDomainCache();
+    for (const host of [hostOf(A), `${A}.localhost`, `${A}.localhost:3000`]) {
+      const r = await api().get('/api/v1/auth/context').set('Host', host);
+      expect(r.body.data).toEqual({ kind: 'facility', facility: { name: `${A} Hospital`, slug: A } });
+    }
+    expect((await api().get('/api/v1/auth/context').set('Host', 'no-such-facility.localhost')).body.data.kind).toBe('unknown');
+  });
+});

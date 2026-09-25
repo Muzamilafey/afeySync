@@ -22,8 +22,28 @@ export async function lookupHostTenant(hostname: string): Promise<string | null>
   const domain = await meta().TenantDomain.findOne({ hostname: host }).lean();
   let tenantId: string | null = null;
   if (domain && (domain.type === 'platform_subdomain' || domain.verified)) tenantId = String(domain.tenantId);
+  if (!tenantId) {
+    // <slug>.<PLATFORM_DOMAIN> always means that facility, even if it was created under a different
+    // platform domain (e.g. before PLATFORM_DOMAIN was changed). In development <slug>.localhost works too.
+    const slug = slugFromHost(host);
+    if (slug) {
+      const t = await meta().Tenant.findOne({ slug }).select('_id').lean();
+      if (t) tenantId = String(t._id);
+    }
+  }
   cache.set(host, { tenantId, exp: Date.now() + TTL_MS });
   return tenantId;
+}
+
+function slugFromHost(host: string): string | null {
+  const suffixes = [env.PLATFORM_DOMAIN.toLowerCase()];
+  if (env.NODE_ENV !== 'production') suffixes.push('localhost');
+  for (const apex of suffixes) {
+    if (!host.endsWith(`.${apex}`)) continue;
+    const sub = host.slice(0, -(apex.length + 1));
+    if (/^[a-z0-9][a-z0-9-]{0,62}$/.test(sub)) return sub;
+  }
+  return null;
 }
 
 export async function resolveTenantHost(req: Request, _res: Response, next: NextFunction) {
