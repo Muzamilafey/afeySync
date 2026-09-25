@@ -48,3 +48,24 @@ referred or absconded. Transfers between beds use **Transfer** on the admission 
   current admission.
 * If two admissions for the same patient are submitted at the same moment, the first one saved is
   kept. The other is undone, its bed is freed, and it is refused.
+
+## Writing an order line (prescriptions and ward orders)
+
+Every field is picked from a list, and the server checks every value:
+
+* **Dose**: an amount and a unit, both from lists. The unit starts from the drug's form (tablets → tab,
+  syrups → ml, injections → mg, eye drops → drop, …). The amounts include ½, 1 and 2 × the drug's
+  strength. **Other…** allows an exact amount, which is still checked as a number.
+* **How often**: OD, BD, TDS, QID, Q4H, Q6H, Q8H, Q12H, MANE, NOCTE, EOD, WEEKLY, STAT, PRN.
+* **Route**: PO, SL, BUCCAL, IV, IM, SC, ID, PR, PV, TOP, INH, NEB, EYE, EAR, NASAL, TD, NG. It
+  defaults from the dosage form.
+* **For**: 1 to 90 days, from a list. Not needed for STAT.
+* **Quantity** is worked out as dose × frequency × days when it can be (countable units, or mg/g doses
+  of tablets or capsules with a known strength). It can be changed, but must be a whole number. A
+  warning shows when it is more than the stock.
+* **Instructions**: tap common instructions (After meals, At bedtime, …), plus an optional note.
+
+The server accepts common spellings and stores the standard code: `oral` → `PO`, `bid` → `BD`,
+`1g` → `1 g`, `½ tab` → `0.5 tab`. Anything else is refused with a message saying what to choose.
+The medication chart (MAR) uses the same dose and route pickers. The final diagnosis at discharge
+uses the diagnosis list, with a one-tap "Same as admission".

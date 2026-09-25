@@ -68,7 +68,7 @@ describe('prescribing and dispensing', () => {
   let rxId: string;
   let rxItem: string;
   it('blocks prescriptions that conflict with recorded allergies (incl. drug class) unless overridden with a reason', async () => {
-    const body = { visitId, items: [{ itemId: amox, drugName: 'Amoxicillin 500mg caps', dose: '500mg', frequency: 'TDS', durationDays: 5, quantity: 30 }] };
+    const body = { visitId, items: [{ itemId: amox, drugName: 'Amoxicillin 500mg caps', dose: '500mg', frequency: 'TDS', route: 'PO', durationDays: 5, quantity: 30 }] };
     const blocked = await t(S, doctor).post('/api/v1/pharmacy/prescriptions').send(body);
     expect(blocked.status).toBe(422);
     expect(blocked.body.error.code).toBe('ALLERGY_ALERT');
@@ -96,7 +96,7 @@ describe('prescribing and dispensing', () => {
   });
 
   it('refuses to dispense more than usable stock', async () => {
-    const rx = await t(S, doctor).post('/api/v1/pharmacy/prescriptions').send({ visitId, overrideAllergy: { reason: 'Allergy disputed after review' }, items: [{ itemId: amox, drugName: 'Amoxicillin', quantity: 200 }] });
+    const rx = await t(S, doctor).post('/api/v1/pharmacy/prescriptions').send({ visitId, overrideAllergy: { reason: 'Allergy disputed after review' }, items: [{ itemId: amox, drugName: 'Amoxicillin', dose: '1 cap', frequency: 'TDS', route: 'PO', durationDays: 67, quantity: 200 }] });
     const r = await t(S, pharmacist).post(`/api/v1/pharmacy/prescriptions/${rx.body.data._id}/dispense`).send({ locationId: pharmacyLoc, lines: [{ rxItemId: rx.body.data.items[0]._id, itemId: amox, quantity: 200 }] });
     expect(r.body.error.code).toBe('INSUFFICIENT_STOCK');
     expect(r.body.error.details.available).toBe(85);
@@ -159,7 +159,7 @@ describe('item selling prices (cash / SHA / insurance / foreigner)', () => {
       const p = await t(S, admin).post('/api/v1/patients').send({ firstName: 'Price', lastName: nationality, gender: 'female', nationality });
       const v = await t(S, admin).post('/api/v1/visits').send({ patientId: p.body.data._id, firstStage: 'consultation' });
       const vid = v.body.data.visit._id;
-      const rx = await t(S, doctor).post('/api/v1/pharmacy/prescriptions').send({ visitId: vid, items: [{ itemId: pcm, drugName: 'Paracetamol 500mg', dose: '1g', frequency: 'TDS', quantity: 3 }] });
+      const rx = await t(S, doctor).post('/api/v1/pharmacy/prescriptions').send({ visitId: vid, items: [{ itemId: pcm, drugName: 'Paracetamol 500mg', dose: '1g', frequency: 'TDS', route: 'PO', durationDays: 1, quantity: 3 }] });
       expect(rx.status).toBe(201);
       const d = await t(S, pharmacist).post(`/api/v1/pharmacy/prescriptions/${rx.body.data._id}/dispense`).send({ locationId: pharmacyLoc, lines: [{ rxItemId: rx.body.data.items[0]._id, itemId: pcm, quantity: 3 }] });
       expect(d.body.error).toBeUndefined();
@@ -169,5 +169,32 @@ describe('item selling prices (cash / SHA / insurance / foreigner)', () => {
     };
     expect(await charge('Somali')).toEqual({ list: 'foreigner', amount: 30 });
     expect(await charge('Kenyan')).toEqual({ list: 'cash', amount: 15 });
+  });
+});
+
+describe('prescription lines use the standard dosing vocabulary', () => {
+  const line = (p: Record<string, unknown>) => ({ visitId, items: [{ itemId: amox, drugName: 'Amoxicillin 500mg caps', dose: '1 cap', frequency: 'TDS', route: 'PO', durationDays: 5, quantity: 15, ...p }], overrideAllergy: { reason: 'Allergy disputed, tolerated before' } });
+  it('refuses incomplete or unknown values with plain messages', async () => {
+    const bad = async (p: Record<string, unknown>) => (await t(S, doctor).post('/api/v1/pharmacy/prescriptions').send(line(p))).body.error;
+    expect((await bad({ frequency: 'sometimes' })).message).toMatch(/frequency/i);
+    expect((await bad({ route: 'by magic' })).message).toMatch(/route/i);
+    expect((await bad({ dose: 'a lot' })).message).toMatch(/dose/i);
+    expect((await bad({ dose: undefined })).message).toMatch(/dose/i);
+    expect((await bad({ durationDays: undefined })).message).toMatch(/how many days/);
+    expect((await bad({ quantity: 2.5 })).message).toMatch(/whole number/);
+  });
+  it('stores canonical codes (aliases accepted) and allows STAT without days', async () => {
+    const ok = await t(S, doctor).post('/api/v1/pharmacy/prescriptions').send(line({ dose: '½ tabs', frequency: 'bid', route: 'oral' }));
+    expect(ok.status).toBe(201);
+    expect(ok.body.data.items[0]).toMatchObject({ dose: '0.5 tab', frequency: 'BD', route: 'PO' });
+    expect((await t(S, doctor).post('/api/v1/pharmacy/prescriptions').send(line({ frequency: 'STAT', durationDays: undefined, quantity: 1 }))).status).toBe(201);
+  });
+  it('keeps the frontend pick lists in step with the server', async () => {
+    const fs = await import('node:fs');
+    const src = fs.readFileSync(new URL('../../frontend/features/pharmacy/dosing.ts', import.meta.url), 'utf8');
+    const { FREQUENCIES, ROUTES, DOSE_UNITS } = await import('../src/modules/pharmacy/dosing');
+    for (const f of FREQUENCIES) expect(src).toContain(`code: '${f.code}'`);
+    for (const r of ROUTES) expect(src).toContain(`code: '${r.code}'`);
+    for (const u of DOSE_UNITS) expect(src).toContain(`'${u}'`);
   });
 });

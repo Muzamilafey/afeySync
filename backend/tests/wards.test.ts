@@ -400,11 +400,11 @@ describe('ward medication: order → pharmacy → dispense → receive → chart
   it('charts doses against the order, or a drug from the list', async () => {
     const g = await t(S, nurse).post(`/api/v1/inpatient/admissions/${admissionId}/mar`).send({ prescriptionId: rxId, rxItemId, status: 'given' });
     expect(g.status).toBe(201);
-    expect(g.body.data).toMatchObject({ drugName: 'Ceftriaxone 1g', dose: '1g', route: 'IV', itemId });
+    expect(g.body.data).toMatchObject({ drugName: 'Ceftriaxone 1g', dose: '1 g', route: 'IV', itemId });
     const free = await t(S, nurse).post(`/api/v1/inpatient/admissions/${admissionId}/mar`).send({ itemId, status: 'given', dose: '1g' });
     expect(free.body.data.drugName).toBe('Ceftriaxone 1g');
     expect((await t(S, nurse).post(`/api/v1/inpatient/admissions/${admissionId}/mar`).send({ status: 'given' })).body.error.message).toMatch(/Choose the medication/);
-    const other = (await t(S, doctor).post('/api/v1/pharmacy/prescriptions').send({ visitId: undefined, admissionId: admissionId, items: [{ drugName: 'Paracetamol', quantity: 1 }] })).body.data;
+    const other = (await t(S, doctor).post('/api/v1/pharmacy/prescriptions').send({ visitId: undefined, admissionId: admissionId, items: [{ drugName: 'Paracetamol', dose: '1 tab', frequency: 'STAT', route: 'PO', quantity: 1 }] })).body.data;
     await t(S, pharmacist).post(`/api/v1/pharmacy/prescriptions/${other._id}/cancel`).send({ reason: 'Duplicate order' });
     expect((await t(S, nurse).post(`/api/v1/inpatient/admissions/${admissionId}/mar`).send({ prescriptionId: other._id, rxItemId: other.items[0]._id, status: 'given' })).body.error.code).toBe('ORDER_CANCELLED');
   });

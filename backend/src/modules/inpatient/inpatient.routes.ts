@@ -1,5 +1,6 @@
 import { admissionPolicy, consumeVerification, phoneOptions, sendAdmissionCode, sendSchema, SKIP_REASONS, verificationInput, verifyAdmissionCode } from './phoneVerification';
 import { Router, type Request } from 'express';
+import { doseSchema, routeSchema } from '../pharmacy/dosing';
 import { z } from 'zod';
 import { Types } from 'mongoose';
 import { h } from '../../utils/asyncHandler';
@@ -389,7 +390,7 @@ router.post(
   '/admissions/:id/mar',
   requirePermission('nursing.record'),
   h(async (req, res) => {
-    const body = parse(z.object({ prescriptionId: z.string().optional(), rxItemId: z.string().optional(), itemId: z.string().optional(), drugName: z.string().min(2).max(160).optional(), dose: z.string().max(60).optional(), route: z.string().max(40).optional(), scheduledAt: z.coerce.date().optional(), status: z.enum(['given', 'held', 'refused', 'missed']), notes: z.string().max(500).optional() }), req.body);
+    const body = parse(z.object({ prescriptionId: z.string().optional(), rxItemId: z.string().optional(), itemId: z.string().optional(), drugName: z.string().min(2).max(160).optional(), dose: doseSchema.optional(), route: routeSchema.optional(), scheduledAt: z.coerce.date().optional(), status: z.enum(['given', 'held', 'refused', 'missed']), notes: z.string().max(500).optional() }), req.body);
     if (body.status !== 'given' && !body.notes) throw badRequest('A note is required when a dose is not given');
     const m = req.tenant!.models;
     const a = await loadScoped(req, m.Admission, req.params.id, 'Admission');

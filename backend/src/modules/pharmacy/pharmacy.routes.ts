@@ -16,6 +16,7 @@ import { enqueue } from '../frontdesk/queueService';
 import { allocateFefo, stockOnHand } from './stockService';
 import { allergyConflicts } from './allergyCheck';
 import { billingCodeOf, syncItemPrices } from './itemPrices';
+import { doseSchema, frequencySchema, routeSchema } from './dosing';
 
 const router = Router();
 router.use(authenticateTenant);
@@ -258,16 +259,21 @@ router.post(
 );
 
 /* ------------------------------------------------------------ Prescriptions */
-const rxItem = z.object({
-  itemId: z.string().optional(),
-  drugName: z.string().min(2).max(160),
-  dose: z.string().max(60).optional(),
-  frequency: z.string().max(60).optional(),
-  route: z.string().max(40).optional(),
-  durationDays: z.number().int().min(0).max(365).optional(),
-  quantity: z.number().positive().max(100_000),
-  instructions: z.string().max(500).optional(),
-});
+/** Every order line is complete and uses the standard dosing vocabulary (see ./dosing). */
+const rxItem = z
+  .object({
+    itemId: z.string().optional(),
+    drugName: z.string().min(2).max(160),
+    dose: doseSchema,
+    frequency: frequencySchema,
+    route: routeSchema,
+    durationDays: z.number().int('Days must be a whole number').min(1, 'Days must be at least 1').max(365, 'Days can be at most 365').optional(),
+    quantity: z.number().int('Quantity must be a whole number of units').min(1, 'Quantity must be at least 1').max(100_000),
+    instructions: z.string().max(500).optional(),
+  })
+  .superRefine((l, ctx) => {
+    if (l.frequency !== 'STAT' && !l.durationDays) ctx.addIssue({ code: 'custom', path: ['durationDays'], message: 'Choose for how many days' });
+  });
 
 router.post(
   '/prescriptions',

@@ -11,6 +11,9 @@ import { age, fmtDateTime } from '@/lib/utils';
 import { VitalsForm, type VitalsRow } from '@/features/opd/VitalsForm';
 import { VisitOrders } from '@/features/opd/VisitOrders';
 import { PrescriptionPanel } from '@/features/pharmacy/PrescriptionPanel';
+import { DiagnosisInput } from '@/features/diagnoses/DiagnosisInput';
+import { DosePicker } from '@/features/pharmacy/DosePicker';
+import { defaultsForForm, parseDose, ROUTES } from '@/features/pharmacy/dosing';
 import { ItemPicker } from '@/features/pharmacy/ItemPicker';
 import type { Prescription } from '@/features/pharmacy/types';
 
@@ -36,6 +39,8 @@ export default function AdmissionPage({ params }: { params: Promise<{ id: string
   const [tab, setTab] = useState<Tab>('notes');
   const [note, setNote] = useState({ kind: can('nursing.record') ? 'nursing' : 'doctor_round', text: '' });
   const [mar, setMar] = useState({ drugName: '', dose: '', route: '', status: 'given', notes: '' });
+  const [marUnit, setMarUnit] = useState('tab');
+  const [marStrength, setMarStrength] = useState<string | null>(null);
   // What is being charted: an item on a medication order, or a drug picked from the drug list.
   const [marPick, setMarPick] = useState<{ prescriptionId?: string; rxItemId?: string; itemId?: string; label: string } | null>(null);
   const [fluid, setFluid] = useState({ direction: 'intake', route: 'IV', volumeMl: '' });
@@ -118,7 +123,7 @@ export default function AdmissionPage({ params }: { params: Promise<{ id: string
                         const hit = orders.find((o) => o.i._id === e.target.value);
                         if (!hit) return setMarPick(null);
                         setMarPick({ prescriptionId: hit.rx._id, rxItemId: hit.i._id, label: hit.i.drugName });
-                        setMar({ ...mar, drugName: hit.i.drugName, dose: hit.i.dose ?? '', route: hit.i.route ?? '' });
+                        setMarStrength(null); setMarUnit(parseDose(hit.i.dose).unit); setMar({ ...mar, drugName: hit.i.drugName, dose: hit.i.dose ?? '', route: hit.i.route ?? '' });
                       }}
                     >
                       <option value="">{orders.length ? 'Choose from medication orders…' : 'No medication orders yet'}</option>
@@ -127,14 +132,17 @@ export default function AdmissionPage({ params }: { params: Promise<{ id: string
                     {marPick && !marPick.rxItemId ? (
                       <div className="flex items-center justify-between rounded-md border border-[var(--border)] px-3 py-2 text-sm"><span>{marPick.label}</span><button type="button" className="text-xs text-brand-600" onClick={() => setMarPick(null)}>Change</button></div>
                     ) : (
-                      <ItemPicker onPick={(it) => { setMarPick({ itemId: it._id, label: `${it.name}${it.strength ? ` ${it.strength}` : ''}` }); setMar({ ...mar, drugName: `${it.name}${it.strength ? ` ${it.strength}` : ''}`, dose: '', route: '' }); }} placeholder="…or search the drug list (ward stock)" />
+                      <ItemPicker onPick={(it) => { setMarPick({ itemId: it._id, label: `${it.name}${it.strength ? ` ${it.strength}` : ''}` }); const d = defaultsForForm(it.form); setMarUnit(d.unit); setMarStrength(it.strength ?? null); setMar({ ...mar, drugName: `${it.name}${it.strength ? ` ${it.strength}` : ''}`, dose: '', route: d.route }); }} placeholder="…or search the drug list (ward stock)" />
                     )}
                   </div>
                 );
               })()}
-              <div className="grid gap-2 sm:grid-cols-[1fr_1fr_1fr_2fr_auto]">
-                <Input placeholder="Dose" value={mar.dose} onChange={(e) => setMar({ ...mar, dose: e.target.value })} />
-                <Input placeholder="Route (IV, PO…)" value={mar.route} onChange={(e) => setMar({ ...mar, route: e.target.value })} />
+              <div className="grid gap-2 sm:grid-cols-[1.6fr_1fr_0.8fr_1.6fr_auto]">
+                {(() => {
+                  const d = parseDose(mar.dose, marUnit);
+                  return <DosePicker amount={d.amount} unit={d.unit} strength={marStrength} onChange={(v) => { setMarUnit(v.unit); setMar({ ...mar, dose: v.amount === '' ? '' : `${v.amount} ${v.unit}` }); }} />;
+                })()}
+                <Select aria-label="Route" value={mar.route} onChange={(e) => setMar({ ...mar, route: e.target.value })}><option value="">Route…</option>{ROUTES.map((r) => <option key={r.code} value={r.code}>{r.code} · {r.label}</option>)}</Select>
                 <Select value={mar.status} onChange={(e) => setMar({ ...mar, status: e.target.value })}><option value="given">Given</option><option value="held">Held</option><option value="refused">Refused</option><option value="missed">Missed</option></Select>
                 <Input placeholder={mar.status === 'given' ? 'Notes' : 'Reason (required)'} value={mar.notes} onChange={(e) => setMar({ ...mar, notes: e.target.value })} />
                 <Button onClick={() => post.mutate({ path: 'mar', body: { prescriptionId: marPick?.prescriptionId, rxItemId: marPick?.rxItemId, itemId: marPick?.itemId, drugName: marPick?.rxItemId ? undefined : mar.drugName, dose: mar.dose || undefined, route: mar.route || undefined, status: mar.status, notes: mar.notes || undefined } })} disabled={!marPick || (mar.status !== 'given' && !mar.notes)}>Record</Button>
@@ -168,11 +176,14 @@ export default function AdmissionPage({ params }: { params: Promise<{ id: string
           {active && can('inpatient.discharge') ? (
             <div className="grid gap-3 sm:grid-cols-2">
               <Field label="Outcome"><Select value={dis.outcome} onChange={(e) => setDis({ ...dis, outcome: e.target.value })}>{['recovered', 'improved', 'referred', 'against_advice', 'absconded', 'deceased'].map((o) => <option key={o} value={o}>{o.replace('_', ' ')}</option>)}</Select></Field>
-              <Field label="Final diagnosis"><Input value={dis.finalDiagnosis} onChange={(e) => setDis({ ...dis, finalDiagnosis: e.target.value })} /></Field>
+              <div className="space-y-1">
+                <Field label="Final diagnosis"><DiagnosisInput value={dis.finalDiagnosis} onChange={(v) => setDis({ ...dis, finalDiagnosis: v })} /></Field>
+                {a.admissionDiagnosis && dis.finalDiagnosis !== a.admissionDiagnosis && <button type="button" className="text-xs text-brand-600 hover:underline" onClick={() => setDis({ ...dis, finalDiagnosis: a.admissionDiagnosis })}>Same as admission: {a.admissionDiagnosis}</button>}
+              </div>
               <Field label="Discharge summary" className="col-span-full"><Textarea rows={6} value={dis.summary} onChange={(e) => setDis({ ...dis, summary: e.target.value })} /></Field>
               <Field label="Discharge medications"><Textarea rows={3} value={dis.dischargeMedications} onChange={(e) => setDis({ ...dis, dischargeMedications: e.target.value })} /></Field>
               <Field label="Follow-up"><Textarea rows={3} value={dis.followUp} onChange={(e) => setDis({ ...dis, followUp: e.target.value })} /></Field>
-              <div className="col-span-full"><Button onClick={() => post.mutate({ path: 'discharge', body: { ...dis, dischargeMedications: dis.dischargeMedications || undefined, followUp: dis.followUp || undefined } })} disabled={dis.summary.length < 10 || dis.finalDiagnosis.length < 2} loading={post.isPending}>Discharge (bed-day charges posted)</Button></div>
+              <div className="col-span-full"><Button onClick={() => post.mutate({ path: 'discharge', body: { ...dis, dischargeMedications: dis.dischargeMedications || undefined, followUp: dis.followUp || undefined } })} disabled={dis.summary.trim().length < 10 || dis.finalDiagnosis.trim().length < 2} loading={post.isPending}>Discharge (bed-day charges posted)</Button>{(dis.summary.trim().length < 10 || dis.finalDiagnosis.trim().length < 2) && <p className="muted mt-1 text-xs">To discharge: {[dis.finalDiagnosis.trim().length < 2 && 'choose the final diagnosis', dis.summary.trim().length < 10 && `write the discharge summary (at least 10 characters${dis.summary.trim() ? `, ${10 - dis.summary.trim().length} more` : ''})`].filter(Boolean).join(' and ')}.</p>}</div>
             </div>
           ) : a.discharge ? (
             <KV items={[['Outcome', a.discharge.outcome], ['Discharged', fmtDateTime(a.discharge.at)], ['By', a.discharge.byName], ['Final diagnosis', a.discharge.finalDiagnosis], ['Summary', a.discharge.summary]]} />

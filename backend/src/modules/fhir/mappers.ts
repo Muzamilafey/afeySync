@@ -1,3 +1,7 @@
+import { ROUTES } from '../pharmacy/dosing';
+
+/** Readable route for FHIR text (orders store a standard code, e.g. PO → Oral). */
+const routeLabel = (r?: unknown) => (typeof r === 'string' && r ? ROUTES.find((x) => x.code === r)?.label ?? r : undefined);
 /**
  * AfeySync → FHIR R4 (4.0.1) mappers.
  *
@@ -239,7 +243,7 @@ export function toMedicationRequests(cfg: FhirConfig, rx: Obj & { _id: unknown; 
     medicationCodeableConcept: { coding: extra.itemCodes?.[String(i.itemId)] ? [{ system: `${AFS}/item-code`, code: extra.itemCodes[String(i.itemId)] }] : undefined, text: i.drugName },
     subject: ref('Patient', rx.patientId), encounter: rx.visitId ? ref('Encounter', rx.visitId) : undefined,
     authoredOn: dt(rx.createdAt as Date), requester: rx.prescriberId ? ref('Practitioner', rx.prescriberId, rx.prescriberName as string) : undefined,
-    dosageInstruction: [{ text: [i.dose, i.frequency, i.route, i.durationDays ? `for ${i.durationDays} days` : undefined, i.instructions].filter(Boolean).join(' '), route: i.route ? { text: i.route } : undefined }],
+    dosageInstruction: [{ text: [i.dose, i.frequency, routeLabel(i.route), i.durationDays ? `for ${i.durationDays} days` : undefined, i.instructions].filter(Boolean).join(' '), route: i.route ? { text: routeLabel(i.route) } : undefined }],
     dispenseRequest: { quantity: { value: i.quantity }, expectedSupplyDuration: i.durationDays ? { value: i.durationDays, unit: 'days', system: 'http://unitsofmeasure.org', code: 'd' } : undefined },
   }));
 }

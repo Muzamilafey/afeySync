@@ -84,7 +84,7 @@ describe('ePrescription', () => {
     expect(b.body.data.validation).toEqual([]);
     const mr = b.body.data.resource.entry.find((e: { resource: { resourceType: string } }) => e.resource.resourceType === 'MedicationRequest').resource;
     expect(mr).toEqual(expect.objectContaining({ status: 'active', intent: 'order' }));
-    expect(mr.dosageInstruction[0].text).toBe('1 tab TDS oral for 5 days');
+    expect(mr.dosageInstruction[0].text).toBe('1 tab TDS Oral for 5 days');
     const calls = hie.state.calls.length;
     const send = await t(S, doctor).post(`/api/v1/pharmacy/prescriptions/${rxId}/eprescription`);
     expect(send.body.error.code).toBe('INTEGRATION_OPERATION_NOT_CONFIGURED');
