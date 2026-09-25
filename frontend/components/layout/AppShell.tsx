@@ -67,6 +67,7 @@ const NAV: Array<{ section: string; items: NavItem[] }> = [
     { href: '/admin/audit', label: 'Audit Trail', icon: FileSearch, any: ['admin.audit'] },
     { href: '/admin/security', label: 'Security', icon: Settings, any: ['admin.support_access', 'admin.settings'] },
     { href: '/admin/branding', label: 'Branding', icon: Palette, any: ['admin.settings'] },
+    { href: '/admin/diagnoses', label: 'Diagnoses', icon: ClipboardList, any: ['admin.settings'] },
     { href: '/admin/sms', label: 'SMS wallet', icon: MessageSquareText, any: ['subscription.view', 'admin.settings'] },
     { href: '/admin/subscription', label: 'Subscription', icon: CreditCard, any: ['subscription.view'] },
   ] },

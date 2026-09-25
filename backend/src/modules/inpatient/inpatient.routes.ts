@@ -1,3 +1,4 @@
+import { admissionPolicy, consumeVerification, phoneOptions, sendAdmissionCode, sendSchema, SKIP_REASONS, verificationInput, verifyAdmissionCode } from './phoneVerification';
 import { Router, type Request } from 'express';
 import { z } from 'zod';
 import { Types } from 'mongoose';
@@ -144,6 +145,39 @@ async function occupyBed(req: Request, bedId: string, admissionId: Types.ObjectI
   return bed;
 }
 
+/* ------------------------------------------------------------ Admission phone verification */
+router.get(
+  '/admissions/phone-verification',
+  requirePermission('inpatient.admit'),
+  h(async (req, res) => {
+    const m = req.tenant!.models;
+    const patient = await m.Patient.findById(oid(String(req.query.patientId ?? ''), 'Patient')).select('phone nextOfKin branchIds').lean();
+    if (!patient || !canAccessAnyBranch(req, patient.branchIds ?? [])) throw notFound('Patient not found');
+    res.json({ success: true, data: { policy: await admissionPolicy(req), options: phoneOptions(patient), skipReasons: Object.entries(SKIP_REASONS).map(([key, label]) => ({ key, label })) } });
+  }),
+);
+
+router.post(
+  '/admissions/phone-otp',
+  requirePermission('inpatient.admit'),
+  h(async (req, res) => {
+    const body = parse(sendSchema, req.body);
+    const m = req.tenant!.models;
+    const patient = await m.Patient.findById(oid(body.patientId, 'Patient')).select('phone nextOfKin branchIds').lean();
+    if (!patient || !canAccessAnyBranch(req, patient.branchIds ?? [])) throw notFound('Patient not found');
+    res.status(201).json({ success: true, data: await sendAdmissionCode(req, patient, body) });
+  }),
+);
+
+router.post(
+  '/admissions/phone-otp/:id/verify',
+  requirePermission('inpatient.admit'),
+  h(async (req, res) => {
+    const { code } = parse(z.object({ code: z.string().trim().max(10) }), req.body);
+    res.json({ success: true, data: await verifyAdmissionCode(req, String(oid(req.params.id as string, 'Code request')), code) });
+  }),
+);
+
 router.post(
   '/admissions',
   requirePermission('inpatient.admit'),
@@ -157,6 +191,7 @@ router.post(
         admissionDiagnosis: z.string().min(2).max(500),
         admissionType: z.enum(['elective', 'emergency', 'maternity', 'transfer_in']).default('emergency'),
         payer: z.object({ type: z.enum(['cash', 'sha', 'insurance', 'corporate']), scheme: z.string().max(80).optional() }).optional(),
+        phoneVerification: verificationInput.optional(),
       }),
       req.body,
     );
@@ -164,6 +199,9 @@ router.post(
     const patient = await m.Patient.findById(oid(body.patientId, 'Patient')).lean();
     if (!patient || !canAccessAnyBranch(req, patient.branchIds ?? [])) throw notFound('Patient not found');
     if (await m.Admission.exists({ patientId: patient._id, status: 'admitted' })) throw conflict('Patient is already admitted', undefined, 'ALREADY_ADMITTED');
+    if (!(await m.Bed.exists({ _id: oid(body.bedId, 'Bed') }))) throw notFound('Bed not found');
+    // Checked before anything is created, so a failed verification leaves no stray visit behind.
+    const phoneVerification = await consumeVerification(req, String(patient._id), body.phoneVerification);
     let visit = body.visitId ? await loadScoped(req, m.Visit, body.visitId, 'Visit') : null;
     if (!visit) {
       visit = await m.Visit.create({ visitNumber: await nextNumber(m, 'visit', 'V'), patientId: patient._id, branchId: req.branch!.id, type: 'inpatient', status: 'admitted', payer: body.payer ?? { type: 'cash' }, createdBy: req.user!.id });
@@ -171,6 +209,7 @@ router.post(
     const bedDoc = await m.Bed.findById(oid(body.bedId, 'Bed')).lean();
     if (!bedDoc) throw notFound('Bed not found');
     const admission = new m.Admission({
+      phoneVerification,
       admissionNumber: await nextNumber(m, 'admission', 'IP'),
       visitId: visit._id,
       patientId: patient._id,

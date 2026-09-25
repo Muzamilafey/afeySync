@@ -93,3 +93,22 @@ Current triggers:
 | Discharge | Discharge notice |
 
 SMS never contains diagnoses, results or other clinical details.
+
+## Admission phone verification
+
+When admitting a patient (Inpatient → Admit patient), staff confirm the patient's phone:
+
+* A 6-digit code goes by SMS to the patient, the next of kin, or another number typed in (that
+  number can be saved to the patient's record once verified). Staff enter the code the patient reads
+  back.
+* Codes are stored only as a hash and sent encrypted through the queue. They expire in 10 minutes
+  and allow 5 attempts. Resends are limited (30 seconds apart, 10 per patient per hour).
+* A correct code gives a single-use verification that only works for the same patient and the same
+  staff member, within 30 minutes.
+* When a code is not possible (patient unconscious, no phone, phone not with them, no network,
+  minor without a guardian's phone, or another stated reason), staff record the reason instead.
+  **Emergency care is never blocked.**
+* The result (verified, or skipped with the reason) is stored on the admission and in the audit
+  trail.
+* Setting: Admin → Security → Admission phone verification: **Required** (default: a code or a
+  recorded reason), **Optional** or **Off**. Codes are paid from the SMS wallet like any other SMS.

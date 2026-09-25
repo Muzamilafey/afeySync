@@ -57,6 +57,18 @@ const admissionSchema = new Schema(
       followUp: String,
     },
     bedDaysCharged: { type: Number, default: 0 },
+    /** How the patient's contact phone was confirmed at admission (a code by SMS, or a recorded reason for skipping). */
+    phoneVerification: {
+      status: { type: String, enum: ['verified', 'skipped', 'not_required'] },
+      method: String,
+      target: String,
+      phoneMasked: String,
+      verifiedAt: Date,
+      skipReason: String,
+      skipNote: String,
+      by: ObjectId,
+      byName: String,
+    },
   },
   { timestamps: true },
 );

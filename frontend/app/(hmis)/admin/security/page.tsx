@@ -7,6 +7,7 @@ import { fmtDateTime } from '@/lib/utils';
 import { useCan } from '@/hooks/useMe';
 import { MfaPolicyCard } from '@/features/auth/MfaPolicyCard';
 import { GoogleToggleCard } from '@/features/auth/GoogleToggleCard';
+import { AdmissionOtpPolicyCard } from '@/features/inpatient/AdmissionOtpPolicyCard';
 
 interface Grant { _id: string; requestedByEmail: string; reason: string; permissions: string[]; durationMinutes: number; status: string; createdAt: string; expiresAt?: string; approvedByName?: string }
 
@@ -18,7 +19,7 @@ export default function SupportAccessPage() {
   return (
     <>
       <PageHeader title="Security" crumbs={['Admin', 'Security']} />
-      {can('admin.settings') && <div className="mb-5 grid max-w-5xl gap-5 lg:grid-cols-2"><MfaPolicyCard realm="tenant" /><GoogleToggleCard /></div>}
+      {can('admin.settings') && <div className="mb-5 grid max-w-5xl gap-5 lg:grid-cols-2"><MfaPolicyCard realm="tenant" /><GoogleToggleCard /><AdmissionOtpPolicyCard /></div>}
       <h2 className="mb-2 text-base font-semibold">Support access</h2>
       <div className="mb-4"><Alert tone="blue" title="Platform staff cannot browse your patient records">AfeySync support can only access clinical data after a facility administrator approves a specific, time-limited request. All access is audited in your audit trail.</Alert></div>
       <Card>

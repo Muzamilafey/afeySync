@@ -20,6 +20,7 @@ import { errorHandler, notFoundHandler } from './middleware/errorHandler';
 import healthRoutes from './modules/health/health.routes';
 import tenantAuthRoutes from './modules/auth/tenantAuth.routes';
 import selfServiceRoutes from './modules/auth/selfService.routes';
+import diagnosisRoutes from './modules/diagnoses/diagnoses.routes';
 import { smsOwnerRouter, smsWalletRouter } from './modules/sms/sms.routes';
 import { googleCallbackRouter } from './modules/auth/google/google.routes';
 import ownerAuthRoutes from './modules/auth/ownerAuth.routes';
@@ -122,6 +123,7 @@ export function createApp() {
   api.use('/owner', ownerRoutes);
   api.use('/subscription', subscriptionRouter);
   api.use('/sms-wallet', smsWalletRouter);
+  api.use('/diagnoses', diagnosisRoutes);
   api.use(requirePlanModule); // modules outside the facility's plan are refused
   api.use('/branches', branchRoutes);
   api.use('/users', usersRouter);

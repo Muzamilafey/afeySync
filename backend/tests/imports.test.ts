@@ -250,3 +250,26 @@ describe('lab test catalog import', () => {
     expect(r.body.data.rows[0].errors[0]).toMatch(/permission to set prices/);
   });
 });
+
+describe('diagnosis catalog import', () => {
+  it('imports and updates diagnoses from the template', async () => {
+    const wb = await download('/api/v1/diagnoses/import-template');
+    expect(wb.worksheets.map((w) => w.name)).toEqual(['Diagnoses', 'Instructions', 'Examples']);
+    const buf = await fill(wb, [
+      { 'Diagnosis / disease': 'Essential hypertension', Code: 'BA00', 'Code system': 'ICD-11', Category: 'Cardiovascular', 'Other names': 'HTN, high blood pressure', 'Offer when admitting': 'No' },
+      { 'Diagnosis / disease': 'Severe malaria', 'Notifiable disease': 'Yes' },
+      { 'Diagnosis / disease': 'Bad', Code: 'no spaces allowed' },
+    ]);
+    const p = await upload('/api/v1/diagnoses/import', buf);
+    expect(p.body.data.summary).toMatchObject({ create: 1, update: 1, errors: 1 });
+    expect(p.body.data.rows[2].errors.join(' ')).toMatch(/Code can only contain/);
+    const ok = await fill(await download('/api/v1/diagnoses/import-template'), [
+      { 'Diagnosis / disease': 'Essential hypertension', Code: 'BA00', Category: 'Cardiovascular', 'Other names': 'HTN, high blood pressure' },
+      { 'Diagnosis / disease': 'severe MALARIA', 'Notifiable disease': 'Yes' },
+    ]);
+    expect((await upload('/api/v1/diagnoses/import', ok, true)).body.data.summary).toMatchObject({ create: 1, update: 1, errors: 0 });
+    const list = (await t(S, admin).get('/api/v1/diagnoses?q=hypertension')).body.data;
+    expect(list[0]).toMatchObject({ name: 'Essential hypertension', code: 'BA00', synonyms: ['HTN', 'high blood pressure'], source: 'import' });
+    expect((await t(S, admin).get('/api/v1/diagnoses?q=severe malaria')).body.data[0]).toMatchObject({ name: 'Severe malaria', notifiable: true });
+  });
+});

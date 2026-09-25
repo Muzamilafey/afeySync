@@ -7,7 +7,7 @@ import { isValidObjectId } from 'mongoose';
 import { z } from 'zod';
 import { h } from '../../utils/asyncHandler';
 import { pagination, parse } from '../../utils/validate';
-import { conflict, forbidden, notFound } from '../../utils/errors';
+import { badRequest, conflict, forbidden, notFound } from '../../utils/errors';
 import { authenticateTenant, requirePermission } from '../../middleware/auth';
 import { audit } from '../audit/auditService';
 import { meta } from '../../models/meta';
@@ -136,7 +136,7 @@ router.get(
   }),
 );
 
-const SETTING_KEYS = ['patientNumberPrefix', 'sessionTimeoutMinutes', 'currency', 'timezone', 'receiptFooter', 'allowNewPatientWithoutRegistryCheck'] as const;
+const SETTING_KEYS = ['patientNumberPrefix', 'sessionTimeoutMinutes', 'currency', 'timezone', 'receiptFooter', 'allowNewPatientWithoutRegistryCheck', 'admissionPhoneVerification'] as const;
 router.put(
   '/settings/:key',
   requirePermission('admin.settings'),
@@ -145,6 +145,7 @@ router.put(
     if (!(SETTING_KEYS as readonly string[]).includes(key)) throw notFound('Unknown setting');
     const { value } = parse(z.object({ value: z.union([z.string().max(200), z.number(), z.boolean()]) }), req.body);
     if (key === 'patientNumberPrefix' && (typeof value !== 'string' || !/^[A-Z]{2,5}$/.test(value))) throw forbidden('Prefix must be 2-5 uppercase letters');
+    if (key === 'admissionPhoneVerification' && !['required', 'optional', 'off'].includes(String(value))) throw badRequest('Choose required, optional or off');
     const { FacilitySetting } = req.tenant!.models;
     const before = await FacilitySetting.findOne({ key }).lean();
     await FacilitySetting.updateOne({ key }, { $set: { value } }, { upsert: true });

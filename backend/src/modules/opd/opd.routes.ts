@@ -142,10 +142,13 @@ opdRouter.get(
   h(async (req, res) => {
     const q = String(req.query.q ?? '').trim();
     if (q.length < 2) return res.json({ success: true, data: [], source: 'none' });
-    // Prefer the national terminology service when configured; fall back to this facility's own coded history.
+    // The facility's own diagnosis catalog comes first (Admin → Diagnoses).
+    const cre = new RegExp(escapeRegex(q), 'i');
+    const catalog = (await req.tenant!.models.Diagnosis.find({ active: true, $or: [{ name: cre }, { code: cre }, { synonyms: cre }] }).sort({ name: 1 }).limit(15).lean()).map((d) => ({ code: d.code || undefined, display: d.name, system: d.code ? d.system : 'local', source: 'catalog' }));
+    // Then the national terminology service when configured; otherwise this facility's own coded history.
     try {
       const data = await DHATerminologyService.search({ tenantId: req.tenant!.id, userId: req.user!.id, requestId: req.requestId }, { q });
-      return res.json({ success: true, data, source: 'dha_terminology' });
+      return res.json({ success: true, data: Array.isArray(data) ? [...catalog, ...data] : catalog.length ? catalog : data, source: 'dha_terminology' });
     } catch (err) {
       if (!(err instanceof E)) throw err;
     }
@@ -158,7 +161,7 @@ opdRouter.get(
       { $sort: { uses: -1 } },
       { $limit: 20 },
     ]);
-    res.json({ success: true, data: rows.map((r) => ({ ...r._id, uses: r.uses })), source: 'facility_history' });
+    res.json({ success: true, data: [...catalog, ...rows.map((r) => ({ ...r._id, uses: r.uses }))], source: 'facility_history' });
   }),
 );
 

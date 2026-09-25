@@ -10,6 +10,8 @@ import { Button, Card, ErrorText, Field, Input, Loading, Modal, PageHeader, Sele
 import { age, fmtDateTime } from '@/lib/utils';
 import { PatientPicker } from '@/features/patients/PatientPicker';
 import type { Patient } from '@/types/api';
+import { PhoneVerification, phoneVerificationReady, type PhoneVerificationValue } from '@/features/inpatient/PhoneVerification';
+import { DiagnosisInput } from '@/features/diagnoses/DiagnosisInput';
 
 interface Ward { _id: string; name: string; code: string; type: string; gender: string; beds: number; occupied: number; available: number; bedChargeServiceCode?: string }
 interface Bed { _id: string; number: string; category: string; status: string; wardId: { _id: string; name: string }; admissionId?: { _id: string; admissionNumber: string; admittedAt: string; patientId: { firstName: string; lastName: string; patientNumber: string; gender: string } } }
@@ -24,6 +26,8 @@ export default function InpatientPage() {
   const [wardFilter, setWardFilter] = useState('');
   const [patient, setPatient] = useState<Patient | null>(null);
   const [adm, setAdm] = useState({ wardId: '', bedId: '', admissionDiagnosis: '', admissionType: 'emergency', payer: 'cash' });
+  const [phoneCheck, setPhoneCheck] = useState<PhoneVerificationValue>(null);
+  const [phonePolicy, setPhonePolicy] = useState<'required' | 'optional' | 'off'>('required');
   const [ward, setWard] = useState({ name: '', code: '', type: 'general', gender: 'any', bedChargeServiceCode: '' });
   const [bedsForm, setBedsForm] = useState({ wardId: '', numbers: '', category: 'normal' });
   const wards = useQuery({ queryKey: ['wards'], queryFn: async () => (await api<Ward[]>('/inpatient/wards')).data });
@@ -31,7 +35,7 @@ export default function InpatientPage() {
   const admissions = useQuery({ queryKey: ['admissions', wardFilter], queryFn: async () => (await api<Admission[]>('/inpatient/admissions', { query: { wardId: wardFilter || undefined, limit: 200 } })).data });
   const freeBeds = useQuery({ queryKey: ['free-beds', adm.wardId], queryFn: async () => (await api<Bed[]>('/inpatient/beds', { query: { wardId: adm.wardId, status: 'available' } })).data, enabled: !!adm.wardId });
   const refresh = () => { qc.invalidateQueries({ queryKey: ['wards'] }); qc.invalidateQueries({ queryKey: ['beds'] }); qc.invalidateQueries({ queryKey: ['admissions'] }); setModal(null); };
-  const admit = useMutation({ mutationFn: () => api('/inpatient/admissions', { method: 'POST', body: { patientId: patient!._id, bedId: adm.bedId, admissionDiagnosis: adm.admissionDiagnosis, admissionType: adm.admissionType, payer: { type: adm.payer } } }), onSuccess: () => { setPatient(null); refresh(); } });
+  const admit = useMutation({ mutationFn: () => api('/inpatient/admissions', { method: 'POST', body: { patientId: patient!._id, bedId: adm.bedId, admissionDiagnosis: adm.admissionDiagnosis, admissionType: adm.admissionType, payer: { type: adm.payer }, phoneVerification: phoneCheck ? ('token' in phoneCheck ? { token: phoneCheck.token } : phoneCheck) : undefined } }), onSuccess: () => { setPatient(null); setPhoneCheck(null); setAdm({ wardId: '', bedId: '', admissionDiagnosis: '', admissionType: 'emergency', payer: 'cash' }); refresh(); } });
   const createWard = useMutation({ mutationFn: () => api('/inpatient/wards', { method: 'POST', body: { ...ward, bedChargeServiceCode: ward.bedChargeServiceCode || undefined } }), onSuccess: refresh });
   const addBeds = useMutation({ mutationFn: () => api(`/inpatient/wards/${bedsForm.wardId}/beds`, { method: 'POST', body: { numbers: bedsForm.numbers.split(',').map((s) => s.trim()).filter(Boolean), category: bedsForm.category } }), onSuccess: refresh });
   const bedStatus = useMutation({ mutationFn: ({ id, status }: { id: string; status: string }) => api(`/inpatient/beds/${id}/status`, { method: 'POST', body: { status } }), onSuccess: refresh });
@@ -88,8 +92,9 @@ export default function InpatientPage() {
           <Field label="Bed"><Select value={adm.bedId} onChange={(e) => setAdm({ ...adm, bedId: e.target.value })}><option value="">Select…</option>{freeBeds.data?.map((b) => <option key={b._id} value={b._id}>{b.number} {b.category !== 'normal' ? `(${b.category})` : ''}</option>)}</Select></Field>
           <Field label="Admission type"><Select value={adm.admissionType} onChange={(e) => setAdm({ ...adm, admissionType: e.target.value })}><option value="emergency">Emergency</option><option value="elective">Elective</option><option value="maternity">Maternity</option><option value="transfer_in">Transfer in</option></Select></Field>
           <Field label="Payer"><Select value={adm.payer} onChange={(e) => setAdm({ ...adm, payer: e.target.value })}><option value="cash">Cash</option><option value="sha">SHA</option><option value="insurance">Insurance</option></Select></Field>
-          <Field label="Admission diagnosis" className="col-span-full"><Input value={adm.admissionDiagnosis} onChange={(e) => setAdm({ ...adm, admissionDiagnosis: e.target.value })} /></Field>
-          <div className="col-span-full space-y-2"><ErrorText error={admit.error} /><Button onClick={() => admit.mutate()} loading={admit.isPending} disabled={!patient || !adm.bedId || adm.admissionDiagnosis.length < 2}>Admit</Button></div>
+          <Field label="Admission diagnosis" className="col-span-full" hint={can('admin.settings') ? 'Manage the list in Admin → Diagnoses.' : undefined}><DiagnosisInput value={adm.admissionDiagnosis} onChange={(v) => setAdm({ ...adm, admissionDiagnosis: v })} /></Field>
+          {patient && <div className="col-span-full"><PhoneVerification patientId={patient._id} value={phoneCheck} onChange={setPhoneCheck} onPolicy={setPhonePolicy} /></div>}
+          <div className="col-span-full space-y-2"><ErrorText error={admit.error} /><Button onClick={() => admit.mutate()} loading={admit.isPending} disabled={!patient || !adm.bedId || adm.admissionDiagnosis.length < 2 || !phoneVerificationReady(phonePolicy, phoneCheck)}>Admit</Button></div>
         </div>
       </Modal>
       <Modal open={modal === 'ward'} onClose={() => setModal(null)} title="New ward">

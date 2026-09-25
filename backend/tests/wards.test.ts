@@ -1,6 +1,8 @@
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import { createFacility, createUser, ownerToken, setupApp, t, teardown, tenantLogin } from './helpers';
 import { eddFromLmp, partographAlerts } from '../src/modules/maternity/obstetrics';
+import { meta } from '../src/models/meta';
+import { IntegrationSecretService } from '../src/modules/integrations/secretService';
 
 const S = 'wardfac';
 let admin: string;
@@ -50,12 +52,12 @@ describe('inpatient', () => {
   it('admits atomically: a bed cannot be double-booked', async () => {
     p1 = await mk({ firstName: 'In', lastName: 'Patient', gender: 'male' });
     const p2 = await mk({ firstName: 'Other', lastName: 'Patient', gender: 'male' });
-    const a = await t(S, doctor).post('/api/v1/inpatient/admissions').send({ patientId: p1, bedId: beds[0]._id, admissionDiagnosis: 'Severe pneumonia' });
+    const a = await t(S, doctor).post('/api/v1/inpatient/admissions').send({ patientId: p1, bedId: beds[0]._id, admissionDiagnosis: 'Severe pneumonia', phoneVerification: { skipReason: 'patient_unable' } });
     expect(a.status).toBe(201);
     admissionId = a.body.data._id;
-    const clash = await t(S, doctor).post('/api/v1/inpatient/admissions').send({ patientId: p2, bedId: beds[0]._id, admissionDiagnosis: 'Malaria' });
+    const clash = await t(S, doctor).post('/api/v1/inpatient/admissions').send({ patientId: p2, bedId: beds[0]._id, admissionDiagnosis: 'Malaria', phoneVerification: { skipReason: 'patient_unable' } });
     expect(clash.body.error.code).toBe('BED_UNAVAILABLE');
-    expect((await t(S, doctor).post('/api/v1/inpatient/admissions').send({ patientId: p1, bedId: beds[1]._id, admissionDiagnosis: 'x y' })).body.error.code).toBe('ALREADY_ADMITTED');
+    expect((await t(S, doctor).post('/api/v1/inpatient/admissions').send({ patientId: p1, bedId: beds[1]._id, admissionDiagnosis: 'x y', phoneVerification: { skipReason: 'patient_unable' } })).body.error.code).toBe('ALREADY_ADMITTED');
     const occ = await t(S, nurse).get('/api/v1/inpatient/occupancy');
     expect(occ.body.data).toEqual(expect.objectContaining({ total: 3, occupied: 1, occupancyRate: 33.3 }));
   });
@@ -187,5 +189,109 @@ describe('mortuary', () => {
     expect(ok.body.data.status).toBe('release_authorized');
     expect((await t(S, mortuary).post(`/api/v1/mortuary/cases/${id}/release`).send({ releaseToIdNumber: '99999999' })).body.error.code).toBe('ID_MISMATCH');
     expect((await t(S, mortuary).post(`/api/v1/mortuary/cases/${id}/release`).send({ releaseToIdNumber: '12345678' })).body.data.status).toBe('released');
+  });
+});
+
+describe('admission phone verification', () => {
+  let otpWard: string;
+  let otpBeds: Array<{ _id: string }>;
+  const admit = (patientId: string, bed: number, phoneVerification?: unknown) => t(S, doctor).post('/api/v1/inpatient/admissions').send({ patientId, bedId: otpBeds[bed]._id, admissionDiagnosis: 'Observation', ...(phoneVerification ? { phoneVerification } : {}) });
+  const lastCode = async (to: string) => {
+    const job = await meta().Job.findOne({ type: 'SMS', 'payload.to': to }).sort({ createdAt: -1, _id: -1 }).lean();
+    const p = job!.payload as { message?: string; messageEnc?: never };
+    expect(p.message).toBeUndefined(); // never stored in plain text
+    return /is (\d{6})\./.exec(IntegrationSecretService.decrypt(p.messageEnc!))![1];
+  };
+
+  beforeAll(async () => {
+    otpWard = (await t(S, admin).post('/api/v1/inpatient/wards').send({ name: 'Observation', code: 'OBS', bedChargeServiceCode: 'BED-GEN' })).body.data._id;
+    otpBeds = (await t(S, admin).post(`/api/v1/inpatient/wards/${otpWard}/beds`).send({ numbers: ['O1', 'O2', 'O3', 'O4', 'O5'] })).body.data;
+  });
+
+  it('requires a phone code or a recorded reason before admitting', async () => {
+    const p = await mk({ firstName: 'Needs', lastName: 'Code', gender: 'female', phone: '0712000555' });
+    const r = await admit(p, 0);
+    expect(r.body.error.code).toBe('PHONE_VERIFICATION_REQUIRED');
+    const info = (await t(S, doctor).get(`/api/v1/inpatient/admissions/phone-verification?patientId=${p}`)).body.data;
+    expect(info.policy).toBe('required');
+    expect(info.options[0]).toMatchObject({ target: 'patient', label: 'Patient', phoneMasked: '2547*****555' });
+    expect(info.skipReasons.map((x: { key: string }) => x.key)).toContain('patient_unable');
+    expect((await admit(p, 0, { skipReason: 'other' })).body.error.message).toMatch(/Explain why/);
+  });
+
+  it('sends a code by SMS, checks it, and admits once with the verification', async () => {
+    const p = await mk({ firstName: 'Verified', lastName: 'Phone', gender: 'male', phone: '0712000666' });
+    const other = await mk({ firstName: 'Someone', lastName: 'Else', gender: 'male', phone: '0712000667' });
+    const sent = await t(S, doctor).post('/api/v1/inpatient/admissions/phone-otp').send({ patientId: p, target: 'patient' });
+    expect(sent.status).toBe(201);
+    expect(sent.body.data.sentTo).toBe('2547*****666');
+    expect((await t(S, doctor).post('/api/v1/inpatient/admissions/phone-otp').send({ patientId: p })).body.error.code).toBe('OTP_RESEND_TOO_SOON');
+    const code = await lastCode('254712000666');
+    const wrong = await t(S, doctor).post(`/api/v1/inpatient/admissions/phone-otp/${sent.body.data.otpId}/verify`).send({ code: code === '000000' ? '111111' : '000000' });
+    expect(wrong.body.error).toMatchObject({ code: 'OTP_INVALID', message: expect.stringMatching(/4 tries left/) });
+    // only the staff member who sent the code can check it
+    expect((await t(S, nurse).post(`/api/v1/inpatient/admissions/phone-otp/${sent.body.data.otpId}/verify`).send({ code })).status).toBe(403);
+    const ok = await t(S, doctor).post(`/api/v1/inpatient/admissions/phone-otp/${sent.body.data.otpId}/verify`).send({ code });
+    expect(ok.status).toBe(200);
+    const token = ok.body.data.verificationToken;
+    expect((await admit(other, 1, { token })).body.error.code).toBe('PHONE_VERIFICATION_INVALID');
+    const a = await admit(p, 1, { token });
+    expect(a.status).toBe(201);
+    expect(a.body.data.phoneVerification).toMatchObject({ status: 'verified', method: 'sms_code', target: 'patient', phoneMasked: '2547*****666' });
+    expect((await t(S, doctor).post(`/api/v1/inpatient/admissions/phone-otp/${sent.body.data.otpId}/verify`).send({ code })).body.error.code).toBe('NOT_FOUND');
+    const stored = await meta().Job.find({ type: 'SMS', 'payload.to': '254712000666' }).lean();
+    expect(JSON.stringify(stored)).not.toContain(code);
+  });
+
+  it('can verify a new number and save it to the patient, or record a reason instead', async () => {
+    const p = await mk({ firstName: 'No', lastName: 'Phone', gender: 'male' });
+    expect((await t(S, doctor).get(`/api/v1/inpatient/admissions/phone-verification?patientId=${p}`)).body.data.options).toEqual([]);
+    const sent = await t(S, doctor).post('/api/v1/inpatient/admissions/phone-otp').send({ patientId: p, target: 'other', phone: '+254 722 000 777', savePhone: true });
+    const code = await lastCode('254722000777');
+    const token = (await t(S, doctor).post(`/api/v1/inpatient/admissions/phone-otp/${sent.body.data.otpId}/verify`).send({ code })).body.data.verificationToken;
+    expect((await admit(p, 2, { token })).status).toBe(201);
+    expect((await t(S, doctor).get(`/api/v1/patients/${p}`)).body.data.phone).toBe('254722000777');
+
+    const q = await mk({ firstName: 'Unconscious', lastName: 'Patient', gender: 'female' });
+    const r = await admit(q, 3, { skipReason: 'patient_unable' });
+    expect(r.status).toBe(201);
+    expect(r.body.data.phoneVerification).toMatchObject({ status: 'skipped', skipReason: 'Patient unconscious or unable to respond (emergency)' });
+  });
+
+  it('follows the facility setting', async () => {
+    expect((await t(S, admin).put('/api/v1/admin/settings/admissionPhoneVerification').send({ value: 'sometimes' })).status).toBe(400);
+    expect((await t(S, admin).put('/api/v1/admin/settings/admissionPhoneVerification').send({ value: 'off' })).status).toBe(200);
+    const p = await mk({ firstName: 'Policy', lastName: 'Off', gender: 'male', phone: '0712000888' });
+    const r = await admit(p, 4);
+    expect(r.status).toBe(201);
+    expect(r.body.data.phoneVerification.status).toBe('not_required');
+    await t(S, admin).put('/api/v1/admin/settings/admissionPhoneVerification').send({ value: 'required' });
+  });
+});
+
+describe('diagnosis catalog', () => {
+  it('starts with common admission diagnoses (names only) and suggests them while typing', async () => {
+    const list = (await t(S, doctor).get('/api/v1/diagnoses?admission=true')).body.data;
+    expect(list.length).toBeGreaterThan(40);
+    expect(list.every((d: { code?: string }) => !d.code)).toBe(true);
+    const s = (await t(S, doctor).get('/api/v1/diagnoses/suggest?context=admission&q=malar')).body.data;
+    expect(s.map((x: { display: string }) => x.display)).toEqual(expect.arrayContaining(['Severe malaria', 'Uncomplicated malaria']));
+    // abbreviations match too
+    expect((await t(S, doctor).get('/api/v1/diagnoses/suggest?context=admission&q=CVA')).body.data[0].display).toBe('Stroke');
+    // recent admission diagnoses are suggested
+    expect((await t(S, doctor).get('/api/v1/diagnoses/suggest?context=admission&q=pneumonia')).body.data.map((x: { display: string; source: string }) => `${x.source}:${x.display}`)).toEqual(expect.arrayContaining(['catalog:Severe pneumonia']));
+  });
+
+  it('lets administrators register diagnoses with codes, and feeds consultation search', async () => {
+    expect((await t(S, doctor).post('/api/v1/diagnoses').send({ name: 'Essential hypertension' })).status).toBe(403);
+    const r = await t(S, admin).post('/api/v1/diagnoses').send({ name: 'Essential hypertension', code: 'ba00', system: 'ICD-11', category: 'Cardiovascular', synonyms: ['HTN'] });
+    expect(r.status).toBe(201);
+    expect(r.body.data.code).toBe('BA00');
+    expect((await t(S, admin).post('/api/v1/diagnoses').send({ name: 'essential  HYPERTENSION' })).body.error.code).toBe('DUPLICATE');
+    const opd = (await t(S, doctor).get('/api/v1/opd/diagnoses/search?q=HTN')).body.data;
+    expect(opd[0]).toMatchObject({ display: 'Essential hypertension', code: 'BA00', system: 'ICD-11', source: 'catalog' });
+    expect((await t(S, admin).patch(`/api/v1/diagnoses/${r.body.data._id}`).send({ active: false })).status).toBe(200);
+    expect((await t(S, doctor).get('/api/v1/diagnoses/suggest?q=HTN')).body.data).toEqual([]);
+    expect((await t(S, admin).post('/api/v1/diagnoses').send({ name: 'X', code: 'bad code!' })).status).toBe(400);
   });
 });

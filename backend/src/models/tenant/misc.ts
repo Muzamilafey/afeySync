@@ -153,6 +153,52 @@ const passwordResetSchema = new Schema(
   { timestamps: true },
 );
 
+/**
+ * One-time codes sent to a patient's phone to confirm it at admission. Only a hash of the code is
+ * stored; a successful check issues a short-lived, single-use verification token (also hashed).
+ */
+const patientPhoneOtpSchema = new Schema(
+  {
+    patientId: { type: ObjectId, required: true, index: true },
+    purpose: { type: String, enum: ['admission'], default: 'admission' },
+    phone: { type: String, required: true },
+    target: { type: String, enum: ['patient', 'next_of_kin', 'other'], required: true },
+    savePhone: { type: Boolean, default: false },
+    codeHash: { type: String, required: true },
+    expiresAt: { type: Date, required: true },
+    attempts: { type: Number, default: 0 },
+    sends: { type: Number, default: 1 },
+    lastSentAt: Date,
+    verifiedAt: Date,
+    tokenHash: { type: String, index: true },
+    tokenExpiresAt: Date,
+    usedAt: Date,
+    createdBy: ObjectId,
+  },
+  { timestamps: true },
+);
+patientPhoneOtpSchema.index({ createdAt: 1 }, { expireAfterSeconds: 7 * 86_400 });
+
+/** The facility's diagnosis / disease catalog used for suggestions (admission, consultation). */
+const diagnosisSchema = new Schema(
+  {
+    name: { type: String, required: true, trim: true },
+    nameKey: { type: String, required: true, unique: true },
+    code: { type: String, trim: true },
+    system: { type: String, enum: ['ICD-11', 'ICD-10', 'local'], default: 'ICD-11' },
+    category: { type: String, trim: true },
+    synonyms: [String],
+    /** Offered first when admitting a patient. */
+    admission: { type: Boolean, default: false },
+    notifiable: { type: Boolean, default: false },
+    active: { type: Boolean, default: true, index: true },
+    source: { type: String, enum: ['default', 'custom', 'import'], default: 'custom' },
+    createdBy: ObjectId,
+  },
+  { timestamps: true },
+);
+diagnosisSchema.index({ code: 1 });
+
 export const miscSchemas = {
   DentalChart: dentalChartSchema,
   DentalVisit: dentalVisitSchema,
@@ -163,4 +209,6 @@ export const miscSchemas = {
   Shift: shiftSchema,
   FhirOutbox: fhirOutboxSchema,
   PasswordReset: passwordResetSchema,
+  PatientPhoneOtp: patientPhoneOtpSchema,
+  Diagnosis: diagnosisSchema,
 };
