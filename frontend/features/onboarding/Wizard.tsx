@@ -201,6 +201,9 @@ export function OnboardingWizard() {
   useEffect(() => {
     const draft = store.get<Partial<Form>>(DRAFT_KEY);
     if (draft) setForm((f) => ({ ...f, ...draft, admin: { ...f.admin, ...(draft.admin ?? {}), password: '', confirm: '' } }));
+    // A plan chosen on the website's pricing page (?plan=key); the server still checks it is available.
+    const planParam = new URLSearchParams(window.location.search).get('plan');
+    if (planParam && /^[a-z0-9_-]{1,40}$/i.test(planParam)) setForm((f) => ({ ...f, plan: planParam }));
     const saved = store.get<AppRef>(APP_KEY);
     if (saved?.token) {
       setApp(saved);

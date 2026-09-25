@@ -180,3 +180,14 @@ describe('two-step verification on the accounts address', () => {
     await t.models.User.updateOne({ email: `admin@${A}.test` }, { $unset: { 'mfa.passkeys': 1 } });
   });
 });
+
+describe('hand-over network binding', () => {
+  it('groups addresses by network (IPv4 /24, IPv6 /64) so a changing address on the same network still works', async () => {
+    const { networkOf } = await import('../src/modules/auth/tenantAuth.routes');
+    expect(networkOf('::ffff:41.90.12.7')).toBe(networkOf('41.90.12.200'));
+    expect(networkOf('41.90.12.7')).not.toBe(networkOf('41.90.13.7'));
+    expect(networkOf('2a02:c207:2320:36::1')).toBe(networkOf('2a02:c207:2320:36:abcd::9'));
+    expect(networkOf('2a02:c207:2320:36::1')).not.toBe(networkOf('2a02:c207:2320:37::1'));
+    expect(networkOf('2001:db8::1')).toBe('2001:db8:0:0');
+  });
+});

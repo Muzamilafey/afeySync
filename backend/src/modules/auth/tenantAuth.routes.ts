@@ -1,3 +1,4 @@
+import net from 'node:net';
 import { Router, type Request, type Response } from 'express';
 import type { Types } from 'mongoose';
 import { usablePasskeys } from './mfa/passkey';
@@ -70,6 +71,23 @@ export function accountsOrigin(req: Request) {
 
 /** Same browser that entered the password: exact client IP and User-Agent. */
 const uaHash = (req: Request) => sha256(`ua:${req.get('user-agent') ?? ''}`);
+
+/**
+ * The network an address belongs to (IPv4 /24, IPv6 /64). Hand-overs are bound to the network rather
+ * than the exact address: a browser keeps its network between accounts and the facility address, but
+ * its exact address can change between the two requests (carrier NAT, IPv6 privacy addresses).
+ */
+export function networkOf(ip: string | null | undefined) {
+  const a = (ip ?? '').trim().toLowerCase().replace(/^::ffff:(?=\d+\.)/, '');
+  if (net.isIPv4(a)) return a.split('.').slice(0, 3).join('.');
+  if (!net.isIPv6(a)) return a;
+  const [head, tail = ''] = a.split('::');
+  const h = head ? head.split(':') : [];
+  const t = tail ? tail.split(':') : [];
+  const full = a.includes('::') ? [...h, ...Array(8 - h.length - t.length).fill('0'), ...t] : h;
+  return full.slice(0, 4).map((x) => x.replace(/^0+(?=.)/, '')).join(':');
+}
+const sameNetwork = (a: string | null | undefined, b: string | null | undefined) => !!a && !!b && networkOf(a) === networkOf(b);
 
 const useAccounts = (req: Request) => new AppError(403, 'USE_ACCOUNTS_LOGIN', `Sign in at ${accountsOrigin(req).replace(/^https?:\/\//, '')}. You will be brought back to your facility.`, { accountsUrl: accountsOrigin(req) });
 /** Builds a facility address on the same scheme, base domain and port the user is browsing (works on localhost too). */
@@ -231,7 +249,7 @@ router.post(
     if (!signInHost(req)) throw useAccounts(req);
     const invalid = () => unauthorized('This choice has expired. Sign in again.', 'HANDOFF_INVALID');
     const t = await meta().LoginHandoff.findOneAndUpdate({ tokenHash: sha256(`select:${ticket}`), purpose: 'select', usedAt: null, expiresAt: { $gt: new Date() } }, { usedAt: new Date() }, { returnDocument: 'before' });
-    if (!t || t.ip !== req.ip || t.uaHash !== uaHash(req)) throw invalid();
+    if (!t || !sameNetwork(t.ip, req.ip) || t.uaHash !== uaHash(req)) throw invalid();
     const tenant = await loadTenant(String(t.tenantId)).catch(() => null);
     const user = tenant ? await tenant.models.User.findById(t.userId).select(MFA_SELECT) : null;
     if (!tenant || !user || user.status !== 'active') throw invalid();
@@ -253,8 +271,8 @@ router.post(
     if (!handoff || String(handoff.tenantId) !== req.hostTenantId) throw invalid();
     const tenant = await loadTenant(req.hostTenantId);
     req.tenant = tenant;
-    if (handoff.ip !== req.ip || (handoff.uaHash && handoff.uaHash !== uaHash(req))) {
-      await audit(req, { action: 'auth.handoff_rejected', resource: 'user', resourceId: String(handoff.userId), newValue: { reason: handoff.ip !== req.ip ? 'different_ip' : 'different_browser' }, result: 'denied' });
+    if (!sameNetwork(handoff.ip, req.ip) || (handoff.uaHash && handoff.uaHash !== uaHash(req))) {
+      await audit(req, { action: 'auth.handoff_rejected', resource: 'user', resourceId: String(handoff.userId), newValue: { reason: !sameNetwork(handoff.ip, req.ip) ? 'different_network' : 'different_browser', issuedTo: handoff.ip, redeemedFrom: req.ip }, result: 'denied' });
       throw invalid();
     }
     const user = await tenant.models.User.findById(handoff.userId).select(MFA_SELECT);

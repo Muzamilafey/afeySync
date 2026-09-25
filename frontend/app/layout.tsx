@@ -2,7 +2,11 @@ import type { Metadata, Viewport } from 'next';
 import './globals.css';
 import { Providers } from '@/components/Providers';
 
+const domain = (process.env.PLATFORM_DOMAIN ?? 'localhost').toLowerCase();
+
 export const metadata: Metadata = {
+  // Absolute links for canonical URLs and social previews.
+  metadataBase: new URL(domain === 'localhost' ? 'http://localhost:3000' : `https://${domain}`),
   title: 'AfeySync HMIS',
   description: 'AfeySync — multi-tenant Hospital Management Information System for Kenyan facilities',
   applicationName: 'AfeySync',
@@ -24,7 +28,7 @@ export const viewport: Viewport = {
 
 export default function RootLayout({ children }: { children: React.ReactNode }) {
   return (
-    <html lang="en">
+    <html lang="en-KE">
       <body className="min-h-screen font-sans antialiased">
         <Providers>{children}</Providers>
       </body>

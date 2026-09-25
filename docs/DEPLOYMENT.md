@@ -30,3 +30,28 @@
     value shown in Owner → Integrations → Google Sign-In. Then enter the client ID and secret there.
 11. Monitoring: `GET /health`, `/health/database`, `/health/integrations`, plus the Owner → System
    Health page.
+
+## Behind Cloudflare (orange cloud)
+
+When the domain is proxied by Cloudflare, nginx must restore each visitor's real IP address, otherwise
+every request appears to come from a Cloudflare server. Sign-in hand-overs from `accounts.` to a facility
+are bound to the visitor's network and would be refused ("That sign-in link had expired"), and rate limits
+would lump all users together.
+
+```bash
+cp deploy/cloudflare_realip.conf /etc/nginx/cloudflare_realip.conf   # included by deploy/nginx.conf
+deploy/update-cloudflare-ips.sh                                        # refresh from cloudflare.com/ips
+# monthly: 0 4 1 * * /var/www/afeySync/deploy/update-cloudflare-ips.sh
+```
+
+Set Cloudflare **SSL/TLS → Overview** to **Full (strict)**.
+
+## Public website and contact form
+
+`afey.co.ke` (and `www.`) serves the marketing website: `/`, `/features`, `/pricing`, `/user-guide`,
+`/security`, `/about`, `/contact`, `/privacy`, plus `/sitemap.xml` and `/robots.txt`. Every other address
+tells search engines not to index it. "Get started" goes to `accounts.<domain>/get-started`. Pricing is
+read live from the owner portal's public plans.
+
+The contact form emails `CONTACT_EMAIL` (backend `.env`, falls back to `SUPPORT_EMAIL`) using the
+platform SMTP settings. It never sends mail to the address typed into the form.

@@ -16,6 +16,7 @@ import { billingOwnerRouter } from './modules/platformBilling/owner.routes';
 import { subscriptionRouter } from './modules/platformBilling/facility.routes';
 import { platformMpesaPublicRouter } from './modules/platformBilling/platformMpesa';
 import { onboardingOwnerRouter, onboardingPublicRouter } from './modules/onboarding/onboarding.routes';
+import { contactRouter } from './modules/contact/contact.routes';
 import { errorHandler, notFoundHandler } from './middleware/errorHandler';
 import healthRoutes from './modules/health/health.routes';
 import tenantAuthRoutes from './modules/auth/tenantAuth.routes';
@@ -116,6 +117,7 @@ export function createApp() {
   api.use('/auth', selfServiceRoutes);
   api.use('/owner/auth', ownerAuthRoutes);
   api.use(onboardingPublicRouter);
+  api.use(contactRouter);
   api.use('/owner/onboarding', onboardingOwnerRouter);
   api.use('/owner/plans', planOwnerRouter);
   api.use('/owner/billing', billingOwnerRouter);

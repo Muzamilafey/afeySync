@@ -78,6 +78,8 @@ const schema = z.object({
   /** Shown in emails ("Didn't request this? Please contact …"). Optional; nothing is shown when unset. */
   SUPPORT_EMAIL: z.string().email().optional(),
   SUPPORT_PHONE: z.string().max(30).optional(),
+  /** Where the website's contact form is delivered (falls back to SUPPORT_EMAIL). */
+  CONTACT_EMAIL: z.string().email().optional(),
   /** Footer links in emails: "Website|https://…,LinkedIn|https://…" (https only). */
   EMAIL_FOOTER_LINKS: z.string().max(1000).optional(),
 });
