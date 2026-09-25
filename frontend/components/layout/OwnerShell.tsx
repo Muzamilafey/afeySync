@@ -58,7 +58,7 @@ export function OwnerShell({ children }: { children: ReactNode }) {
   );
   return (
     <div className="flex min-h-screen flex-col">
-      <header className="flex h-14 items-center gap-3 bg-slate-900 px-4 text-white">
+      <header className="sticky top-0 z-30 flex h-14 items-center gap-3 bg-slate-900 px-4 text-white">
         <button className="md:hidden" onClick={() => setOpen(true)} aria-label="Open menu"><Menu className="h-5 w-5" /></button>
         <Activity className="h-5 w-5 text-brand-500" />
         <span className="font-semibold">AfeySync Owner</span>
@@ -81,10 +81,10 @@ export function OwnerShell({ children }: { children: ReactNode }) {
         </span>
       </header>
       <div className="flex flex-1">
-        <aside className="surface hidden w-56 shrink-0 border-y-0 border-l-0 md:block">{nav}</aside>
+        <aside className="surface sticky top-14 hidden h-[calc(100dvh-3.5rem)] w-56 shrink-0 self-start overflow-y-auto overscroll-contain border-y-0 border-l-0 md:block">{nav}</aside>
         {open && (
           <div className="fixed inset-0 z-40 bg-slate-900/50 md:hidden" onClick={() => setOpen(false)}>
-            <aside className="surface h-full w-60" onClick={(e) => e.stopPropagation()}>
+            <aside className="surface h-full w-60 overflow-y-auto overscroll-contain" onClick={(e) => e.stopPropagation()}>
               <div className="flex justify-end p-2"><button onClick={() => setOpen(false)} aria-label="Close menu"><X className="h-5 w-5" /></button></div>
               {nav}
             </aside>

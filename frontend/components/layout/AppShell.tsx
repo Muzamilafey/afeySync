@@ -346,10 +346,10 @@ export function AppShell({ children }: { children: ReactNode }) {
       </header>
       {me.user.kind === 'support' && <div className="bg-amber-500 px-4 py-1 text-center text-xs font-semibold text-black">AfeySync support session — time-limited, audited access</div>}
       <div className="flex flex-1">
-        <aside className="surface hidden w-60 shrink-0 overflow-y-auto border-y-0 border-l-0 md:block">{sidebar}</aside>
+        <aside className="surface sticky top-14 hidden h-[calc(100dvh-3.5rem)] w-60 shrink-0 self-start overflow-y-auto overscroll-contain border-y-0 border-l-0 md:block">{sidebar}</aside>
         {mobileOpen && (
           <div className="fixed inset-0 z-40 bg-slate-900/50 md:hidden" onClick={() => setMobileOpen(false)}>
-            <aside className="surface h-full w-64 overflow-y-auto" onClick={(e) => e.stopPropagation()}>
+            <aside className="surface h-full w-64 overflow-y-auto overscroll-contain" onClick={(e) => e.stopPropagation()}>
               <div className="flex justify-end p-2">
                 <button onClick={() => setMobileOpen(false)} aria-label="Close menu"><X className="h-5 w-5" /></button>
               </div>
