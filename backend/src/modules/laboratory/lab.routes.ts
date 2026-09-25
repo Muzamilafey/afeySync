@@ -1,3 +1,5 @@
+import { importUpload, sendXlsx } from '../imports/excel';
+import { importLabTests, labTestTemplate } from '../imports/labTestImport';
 import { Router, type Request } from 'express';
 import { z } from 'zod';
 import { h } from '../../utils/asyncHandler';
@@ -18,7 +20,7 @@ router.use(authenticateTenant);
 /* ------------------------------------------------------------ Catalog */
 const rangeSchema = z.object({ sex: z.enum(['any', 'male', 'female']).default('any'), ageMinDays: z.number().int().min(0).default(0), ageMaxDays: z.number().int().max(54750).default(54750), low: z.number().optional(), high: z.number().optional(), criticalLow: z.number().optional(), criticalHigh: z.number().optional(), text: z.string().max(80).optional() });
 const testSchema = z.object({
-  code: z.string().min(2).max(30).regex(/^[A-Za-z0-9-_]+$/),
+  code: z.string().trim().min(1).max(30).regex(/^[A-Za-z0-9-_]+$/, 'can only contain letters, numbers, - and _'),
   name: z.string().min(2).max(160),
   department: z.string().max(60).default('General'),
   specimen: z.string().max(80).default('Blood'),
@@ -50,6 +52,25 @@ router.post(
     const t = await m.LabTest.create({ ...body, code: body.code.toUpperCase() });
     await audit(req, { action: 'lab.test_create', resource: 'lab_test', resourceId: t.code, newValue: body });
     res.status(201).json({ success: true, data: t });
+  }),
+);
+
+/* Bulk import of the test catalog (tests, parameters, reference ranges, optional prices) from Excel */
+router.get(
+  '/tests/import-template',
+  requirePermission('lab.manage'),
+  h(async (req, res) => {
+    sendXlsx(res, 'lab-tests-template.xlsx', await labTestTemplate(req));
+  }),
+);
+
+router.post(
+  '/tests/import',
+  requirePermission('lab.manage'),
+  importUpload,
+  h(async (req, res) => {
+    const commit = String(req.body?.commit ?? req.query.commit ?? '') === 'true';
+    res.json({ success: true, data: await importLabTests(req, commit) });
   }),
 );
 

@@ -153,3 +153,100 @@ describe('inventory items import', () => {
     expect(one).toMatchObject({ name: 'test', reorderLevel: 50, controlled: true });
   });
 });
+
+describe('lab test catalog import', () => {
+  async function fillSheet(wb: ExcelJS.Workbook, sheet: string, rows: Array<Record<string, unknown>>) {
+    const ws = wb.getWorksheet(sheet)!;
+    const headers = (ws.getRow(3).values as unknown[]).map((v) => String(v ?? '').replace(' *', ''));
+    rows.forEach((r, i) => {
+      const row = ws.getRow(4 + i);
+      for (const [h, v] of Object.entries(r)) {
+        const idx = headers.indexOf(h);
+        if (idx < 0) throw new Error(`no column ${h} on ${sheet}`);
+        row.getCell(idx).value = v as ExcelJS.CellValue;
+      }
+      row.commit();
+    });
+  }
+
+  it('provides a two-sheet template with parameters and reference ranges', async () => {
+    const wb = await download('/api/v1/laboratory/tests/import-template');
+    expect(wb.worksheets.map((w) => w.name)).toEqual(['Tests', 'Parameters', 'Instructions', 'Examples - Tests', 'Examples - Parameters']);
+    const p = (wb.getWorksheet('Parameters')!.getRow(3).values as unknown[]).filter(Boolean).map(String);
+    expect(p.slice(0, 3)).toEqual(['Test code *', 'Parameter code *', 'Parameter name *']);
+    expect(p).toEqual(expect.arrayContaining(['Sex', 'Age from', 'Age to', 'Age unit', 'Normal low', 'Normal high', 'Critical low', 'Critical high']));
+    expect(String(wb.getWorksheet('Examples - Parameters')!.getCell('A4').value)).toBe('FBC');
+  });
+
+  it('imports panels with sex- and age-specific ranges and prices, reporting problems per sheet row', async () => {
+    const wb = await download('/api/v1/laboratory/tests/import-template');
+    await fillSheet(wb, 'Tests', [
+      { 'Test code': 'TFBC', 'Test name': 'Full blood count', Department: 'Haematology', Container: 'EDTA', 'TAT (minutes)': 60, 'Price: cash (KES)': 800 },
+      { 'Test code': 'TMPS', 'Test name': 'Malaria parasites', Department: 'Parasitology' },
+      { 'Test code': 'NOPARAM', 'Test name': 'Forgot parameters' },
+    ]);
+    await fillSheet(wb, 'Parameters', [
+      { 'Test code': 'TFBC', 'Parameter code': 'HB', 'Parameter name': 'Haemoglobin', Unit: 'g/dL', Sex: 'male', 'Age from': 18, 'Normal low': 13, 'Normal high': 17, 'Critical low': 7, 'Critical high': 20 },
+      { 'Test code': 'TFBC', 'Parameter code': 'HB', Sex: 'female', 'Age from': 18, 'Normal low': 12, 'Normal high': 15, 'Critical low': 7, 'Critical high': 20 },
+      { 'Test code': 'TFBC', 'Parameter code': 'HB', Sex: 'any', 'Age from': 0, 'Age to': 28, 'Age unit': 'days', 'Normal low': 14, 'Normal high': 22 },
+      { 'Test code': 'TFBC', 'Parameter code': 'WBC', 'Parameter name': 'White cell count', Unit: 'x10^9/L', 'Normal low': 11, 'Normal high': 4 },
+      { 'Test code': 'TMPS', 'Parameter code': 'TMPS', 'Parameter name': 'Malaria parasites', 'Result type': 'option' },
+    ]);
+    const buf = Buffer.from(await wb.xlsx.writeBuffer());
+    const p = await upload('/api/v1/laboratory/tests/import', buf);
+    expect(p.status).toBe(200);
+    expect(p.body.data.summary).toMatchObject({ total: 3, errors: 3 });
+    const byKey = Object.fromEntries(p.body.data.rows.map((r: { key: string }) => [r.key, r]));
+    expect(byKey.TFBC.errors).toEqual(['Parameters row 7: Normal low must not be above Normal high']);
+    expect(byKey.TMPS.errors).toEqual(['Parameters row 8: Option results need Options, separated by commas']);
+    expect(byKey.NOPARAM.errors).toEqual(['Add at least one row for this test on the Parameters sheet']);
+    expect(byKey.TFBC).toMatchObject({ sheet: 'Tests', row: 4 });
+
+    const wb2 = await download('/api/v1/laboratory/tests/import-template');
+    await fillSheet(wb2, 'Tests', [
+      { 'Test code': 'TFBC', 'Test name': 'Full blood count', Department: 'Haematology', Container: 'EDTA', 'TAT (minutes)': 60, 'Price: cash (KES)': 800 },
+      { 'Test code': 'TMPS', 'Test name': 'Malaria parasites', Department: 'Parasitology' },
+    ]);
+    await fillSheet(wb2, 'Parameters', [
+      { 'Test code': 'TFBC', 'Parameter code': 'HB', 'Parameter name': 'Haemoglobin', Unit: 'g/dL', Sex: 'male', 'Age from': 18, 'Normal low': 13, 'Normal high': 17, 'Critical low': 7, 'Critical high': 20 },
+      { 'Test code': 'TFBC', 'Parameter code': 'HB', Sex: 'female', 'Age from': 18, 'Normal low': 12, 'Normal high': 15, 'Critical low': 7, 'Critical high': 20 },
+      { 'Test code': 'TFBC', 'Parameter code': 'HB', Sex: 'any', 'Age from': 0, 'Age to': 28, 'Age unit': 'days', 'Normal low': 14, 'Normal high': 22 },
+      { 'Test code': 'TFBC', 'Parameter code': 'WBC', 'Parameter name': 'White cell count', Unit: 'x10^9/L', 'Normal low': 4, 'Normal high': 11 },
+      { 'Test code': 'TMPS', 'Parameter code': 'TMPS', 'Parameter name': 'Malaria parasites', 'Result type': 'option', Options: 'Not seen, Seen', 'Reference text': 'Not seen' },
+    ]);
+    const done = await upload('/api/v1/laboratory/tests/import', Buffer.from(await wb2.xlsx.writeBuffer()), true);
+    expect(done.status).toBe(200);
+    expect(done.body.data.summary).toMatchObject({ create: 2, errors: 0 });
+    const fbc = (await t(S, admin).get('/api/v1/laboratory/tests?q=TFBC')).body.data.find((x: { code: string }) => x.code === 'TFBC');
+    expect(fbc).toMatchObject({ department: 'Haematology', container: 'EDTA', serviceCode: 'LAB-TFBC' });
+    expect(fbc.parameters.map((x: { code: string }) => x.code)).toEqual(['HB', 'WBC']);
+    expect(fbc.parameters[0].ranges).toEqual([
+      { sex: 'male', ageMinDays: 18 * 365, ageMaxDays: 54750, low: 13, high: 17, criticalLow: 7, criticalHigh: 20 },
+      { sex: 'female', ageMinDays: 18 * 365, ageMaxDays: 54750, low: 12, high: 15, criticalLow: 7, criticalHigh: 20 },
+      { sex: 'any', ageMinDays: 0, ageMaxDays: 28, low: 14, high: 22 },
+    ]);
+    const mps = (await t(S, admin).get('/api/v1/laboratory/tests?q=TMPS')).body.data[0];
+    expect(mps.parameters[0]).toMatchObject({ type: 'option', options: ['Not seen', 'Seen'] });
+    const svc = (await t(S, admin).get('/api/v1/billing/services?q=LAB-TFBC')).body.data[0];
+    expect(svc).toMatchObject({ category: 'laboratory', prices: [{ priceList: 'cash', amount: 800 }] });
+
+    // re-importing the same file changes nothing; parameters only on the Parameters sheet update an existing test
+    expect((await upload('/api/v1/laboratory/tests/import', Buffer.from(await wb2.xlsx.writeBuffer()))).body.data.summary).toMatchObject({ unchanged: 1 });
+    const wb3 = await download('/api/v1/laboratory/tests/import-template');
+    await fillSheet(wb3, 'Parameters', [{ 'Test code': 'TMPS', 'Parameter code': 'TMPS', 'Parameter name': 'Malaria parasites', 'Result type': 'option', Options: 'Not seen, Seen (+), Seen (++)' }]);
+    const u = await upload('/api/v1/laboratory/tests/import', Buffer.from(await wb3.xlsx.writeBuffer()), true);
+    expect(u.body.data.rows[0]).toMatchObject({ sheet: 'Parameters', key: 'TMPS', action: 'update' });
+    expect((await t(S, admin).get('/api/v1/laboratory/tests?q=TMPS')).body.data[0].parameters[0].options).toEqual(['Not seen', 'Seen (+)', 'Seen (++)']);
+  });
+
+  it('refuses prices from users who cannot manage prices', async () => {
+    const lab = await createUser(S, admin, { email: 'labmanager@importfac.test', roleKey: 'lab_manager', branchAccess: 'all', branchIds: [] });
+    const perms = (await t(S, lab).get('/api/v1/auth/me')).body.data.permissions as string[];
+    expect(perms).toContain('lab.manage');
+    expect(perms).not.toContain('billing.prices');
+    const wb = await download('/api/v1/laboratory/tests/import-template');
+    await fillSheet(wb, 'Tests', [{ 'Test code': 'TFBC', 'Price: cash (KES)': 1 }]);
+    const r = await upload('/api/v1/laboratory/tests/import', Buffer.from(await wb.xlsx.writeBuffer()), false, lab);
+    expect(r.body.data.rows[0].errors[0]).toMatch(/permission to set prices/);
+  });
+});

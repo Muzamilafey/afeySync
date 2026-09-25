@@ -6,7 +6,7 @@ import { Alert, Badge, Button, ErrorText, Modal } from '@/components/ui';
 import { apiRaw, downloadFile } from '@/services/api';
 import { cn } from '@/lib/utils';
 
-interface RowResult { row: number; key: string; name?: string; action: 'create' | 'update' | 'unchanged' | 'error'; errors: string[]; changes?: string[] }
+interface RowResult { row: number; sheet?: string; key: string; name?: string; action: 'create' | 'update' | 'unchanged' | 'error'; errors: string[]; changes?: string[] }
 interface ImportResult { committed: boolean; summary: { total: number; create: number; update: number; unchanged: number; errors: number }; rows: RowResult[] }
 
 const TONE = { create: 'green', update: 'blue', unchanged: 'gray', error: 'red' } as const;
@@ -146,8 +146,8 @@ export function ExcelImport({ open, onClose, onDone, title, noun, templatePath, 
                   </thead>
                   <tbody>
                     {rows.map((r) => (
-                      <tr key={r.row} className="border-t border-[var(--border)] align-top">
-                        <td className="px-3 py-2 font-mono text-xs">{r.row}</td>
+                      <tr key={`${r.sheet ?? ''}${r.row}`} className="border-t border-[var(--border)] align-top">
+                        <td className="whitespace-nowrap px-3 py-2 font-mono text-xs">{r.sheet && <span className="muted mr-1 font-sans">{r.sheet}</span>}{r.row}</td>
                         <td className="px-3 py-2 font-mono text-xs">{r.key}</td>
                         <td className="px-3 py-2">{r.name}</td>
                         <td className="px-3 py-2"><Badge tone={TONE[r.action]}>{LABEL[r.action]}</Badge></td>

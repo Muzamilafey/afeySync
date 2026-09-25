@@ -82,21 +82,30 @@ function applyValidation(ws: ExcelJS.Worksheet, columns: ImportColumn[], rows: n
   });
 }
 
-export async function buildTemplate(opts: { facility: string; color?: string | null; title: string; sheetName: string; columns: ImportColumn[]; examples: Array<Record<string, unknown>>; instructions: string[] }) {
+export interface TemplateSheet { sheetName: string; title: string; columns: ImportColumn[]; examples: Array<Record<string, unknown>> }
+
+/**
+ * Builds a template workbook: the data sheet(s), an Instructions sheet describing every column, and an
+ * example sheet per data sheet (named "Examples…", never imported).
+ */
+export async function buildTemplate(opts: { facility: string; color?: string | null; title: string; instructions: string[] } & ({ sheetName: string; columns: ImportColumn[]; examples: Array<Record<string, unknown>> } | { sheets: TemplateSheet[] })) {
   const color = /^#[0-9a-f]{6}$/i.test(opts.color ?? '') ? opts.color! : '#0b8a72';
+  const sheets: TemplateSheet[] = 'sheets' in opts ? opts.sheets : [{ sheetName: opts.sheetName, title: opts.title, columns: opts.columns, examples: opts.examples }];
   const wb = new ExcelJS.Workbook();
   wb.creator = 'AfeySync';
   wb.created = new Date();
 
-  const data = wb.addWorksheet(opts.sheetName, { properties: { tabColor: { argb: argb(color) } } });
-  headerRows(data, opts.columns, `${opts.facility} · ${opts.title}`, 'Fill in one row per entry from row 4. Columns marked * are required. See the Instructions and Examples sheets. Do not rename the header row.', color);
-  applyValidation(data, opts.columns, 2000);
-  for (let r = FIRST_DATA_ROW; r < FIRST_DATA_ROW + 200; r++) {
-    if (r % 2 === 0) data.getRow(r).eachCell({ includeEmpty: true }, (c) => (c.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FFF8FAFC' } }));
+  for (const sh of sheets) {
+    const data = wb.addWorksheet(sh.sheetName, { properties: { tabColor: { argb: argb(color) } } });
+    headerRows(data, sh.columns, `${opts.facility} · ${sh.title}`, 'Fill in one row per entry from row 4. Columns marked * are required. See the Instructions and Examples sheets. Do not rename the header row.', color);
+    applyValidation(data, sh.columns, 2000);
+    for (let r = FIRST_DATA_ROW; r < FIRST_DATA_ROW + 200; r++) {
+      if (r % 2 === 0) data.getRow(r).eachCell({ includeEmpty: true }, (c) => (c.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FFF8FAFC' } }));
+    }
   }
 
   const help = wb.addWorksheet('Instructions');
-  help.getColumn(1).width = 26;
+  help.getColumn(1).width = 28;
   help.getColumn(2).width = 90;
   help.mergeCells('A1:B1');
   help.getCell('A1').value = `How to fill in: ${opts.title}`;
@@ -111,26 +120,30 @@ export async function buildTemplate(opts: { facility: string; color?: string | n
     help.getRow(r).height = 30;
     r++;
   }
-  r++;
-  const head = help.getRow(r);
-  head.values = ['Column', 'What to enter'];
-  head.font = { bold: true };
-  head.eachCell((c) => (c.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: argb(mix(color, 0.85)) } }));
-  r++;
-  for (const c of opts.columns) {
-    const allowed = c.kind === 'yesno' ? 'Yes or No' : c.list ? `One of: ${c.list.join(', ')}` : '';
-    help.getRow(r).values = [`${c.header}${c.required ? ' (required)' : ''}`, [c.note, allowed].filter(Boolean).join(' ')];
-    help.getCell(`B${r}`).alignment = { wrapText: true, vertical: 'top' };
-    help.getCell(`A${r}`).font = { bold: !!c.required };
+  for (const sh of sheets) {
     r++;
+    const head = help.getRow(r);
+    head.values = [sheets.length > 1 ? `"${sh.sheetName}" sheet column` : 'Column', 'What to enter'];
+    head.font = { bold: true };
+    head.eachCell((c) => (c.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: argb(mix(color, 0.85)) } }));
+    r++;
+    for (const c of sh.columns) {
+      const allowed = c.kind === 'yesno' ? 'Yes or No' : c.list ? `One of: ${c.list.join(', ')}` : '';
+      help.getRow(r).values = [`${c.header}${c.required ? ' (required)' : ''}`, [c.note, allowed].filter(Boolean).join(' ')];
+      help.getCell(`B${r}`).alignment = { wrapText: true, vertical: 'top' };
+      help.getCell(`A${r}`).font = { bold: !!c.required };
+      r++;
+    }
   }
 
-  const ex = wb.addWorksheet('Examples');
-  headerRows(ex, opts.columns, 'Examples (for reference only, this sheet is not imported)', 'Copy the pattern into the first sheet.', color);
-  opts.examples.forEach((e, i) => {
-    const row = ex.getRow(FIRST_DATA_ROW + i);
-    opts.columns.forEach((c, j) => (row.getCell(j + 1).value = (e[c.key] ?? null) as ExcelJS.CellValue));
-  });
+  for (const sh of sheets) {
+    const ex = wb.addWorksheet(sheets.length > 1 ? `Examples - ${sh.sheetName}` : 'Examples');
+    headerRows(ex, sh.columns, 'Examples (for reference only, this sheet is not imported)', `Copy the pattern into the "${sh.sheetName}" sheet.`, color);
+    sh.examples.forEach((e, i) => {
+      const row = ex.getRow(FIRST_DATA_ROW + i);
+      sh.columns.forEach((c, j) => (row.getCell(j + 1).value = (e[c.key] ?? null) as ExcelJS.CellValue));
+    });
+  }
 
   return Buffer.from(await wb.xlsx.writeBuffer());
 }
@@ -158,7 +171,7 @@ const norm = (s: string) => s.replace(/\*/g, '').replace(/\s+/g, ' ').trim().toL
 export interface ReadRow { row: number; values: Record<string, string> }
 
 /** Reads the first sheet whose row 1–10 contains the template headers. Header matching ignores case and "*". */
-export async function readImport(file: Express.Multer.File | undefined, columns: ImportColumn[], extraHeader?: (header: string) => string | null): Promise<ReadRow[]> {
+export async function readImport(file: Express.Multer.File | undefined, columns: ImportColumn[], extraHeader?: (header: string) => string | null, opts: { sheet?: string; allowEmpty?: boolean } = {}): Promise<ReadRow[]> {
   if (!file) throw new AppError(400, 'FILE_REQUIRED', 'Choose the filled-in Excel file (.xlsx) to import.');
   if (!/\.xlsx$/i.test(file.originalname) && file.mimetype !== XLSX_MIME) throw new AppError(415, 'UNSUPPORTED_FILE_TYPE', 'Upload an Excel .xlsx file (use the template). Older .xls and CSV files are not supported.');
   const wb = new ExcelJS.Workbook();
@@ -169,7 +182,8 @@ export async function readImport(file: Express.Multer.File | undefined, columns:
   }
   const wanted = new Map(columns.map((c) => [norm(c.header), c.key]));
   for (const ws of wb.worksheets) {
-    if (/^(instructions|examples)$/i.test(ws.name)) continue;
+    if (/^(instructions|examples)/i.test(ws.name)) continue;
+    if (opts.sheet && ws.name.trim().toLowerCase() !== opts.sheet.toLowerCase()) continue;
     for (let hr = 1; hr <= Math.min(10, ws.rowCount); hr++) {
       const map = new Map<number, string>();
       ws.getRow(hr).eachCell((cell, col) => {
@@ -196,11 +210,12 @@ export async function readImport(file: Express.Multer.File | undefined, columns:
         rows.push({ row: r, values });
         if (rows.length > MAX_IMPORT_ROWS) throw new AppError(413, 'TOO_MANY_ROWS', `A single import can have at most ${MAX_IMPORT_ROWS} rows. Split the file.`);
       }
-      if (!rows.length) throw new AppError(400, 'NO_ROWS', 'The file has no rows to import. Fill in the first sheet from row 4.');
+      if (!rows.length && !opts.allowEmpty) throw new AppError(400, 'NO_ROWS', `The file has no rows to import. Fill in the ${opts.sheet ? `"${opts.sheet}"` : 'first'} sheet from row 4.`);
       return rows;
     }
   }
-  throw new AppError(400, 'TEMPLATE_NOT_RECOGNISED', 'The column headers were not recognised. Download the template and keep its header row.');
+  if (opts.sheet && opts.allowEmpty) return [];
+  throw new AppError(400, 'TEMPLATE_NOT_RECOGNISED', `The column headers${opts.sheet ? ` on the "${opts.sheet}" sheet` : ''} were not recognised. Download the template and keep its header rows.`);
 }
 
 export const yesNo = (v: string): boolean | null => {
@@ -217,7 +232,7 @@ export const parseNumber = (v: string) => {
   return Number.isFinite(n) ? n : NaN;
 };
 
-export interface RowResult { row: number; key: string; name?: string; action: 'create' | 'update' | 'unchanged' | 'error'; errors: string[]; changes?: string[] }
+export interface RowResult { row: number; sheet?: string; key: string; name?: string; action: 'create' | 'update' | 'unchanged' | 'error'; errors: string[]; changes?: string[] }
 export function summarize(results: RowResult[]) {
   return {
     total: results.length,

@@ -6,6 +6,7 @@ Two catalogs can be loaded or updated in bulk from Excel:
 |---|---|---|
 | Services & prices | Billing → Services & Prices → **Import from Excel** | `billing.prices` |
 | Inventory items | Inventory → Items → **Import from Excel** | `pharmacy.stock` or `inventory.manage` |
+| Lab test catalog | Laboratory → Test catalog → **Import from Excel** | `lab.manage` (prices also need `billing.prices`) |
 
 ## How it works
 
@@ -35,6 +36,30 @@ Two catalogs can be loaded or updated in bulk from Excel:
 * Sets up the item list only (code, names, form, strength, unit, category, reorder level,
   controlled flag, billing service code, active). Stock quantities, batches and expiry dates are
   received through Inventory → Receive, so they stay traceable to a delivery.
+
+## Lab test catalog
+
+The template has two sheets, linked by **Test code**:
+
+* **Tests**: one row per test: name, department, specimen, container, TAT, billing service code,
+  active, and optional price columns. A price creates or updates the test's billing service
+  (`LAB-<code>` unless another code is given).
+* **Parameters**: one row per reference range. Repeat a parameter on more rows for more ranges,
+  e.g. male and female, or newborn and adult. Its name, unit and type come from its first row.
+  Ages can be entered in years, months or days. Result types are numeric, text, or option (a
+  comma-separated list of choices).
+
+Rules:
+
+* A new test needs at least one parameter row.
+* Parameter rows for a test replace that test's parameter list. Tests without parameter rows keep
+  theirs.
+* Parameter rows can also update an existing test that is not on the Tests sheet.
+* Normal and critical limits are checked for consistency, and overlapping ranges for the same sex
+  and ages are refused.
+* Problems are reported with the sheet and row, e.g. `Parameters row 7: Normal low must not be
+  above Normal high`.
+* Reference ranges must be verified for your laboratory and population before clinical use.
 
 ## Limits
 
