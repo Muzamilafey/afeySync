@@ -102,9 +102,10 @@ export async function upsertConfig(scope: 'platform' | 'tenant', provider: Provi
     doc.markModified('secrets');
   }
   if (scope === 'platform' && update.allowTenantCredentials !== undefined) doc.allowTenantCredentials = update.allowTenantCredentials;
+  if (scope === 'platform' && def.facilityCredentialsOnly) doc.allowTenantCredentials = true;
   if (scope === 'tenant' && update.useTenantConfig !== undefined) doc.useTenantConfig = update.useTenantConfig;
   if (update.enabled !== undefined) {
-    if (update.enabled) {
+    if (update.enabled && !(scope === 'platform' && def.facilityCredentialsOnly)) {
       const settings = { ...defaultsFor(provider, doc.environment ?? def.environments[0]), ...(doc.settings ?? {}) };
       const missing = [
         ...def.settings.filter((s) => s.required && !settings[s.key]).map((s) => s.label),
@@ -176,7 +177,7 @@ export async function integrationStatusForTenant(tenantId: string) {
   ]);
   const flags = (tenant?.integrations ?? {}) as Record<string, boolean>;
   const out: Record<string, { enabled: boolean; message?: string; tenantCredentialsAllowed: boolean; usingFacilityConfig: boolean; health?: string }> = {};
-  for (const provider of ['sha', 'dha', 'mpesa', 'africastalking', 'smtp'] as const) {
+  for (const provider of ['sha', 'dha', 'mpesa', 'africastalking', 'smtp', 'slade360'] as const) {
     const p = platformCfgs.find((c) => c.provider === provider);
     const t = tenantCfgs.find((c) => c.provider === provider);
     const enabled = Boolean(p?.enabled && flags[provider]);

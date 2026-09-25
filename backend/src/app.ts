@@ -34,6 +34,7 @@ import { consultationsRouter, opdRouter } from './modules/opd/opd.routes';
 import labRoutes from './modules/laboratory/lab.routes';
 import radiologyRoutes from './modules/radiology/radiology.routes';
 import pharmacyRoutes from './modules/pharmacy/pharmacy.routes';
+import insuranceRoutes from './modules/insurance/insurance.routes';
 import ePrescriptionRoutes from './modules/eprescription/eprescription.routes';
 import procurementRoutes from './modules/procurement/procurement.routes';
 import inpatientRoutes from './modules/inpatient/inpatient.routes';
@@ -138,6 +139,8 @@ export function createApp() {
   api.use('/reports', reportRoutes);
   api.use('/fhir', fhirRoutes);
   api.use('/payments/mpesa', mpesaRouter);
+  api.use('/insurance', insuranceRoutes);
+  api.use('/integrations', insuranceRoutes); // /integrations/slade360/* aliases
   app.use('/api/v1', api);
 
   app.get('/api/docs/openapi.json', (_req, res) => res.json(openApiSpec));

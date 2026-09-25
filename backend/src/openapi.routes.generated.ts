@@ -721,6 +721,400 @@ export const generatedRoutes: Record<string, Record<string, RouteDoc>> = {
       "permission": "inpatient.manage"
     }
   },
+  "/api/v1/insurance/claims": {
+    "get": {
+      "summary": "Get insurance claims",
+      "tag": "Insurance",
+      "permission": "insurance.view"
+    }
+  },
+  "/api/v1/insurance/claims/{id}": {
+    "get": {
+      "summary": "Get insurance claims",
+      "tag": "Insurance",
+      "permission": "insurance.view"
+    }
+  },
+  "/api/v1/insurance/claims/{id}/attachments": {
+    "post": {
+      "summary": "Create/perform insurance claims attachments",
+      "tag": "Insurance",
+      "permission": "insurance.manage"
+    }
+  },
+  "/api/v1/insurance/claims/{id}/credit-notes": {
+    "post": {
+      "summary": "Create/perform insurance claims credit notes",
+      "tag": "Insurance",
+      "permission": "insurance.manage"
+    }
+  },
+  "/api/v1/insurance/claims/{id}/invoice": {
+    "post": {
+      "summary": "Create/perform insurance claims invoice",
+      "tag": "Insurance",
+      "permission": "insurance.manage"
+    }
+  },
+  "/api/v1/insurance/claims/{id}/reconcile": {
+    "post": {
+      "summary": "Create/perform insurance claims reconcile",
+      "tag": "Insurance",
+      "permission": "insurance.manage"
+    }
+  },
+  "/api/v1/insurance/claims/{id}/refresh-status": {
+    "post": {
+      "summary": "Create/perform insurance claims refresh status",
+      "tag": "Insurance",
+      "permission": "insurance.view"
+    }
+  },
+  "/api/v1/insurance/claims/{id}/remittance": {
+    "post": {
+      "summary": "Create/perform insurance claims remittance",
+      "tag": "Insurance",
+      "permission": "insurance.manage"
+    }
+  },
+  "/api/v1/insurance/code-maps": {
+    "get": {
+      "summary": "Get insurance code maps",
+      "tag": "Insurance",
+      "permission": "insurance.view"
+    },
+    "post": {
+      "summary": "Create/perform insurance code maps",
+      "tag": "Insurance",
+      "permission": "insurance.manage"
+    }
+  },
+  "/api/v1/insurance/coverages": {
+    "get": {
+      "summary": "Get insurance coverages",
+      "tag": "Insurance",
+      "permission": "insurance.view"
+    },
+    "post": {
+      "summary": "Create/perform insurance coverages",
+      "tag": "Insurance",
+      "permission": "insurance.eligibility"
+    }
+  },
+  "/api/v1/insurance/coverages/{id}": {
+    "patch": {
+      "summary": "Update insurance coverages",
+      "tag": "Insurance",
+      "permission": "insurance.eligibility"
+    }
+  },
+  "/api/v1/insurance/coverages/{id}/deactivate": {
+    "post": {
+      "summary": "Create/perform insurance coverages deactivate",
+      "tag": "Insurance",
+      "permission": "insurance.eligibility"
+    }
+  },
+  "/api/v1/insurance/coverages/{id}/eligibility": {
+    "post": {
+      "summary": "Create/perform insurance coverages eligibility",
+      "tag": "Insurance",
+      "permission": "insurance.eligibility"
+    }
+  },
+  "/api/v1/insurance/dashboard": {
+    "get": {
+      "summary": "Get insurance dashboard",
+      "tag": "Insurance",
+      "permission": "insurance.view"
+    }
+  },
+  "/api/v1/insurance/payers": {
+    "get": {
+      "summary": "Get insurance payers",
+      "tag": "Insurance",
+      "permission": "insurance.view"
+    },
+    "post": {
+      "summary": "Create/perform insurance payers",
+      "tag": "Insurance",
+      "permission": "insurance.manage | admin.integrations"
+    }
+  },
+  "/api/v1/insurance/payers/{id}": {
+    "patch": {
+      "summary": "Update insurance payers",
+      "tag": "Insurance",
+      "permission": "insurance.manage | admin.integrations"
+    }
+  },
+  "/api/v1/insurance/payers/sandbox-examples": {
+    "post": {
+      "summary": "Create/perform insurance payers sandbox examples",
+      "tag": "Insurance",
+      "permission": "insurance.manage | admin.integrations"
+    }
+  },
+  "/api/v1/insurance/providers": {
+    "get": {
+      "summary": "Get insurance providers",
+      "tag": "Insurance",
+      "permission": "insurance.view"
+    }
+  },
+  "/api/v1/insurance/remittances": {
+    "get": {
+      "summary": "Get insurance remittances",
+      "tag": "Insurance",
+      "permission": "insurance.view"
+    }
+  },
+  "/api/v1/insurance/remittances/sync": {
+    "post": {
+      "summary": "Create/perform insurance remittances sync",
+      "tag": "Insurance",
+      "permission": "insurance.manage"
+    }
+  },
+  "/api/v1/insurance/slade360/test-connection": {
+    "post": {
+      "summary": "Create/perform insurance slade360 test connection",
+      "tag": "Insurance",
+      "permission": "admin.integrations"
+    }
+  },
+  "/api/v1/insurance/visits": {
+    "get": {
+      "summary": "Get insurance visits",
+      "tag": "Insurance",
+      "permission": "insurance.view"
+    }
+  },
+  "/api/v1/insurance/visits/{id}": {
+    "get": {
+      "summary": "Get insurance visits",
+      "tag": "Insurance",
+      "permission": "insurance.view"
+    }
+  },
+  "/api/v1/insurance/visits/{id}/claim": {
+    "post": {
+      "summary": "Create/perform insurance visits claim",
+      "tag": "Insurance",
+      "permission": "insurance.manage"
+    }
+  },
+  "/api/v1/insurance/visits/{id}/reserve": {
+    "post": {
+      "summary": "Create/perform insurance visits reserve",
+      "tag": "Insurance",
+      "permission": "insurance.manage"
+    }
+  },
+  "/api/v1/insurance/visits/{id}/validate-authorization": {
+    "post": {
+      "summary": "Create/perform insurance visits validate authorization",
+      "tag": "Insurance",
+      "permission": "insurance.eligibility"
+    }
+  },
+  "/api/v1/integrations/claims": {
+    "get": {
+      "summary": "Get integrations claims",
+      "tag": "Integrations",
+      "permission": "insurance.view"
+    }
+  },
+  "/api/v1/integrations/claims/{id}": {
+    "get": {
+      "summary": "Get integrations claims",
+      "tag": "Integrations",
+      "permission": "insurance.view"
+    }
+  },
+  "/api/v1/integrations/claims/{id}/attachments": {
+    "post": {
+      "summary": "Create/perform integrations claims attachments",
+      "tag": "Integrations",
+      "permission": "insurance.manage"
+    }
+  },
+  "/api/v1/integrations/claims/{id}/credit-notes": {
+    "post": {
+      "summary": "Create/perform integrations claims credit notes",
+      "tag": "Integrations",
+      "permission": "insurance.manage"
+    }
+  },
+  "/api/v1/integrations/claims/{id}/invoice": {
+    "post": {
+      "summary": "Create/perform integrations claims invoice",
+      "tag": "Integrations",
+      "permission": "insurance.manage"
+    }
+  },
+  "/api/v1/integrations/claims/{id}/reconcile": {
+    "post": {
+      "summary": "Create/perform integrations claims reconcile",
+      "tag": "Integrations",
+      "permission": "insurance.manage"
+    }
+  },
+  "/api/v1/integrations/claims/{id}/refresh-status": {
+    "post": {
+      "summary": "Create/perform integrations claims refresh status",
+      "tag": "Integrations",
+      "permission": "insurance.view"
+    }
+  },
+  "/api/v1/integrations/claims/{id}/remittance": {
+    "post": {
+      "summary": "Create/perform integrations claims remittance",
+      "tag": "Integrations",
+      "permission": "insurance.manage"
+    }
+  },
+  "/api/v1/integrations/code-maps": {
+    "get": {
+      "summary": "Get integrations code maps",
+      "tag": "Integrations",
+      "permission": "insurance.view"
+    },
+    "post": {
+      "summary": "Create/perform integrations code maps",
+      "tag": "Integrations",
+      "permission": "insurance.manage"
+    }
+  },
+  "/api/v1/integrations/coverages": {
+    "get": {
+      "summary": "Get integrations coverages",
+      "tag": "Integrations",
+      "permission": "insurance.view"
+    },
+    "post": {
+      "summary": "Create/perform integrations coverages",
+      "tag": "Integrations",
+      "permission": "insurance.eligibility"
+    }
+  },
+  "/api/v1/integrations/coverages/{id}": {
+    "patch": {
+      "summary": "Update integrations coverages",
+      "tag": "Integrations",
+      "permission": "insurance.eligibility"
+    }
+  },
+  "/api/v1/integrations/coverages/{id}/deactivate": {
+    "post": {
+      "summary": "Create/perform integrations coverages deactivate",
+      "tag": "Integrations",
+      "permission": "insurance.eligibility"
+    }
+  },
+  "/api/v1/integrations/coverages/{id}/eligibility": {
+    "post": {
+      "summary": "Create/perform integrations coverages eligibility",
+      "tag": "Integrations",
+      "permission": "insurance.eligibility"
+    }
+  },
+  "/api/v1/integrations/dashboard": {
+    "get": {
+      "summary": "Get integrations dashboard",
+      "tag": "Integrations",
+      "permission": "insurance.view"
+    }
+  },
+  "/api/v1/integrations/payers": {
+    "get": {
+      "summary": "Get integrations payers",
+      "tag": "Integrations",
+      "permission": "insurance.view"
+    },
+    "post": {
+      "summary": "Create/perform integrations payers",
+      "tag": "Integrations",
+      "permission": "insurance.manage | admin.integrations"
+    }
+  },
+  "/api/v1/integrations/payers/{id}": {
+    "patch": {
+      "summary": "Update integrations payers",
+      "tag": "Integrations",
+      "permission": "insurance.manage | admin.integrations"
+    }
+  },
+  "/api/v1/integrations/payers/sandbox-examples": {
+    "post": {
+      "summary": "Create/perform integrations payers sandbox examples",
+      "tag": "Integrations",
+      "permission": "insurance.manage | admin.integrations"
+    }
+  },
+  "/api/v1/integrations/providers": {
+    "get": {
+      "summary": "Get integrations providers",
+      "tag": "Integrations",
+      "permission": "insurance.view"
+    }
+  },
+  "/api/v1/integrations/remittances": {
+    "get": {
+      "summary": "Get integrations remittances",
+      "tag": "Integrations",
+      "permission": "insurance.view"
+    }
+  },
+  "/api/v1/integrations/remittances/sync": {
+    "post": {
+      "summary": "Create/perform integrations remittances sync",
+      "tag": "Integrations",
+      "permission": "insurance.manage"
+    }
+  },
+  "/api/v1/integrations/slade360/test-connection": {
+    "post": {
+      "summary": "Create/perform integrations slade360 test connection",
+      "tag": "Integrations",
+      "permission": "admin.integrations"
+    }
+  },
+  "/api/v1/integrations/visits": {
+    "get": {
+      "summary": "Get integrations visits",
+      "tag": "Integrations",
+      "permission": "insurance.view"
+    }
+  },
+  "/api/v1/integrations/visits/{id}": {
+    "get": {
+      "summary": "Get integrations visits",
+      "tag": "Integrations",
+      "permission": "insurance.view"
+    }
+  },
+  "/api/v1/integrations/visits/{id}/claim": {
+    "post": {
+      "summary": "Create/perform integrations visits claim",
+      "tag": "Integrations",
+      "permission": "insurance.manage"
+    }
+  },
+  "/api/v1/integrations/visits/{id}/reserve": {
+    "post": {
+      "summary": "Create/perform integrations visits reserve",
+      "tag": "Integrations",
+      "permission": "insurance.manage"
+    }
+  },
+  "/api/v1/integrations/visits/{id}/validate-authorization": {
+    "post": {
+      "summary": "Create/perform integrations visits validate authorization",
+      "tag": "Integrations",
+      "permission": "insurance.eligibility"
+    }
+  },
   "/api/v1/inventory/items": {
     "get": {
       "summary": "Get inventory items",

@@ -97,6 +97,7 @@ export const PERMISSION_GROUPS: Record<string, { label: string; permissions: Rec
       'billing.waive': 'Approve discounts and waivers',
       'billing.prices': 'Manage service catalog and prices',
       'insurance.view': 'View insurance',
+      'insurance.eligibility': 'Check private insurance eligibility, authenticate members and start insurance visits',
       'insurance.manage': 'Manage insurance schemes and claims',
     },
   },
@@ -226,10 +227,10 @@ export const DEFAULT_ROLES: DefaultRole[] = [
     key: 'receptionist',
     name: 'Receptionist',
     scope: 'branch',
-    permissions: [...P('patients.view', 'patients.search', 'patients.create', 'patients.edit', 'frontdesk.', 'appointments.', 'queue.', 'sha.view', 'sha.eligibility', 'dha.registry', 'documents.')],
+    permissions: [...P('patients.view', 'patients.search', 'patients.create', 'patients.edit', 'frontdesk.', 'appointments.', 'queue.', 'sha.view', 'sha.eligibility', 'dha.registry', 'documents.', 'insurance.view', 'insurance.eligibility')],
   },
   { key: 'triage_nurse', name: 'Triage Nurse', scope: 'branch', permissions: [...clinicalCore, ...P('opd.', 'queue.manage', 'nursing.record')] },
-  { key: 'cashier', name: 'Cashier', scope: 'branch', permissions: [...P('patients.view', 'patients.search', 'billing.view', 'billing.create', 'insurance.view')] },
+  { key: 'cashier', name: 'Cashier', scope: 'branch', permissions: [...P('patients.view', 'patients.search', 'billing.view', 'billing.create', 'insurance.view', 'insurance.eligibility')] },
   { key: 'accountant', name: 'Accountant', scope: 'tenant', permissions: [...P('billing.', 'insurance.view', 'finance.', 'reports.', 'sha.view', 'sha.reconciliation')] },
   { key: 'pharmacist', name: 'Pharmacist', scope: 'branch', permissions: [...clinicalCore, ...P('pharmacy.view', 'pharmacy.dispense', 'inventory.view')] },
   { key: 'pharmacy_manager', name: 'Pharmacy Manager', scope: 'branch', permissions: [...clinicalCore, ...P('pharmacy.', 'inventory.', 'procurement.view', 'reports.view')] },
@@ -244,7 +245,7 @@ export const DEFAULT_ROLES: DefaultRole[] = [
   { key: 'theatre_staff', name: 'Theatre Staff', scope: 'branch', permissions: [...clinicalCore, ...P('inpatient.view', 'nursing.')] },
   { key: 'mortuary_officer', name: 'Mortuary Officer', scope: 'branch', permissions: [...P('mortuary.view', 'mortuary.manage', 'documents.view'), 'billing.view'] },
   { key: 'records_officer', name: 'Records Officer', scope: 'tenant', permissions: [...P('patients.', 'documents.', 'reports.view', 'dha.registry')] },
-  { key: 'insurance_officer', name: 'Insurance Officer', scope: 'tenant', permissions: [...P('patients.view', 'patients.search', 'insurance.', 'billing.view', 'sha.view', 'sha.eligibility')] },
+  { key: 'insurance_officer', name: 'Insurance Officer', scope: 'tenant', permissions: [...P('patients.view', 'patients.search', 'insurance.', 'billing.view', 'sha.view', 'sha.eligibility', 'documents.view', 'documents.upload')] },
   { key: 'sha_officer', name: 'SHA Officer', scope: 'tenant', permissions: [...P('patients.view', 'patients.search', 'sha.', 'dha.view', 'dha.registry', 'billing.view', 'documents.')] },
   { key: 'procurement_officer', name: 'Procurement Officer', scope: 'tenant', permissions: P('procurement.', 'inventory.view') },
   { key: 'hr_officer', name: 'HR Officer', scope: 'tenant', permissions: P('hr.') },
@@ -254,4 +255,5 @@ export const DEFAULT_ROLES: DefaultRole[] = [
 /** Permissions introduced after the initial release, keyed by the tenant schema version that added them. */
 export const PERMISSIONS_ADDED_IN: Record<number, string[]> = {
   2: ['lab.manage', 'radiology.manage', 'inpatient.manage', 'mortuary.release'],
+  3: ['insurance.eligibility', 'documents.view', 'documents.upload'],
 };

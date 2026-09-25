@@ -328,7 +328,7 @@ router.put(
   requirePermission('owner.integrations'),
   h(async (req, res) => {
     const id = oid(req.params.id as string);
-    const body = parse(z.object({ sha: z.boolean(), dha: z.boolean(), mpesa: z.boolean(), africastalking: z.boolean(), smtp: z.boolean() }).partial(), req.body);
+    const body = parse(z.object({ sha: z.boolean(), dha: z.boolean(), mpesa: z.boolean(), africastalking: z.boolean(), smtp: z.boolean(), slade360: z.boolean() }).partial(), req.body);
     const { Tenant } = meta();
     const before = await Tenant.findById(id).select('integrations').lean();
     if (!before) throw notFound('Facility not found');

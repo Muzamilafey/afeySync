@@ -11,7 +11,7 @@ import { PERMISSION_GROUPS } from '../rbac/catalog';
  * upgraded on API start. Migrations are additive and idempotent: they never overwrite a facility's
  * customisations of system roles, only add permissions introduced by newer versions.
  */
-export const TENANT_SCHEMA_VERSION = 2;
+export const TENANT_SCHEMA_VERSION = 3;
 
 export async function migrateTenant(dbName: string, fromVersion: number) {
   const conn = getTenantConnection(dbName);

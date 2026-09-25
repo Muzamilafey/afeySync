@@ -7,6 +7,7 @@ import { inpatientSchemas } from './inpatient';
 import { maternitySchemas } from './maternity';
 import { miscSchemas } from './misc';
 import { shaSchemas } from './sha';
+import { insuranceSchemas } from './insurance';
 
 const { ObjectId, Mixed } = Schema.Types;
 
@@ -347,7 +348,7 @@ const coreSchemas = {
   FacilitySetting: facilitySettingsSchema,
 };
 
-const schemas = { ...coreSchemas, ...billingSchemas, ...clinicalSchemas, ...labSchemas, ...pharmacySchemas, ...inpatientSchemas, ...maternitySchemas, ...miscSchemas, ...shaSchemas };
+const schemas = { ...coreSchemas, ...billingSchemas, ...clinicalSchemas, ...labSchemas, ...pharmacySchemas, ...inpatientSchemas, ...maternitySchemas, ...miscSchemas, ...shaSchemas, ...insuranceSchemas };
 
 type Schemas = typeof schemas;
 export type TenantModels = { [K in keyof Schemas]: Model<InferSchemaType<Schemas[K]>> };

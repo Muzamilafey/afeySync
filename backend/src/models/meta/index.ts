@@ -126,6 +126,7 @@ const tenantSchema = new Schema(
       mpesa: { type: Boolean, default: false },
       africastalking: { type: Boolean, default: false },
       smtp: { type: Boolean, default: false },
+      slade360: { type: Boolean, default: false },
     },
     stats: {
       branches: { type: Number, default: 0 },
@@ -195,7 +196,7 @@ const tenantSubscriptionSchema = new Schema(
 );
 
 /* ---------------------------------------------------------------- Integrations */
-export const PROVIDERS = ['sha', 'dha', 'mpesa', 'africastalking', 'smtp', 'storage', 'google'] as const;
+export const PROVIDERS = ['sha', 'dha', 'mpesa', 'africastalking', 'smtp', 'storage', 'google', 'slade360'] as const;
 export type Provider = (typeof PROVIDERS)[number];
 
 const integrationConfigSchema = new Schema(

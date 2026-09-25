@@ -6,6 +6,8 @@ export interface ProviderDefinition {
   secrets: Array<{ key: string; label: string; required?: boolean }>;
   environments: Array<'sandbox' | 'uat' | 'production'>;
   defaultBaseUrls?: Partial<Record<'sandbox' | 'uat' | 'production', string>>;
+  /** Credentials always belong to the facility (e.g. its own Slade360 account); the platform record is only an on/off switch. */
+  facilityCredentialsOnly?: boolean;
 }
 
 /**
@@ -91,6 +93,30 @@ export const PROVIDER_DEFINITIONS: Record<Provider, ProviderDefinition> = {
     secrets: [
       { key: 'username', label: 'Username' },
       { key: 'password', label: 'Password' },
+    ],
+  },
+  slade360: {
+    label: 'Slade360 / HealthCloud (private insurance EDI)',
+    environments: ['sandbox', 'production'],
+    facilityCredentialsOnly: true,
+    // Sandbox hosts as given in the Slade360 provider API documentation; production hosts must be entered.
+    defaultBaseUrls: { sandbox: 'https://provider-edi-api.multitenant.slade360.co.ke/v1' },
+    settings: [
+      { key: 'baseUrl', label: 'Provider EDI API base URL', required: true },
+      { key: 'authUrl', label: 'OAuth 2.0 token URL (…/oauth2/token/)', required: true },
+      { key: 'grantType', label: 'OAuth grant type exactly as documented for your account (e.g. password or client_credentials)', required: true },
+      { key: 'providerCode', label: 'Provider / facility code at Slade360' },
+      { key: 'locationCode', label: 'Location code (claims)' },
+      { key: 'locationName', label: 'Location name (claims)' },
+      { key: 'factorOtp', label: 'start_visit factor value for OTP (per documentation)' },
+      { key: 'factorFingerprint', label: 'start_visit factor value for fingerprint (only with Slade biometric devices)' },
+      { key: 'factorGuardian', label: 'start_visit factor value for guardian authentication' },
+    ],
+    secrets: [
+      { key: 'clientId', label: 'Client ID', required: true },
+      { key: 'clientSecret', label: 'Client secret', required: true },
+      { key: 'username', label: 'Username (only if your grant type requires it)' },
+      { key: 'password', label: 'Password (only if your grant type requires it)' },
     ],
   },
   google: {

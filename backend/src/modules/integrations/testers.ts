@@ -9,6 +9,7 @@ import { IntegrationSecretService, type EncryptedValue } from './secretService';
 import { recordHealth, type ResolvedIntegration } from './integrationConfigService';
 import { PROVIDER_DEFINITIONS } from './providers';
 import { defaultRedirectUri, discovery } from '../auth/google/googleOidc';
+import { sladeToken } from '../../integrations/slade360/sladeClient';
 
 /** Materialize a config document for testing even if it is not yet enabled. */
 export async function loadConfigForTest(scope: 'platform' | 'tenant', provider: Provider, tenantId: string | null): Promise<ResolvedIntegration> {
@@ -50,6 +51,13 @@ export async function testIntegration(cfg: ResolvedIntegration, kind: TestKind =
           detail.terminology = 'OK';
         }
         detail.facility = cfg.settings.facilityRegistryCode ? 'CONFIGURED' : 'NOT SET';
+        break;
+      }
+      case 'slade360': {
+        if (!cfg.secrets.clientId || !cfg.secrets.clientSecret || !cfg.settings.grantType) throw badRequest('Client ID, client secret and grant type are required');
+        await sladeToken(cfg, { tenantId: opts.tenantId ?? 'platform' }, true);
+        detail.token = 'VALID';
+        detail.environment = cfg.environment;
         break;
       }
       case 'google': {

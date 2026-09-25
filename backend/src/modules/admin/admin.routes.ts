@@ -13,6 +13,7 @@ import { meta } from '../../models/meta';
 import { assertProvider, assertTenantCredentialsAllowed, integrationStatusForTenant, toPublicConfig, upsertConfig } from '../integrations/integrationConfigService';
 import { loadConfigForTest, testIntegration } from '../integrations/testers';
 import { clearTokenCache } from '../../integrations/hie/hieClient';
+import { clearSladeTokens } from '../../integrations/slade360/sladeClient';
 
 const router = Router();
 router.use(authenticateTenant);
@@ -51,6 +52,7 @@ router.put(
     );
     const { before, after } = await upsertConfig('tenant', provider, req.tenant!.id, body, req.user!.id);
     clearTokenCache();
+    clearSladeTokens();
     await audit(req, { action: 'integration.facility_config', resource: 'integration', resourceId: provider, oldValue: before, newValue: { ...after, secretsChanged: Object.keys(body.secrets ?? {}) } });
     res.json({ success: true, data: after });
   }),
