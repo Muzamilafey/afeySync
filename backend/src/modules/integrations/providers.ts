@@ -8,6 +8,8 @@ export interface ProviderDefinition {
   defaultBaseUrls?: Partial<Record<'sandbox' | 'uat' | 'production', string>>;
   /** Credentials always belong to the facility (e.g. its own Slade360 account); the platform record is only an on/off switch. */
   facilityCredentialsOnly?: boolean;
+  /** Belongs to the platform owner only: never enabled, configured or shown for facilities. */
+  platformOnly?: boolean;
 }
 
 /**
@@ -129,6 +131,25 @@ export const PROVIDER_DEFINITIONS: Record<Provider, ProviderDefinition> = {
       { key: 'hostedDomain', label: 'Restrict to a Google Workspace domain (optional)' },
     ],
     secrets: [{ key: 'clientSecret', label: 'OAuth client secret', required: true }],
+  },
+  mpesa_billing: {
+    label: 'M-Pesa collections (AfeySync subscription payments)',
+    platformOnly: true,
+    environments: ['sandbox', 'production'],
+    defaultBaseUrls: { sandbox: 'https://sandbox.safaricom.co.ke', production: 'https://api.safaricom.co.ke' },
+    settings: [
+      { key: 'shortcode', label: 'Business shortcode (paybill, or head office number for a till)', required: true },
+      { key: 'transactionType', label: 'STK transaction type: CustomerPayBillOnline (paybill) or CustomerBuyGoodsOnline (till)', default: 'CustomerPayBillOnline' },
+      { key: 'till', label: 'Till number (only for Buy Goods)' },
+      { key: 'paybill', label: 'Paybill number shown on invoices' },
+      { key: 'accountLabel', label: 'Account number instruction shown on invoices', default: 'Use the invoice number as the account number' },
+      { key: 'baseUrl', label: 'API base URL (defaults per environment)' },
+    ],
+    secrets: [
+      { key: 'consumerKey', label: 'Consumer Key', required: true },
+      { key: 'consumerSecret', label: 'Consumer Secret', required: true },
+      { key: 'passkey', label: 'Lipa na M-Pesa Online passkey', required: true },
+    ],
   },
   storage: {
     label: 'Document Storage',

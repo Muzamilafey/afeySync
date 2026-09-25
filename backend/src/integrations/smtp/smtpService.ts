@@ -13,7 +13,7 @@ export function createTransport(cfg: ResolvedIntegration) {
   });
 }
 
-export async function sendMail(cfg: ResolvedIntegration, msg: { to: string; subject: string; text: string; html?: string }) {
+export async function sendMail(cfg: ResolvedIntegration, msg: { to: string; subject: string; text: string; html?: string; attachments?: Array<{ filename: string; content: Buffer; contentType?: string }> }) {
   const transport = createTransport(cfg);
   const from = `"${cfg.settings.fromName || 'AfeySync'}" <${cfg.settings.fromEmail}>`;
   const info = await transport.sendMail({ from, ...msg });

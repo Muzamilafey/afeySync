@@ -79,6 +79,7 @@ export async function testIntegration(cfg: ResolvedIntegration, kind: TestKind =
         await checkAccount(cfg);
         break;
       case 'mpesa':
+      case 'mpesa_billing':
         await darajaToken(cfg);
         detail.token = 'VALID';
         break;

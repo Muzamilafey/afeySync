@@ -10,6 +10,11 @@ import { logger } from './utils/logger';
 import { requestId } from './middleware/requestContext';
 import { sanitizeInput } from './middleware/sanitize';
 import { resolveTenantHost } from './middleware/tenantResolver';
+import { requirePlanModule } from './modules/plans/planService';
+import { planOwnerRouter } from './modules/plans/plans.routes';
+import { billingOwnerRouter } from './modules/platformBilling/owner.routes';
+import { subscriptionRouter } from './modules/platformBilling/facility.routes';
+import { platformMpesaPublicRouter } from './modules/platformBilling/platformMpesa';
 import { onboardingOwnerRouter, onboardingPublicRouter } from './modules/onboarding/onboarding.routes';
 import { errorHandler, notFoundHandler } from './middleware/errorHandler';
 import healthRoutes from './modules/health/health.routes';
@@ -90,6 +95,7 @@ export function createApp() {
 
   api.use(callbackRoutes); // public, verified per-endpoint (mounted before the generic limiter)
   api.use(mpesaPublicRouter); // public Safaricom callbacks, verified by secret per-tenant URL token
+  api.use(platformMpesaPublicRouter); // public callbacks for AfeySync subscription payments
   api.use(apiLimiter);
   api.use('/auth/login', authLimiter);
   api.use('/owner/auth/login', authLimiter);
@@ -105,7 +111,11 @@ export function createApp() {
   api.use('/owner/auth', ownerAuthRoutes);
   api.use(onboardingPublicRouter);
   api.use('/owner/onboarding', onboardingOwnerRouter);
+  api.use('/owner/plans', planOwnerRouter);
+  api.use('/owner/billing', billingOwnerRouter);
   api.use('/owner', ownerRoutes);
+  api.use('/subscription', subscriptionRouter);
+  api.use(requirePlanModule); // modules outside the facility's plan are refused
   api.use('/branches', branchRoutes);
   api.use('/users', usersRouter);
   api.use('/roles', rolesRouter);

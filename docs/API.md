@@ -11,6 +11,7 @@
 * Idempotency: SHA transactions accept `idempotencyKey`. Jobs and callback events are deduplicated
   by unique keys.
 * Main groups:
+  * Plans & platform billing: `/owner/plans/*`, `/owner/billing/*`, facility `/subscription/*`, public `/payments/platform-mpesa/*` (see BILLING.md)
   * Public onboarding: `/onboarding/*` (see ONBOARDING.md); owner review at `/owner/onboarding/*`
   * Platform & admin: `/auth`, `/owner/*` (incl. `/owner/backups`), `/branches`, `/users`, `/roles`, `/permissions`, `/admin/*`, `/dashboard`, `/notifications`
   * Registration & front desk: `/patients`, `/visits`, `/queues`, `/referrals`, `/appointments`

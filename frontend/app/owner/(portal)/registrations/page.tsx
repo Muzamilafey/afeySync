@@ -1,6 +1,7 @@
 'use client';
 
 import { useState } from 'react';
+import { useOwnerPlans } from '@/features/billing-docs/useOwnerPlans';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { ExternalLink } from 'lucide-react';
 import { ownerApi } from '@/services/api';
@@ -16,10 +17,10 @@ interface Application {
   expectedUsers?: number; heardFrom?: string; notes?: string; submittedAt?: string; reviewedByName?: string; reviewedAt?: string; rejectionReason?: string; autoApproved?: boolean; provisioningError?: string; ip?: string;
 }
 const TONE = { submitted: 'amber', approved: 'green', rejected: 'red' } as const;
-const PLANS = ['trial', 'basic', 'standard', 'premium'];
 
 export default function RegistrationsPage() {
   const qc = useQueryClient();
+  const plans = useOwnerPlans();
   const [status, setStatus] = useState('submitted');
   const [q, setQ] = useState('');
   const [open, setOpen] = useState<Application | null>(null);
@@ -101,7 +102,7 @@ export default function RegistrationsPage() {
                 </div>
               ) : (
                 <div className="flex flex-wrap items-end gap-3 border-t border-[var(--border)] pt-4">
-                  <Field label="Trial limits based on plan"><Select value={plan} onChange={(e) => setPlan(e.target.value)}>{PLANS.map((p) => <option key={p} value={p} className="capitalize">{p}</option>)}</Select></Field>
+                  <Field label="Plan"><Select value={plan} onChange={(e) => setPlan(e.target.value)}>{(plans.data ?? []).filter((p) => p.active).map((p) => <option key={p.key} value={p.key}>{p.name}</option>)}</Select></Field>
                   <Button onClick={() => approve.mutate(open)} loading={approve.isPending}>Approve & create facility</Button>
                   <Button variant="ghost" onClick={() => setRejecting(true)}>Reject…</Button>
                   <div className="w-full"><ErrorText error={approve.error} /></div>

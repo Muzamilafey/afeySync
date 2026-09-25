@@ -154,6 +154,10 @@ export const PERMISSION_GROUPS: Record<string, { label: string; permissions: Rec
       'admin.support_access': 'Approve platform support access',
     },
   },
+  subscription: {
+    label: 'Subscription',
+    permissions: { 'subscription.view': 'View the AfeySync plan, invoices, quotations and agreements', 'subscription.manage': 'Pay AfeySync invoices, request quotations and accept agreements' },
+  },
 };
 
 export const PLATFORM_PERMISSIONS = {
@@ -192,7 +196,7 @@ export const DEFAULT_ROLES: DefaultRole[] = [
     key: 'branch_admin',
     name: 'Branch Administrator',
     scope: 'branch',
-    permissions: ALL_TENANT_PERMISSIONS.filter((p) => !['admin.roles', 'admin.integrations', 'admin.support_access'].includes(p)),
+    permissions: ALL_TENANT_PERMISSIONS.filter((p) => !['admin.roles', 'admin.integrations', 'admin.support_access', 'subscription.manage'].includes(p)),
   },
   {
     key: 'hospital_manager',
@@ -256,4 +260,5 @@ export const DEFAULT_ROLES: DefaultRole[] = [
 export const PERMISSIONS_ADDED_IN: Record<number, string[]> = {
   2: ['lab.manage', 'radiology.manage', 'inpatient.manage', 'mortuary.release'],
   3: ['insurance.eligibility', 'documents.view', 'documents.upload'],
+  5: ['subscription.view', 'subscription.manage'],
 };

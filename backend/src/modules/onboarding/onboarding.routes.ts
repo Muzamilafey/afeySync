@@ -25,13 +25,16 @@ import { logger } from '../../utils/logger';
  * The public endpoints never reveal other applications or facilities beyond "this web address is
  * taken". The applicant tracks their application with a private token returned once.
  */
-export const PLANS = {
-  trial: { label: 'Free trial', days: 30, maxBranches: 2, maxUsers: 15 },
-  basic: { label: 'Basic', days: 30, maxBranches: 1, maxUsers: 20 },
-  standard: { label: 'Standard', days: 30, maxBranches: 3, maxUsers: 60 },
-  premium: { label: 'Premium', days: 30, maxBranches: 10, maxUsers: 250 },
-} as const;
-type Plan = keyof typeof PLANS;
+/** Plans a new facility can choose: the owner's active, public catalogue. */
+export async function publicPlans() {
+  const plans = await meta().SubscriptionPlan.find({ active: true, public: true }).sort({ sortOrder: 1, name: 1 }).lean();
+  return plans.map((p) => ({ key: p.key, name: p.name, description: p.description, currency: p.currency, prices: p.prices, setupFee: p.setupFee, maxBranches: p.maxBranches, maxUsers: p.maxUsers, trialDays: p.trialDays, modules: p.modules, features: p.features, highlight: p.highlight }));
+}
+async function planFor(key: string | null | undefined) {
+  const plan = await meta().SubscriptionPlan.findOne({ key: key ?? 'trial', active: true }).lean();
+  if (!plan) throw badRequest('This plan is no longer available. Choose another plan.');
+  return plan;
+}
 
 export const INTERESTS = ['sha', 'dha', 'mpesa', 'sms', 'insurance', 'laboratory', 'pharmacy', 'inpatient', 'maternity', 'radiology'] as const;
 
@@ -115,9 +118,8 @@ const publicView = (app: App) => ({
 });
 
 /** Builds the provisioning input from an application. The facility starts on a 30-day trial of the chosen tier's limits. */
-function toProvisioningInput(app: App): CreateFacilityInput {
+function toProvisioningInput(app: App, plan: { key: string; maxBranches: number; maxUsers: number; trialDays: number }): CreateFacilityInput {
   const f = app.facility ?? {};
-  const plan = PLANS[(app.plan ?? 'trial') as Plan];
   const interests = new Set(app.interests ?? []);
   const branches = (app.branches ?? []).map((b) => ({ branchName: b.branchName!, branchCode: b.branchCode!, county: b.county ?? undefined, subCounty: b.subCounty ?? undefined, physicalAddress: b.physicalAddress ?? undefined, phone: b.phone ?? undefined, facilityLevel: f.facilityLevel ?? undefined, facilityType: f.facilityType ?? undefined }));
   if (branches.length && f.bedCapacity) Object.assign(branches[0], { bedCapacity: f.bedCapacity });
@@ -128,7 +130,8 @@ function toProvisioningInput(app: App): CreateFacilityInput {
     domain: { customDomains: [] },
     branches,
     integrations: { sha: interests.has('sha'), dha: interests.has('sha') || interests.has('dha'), mpesa: interests.has('mpesa'), africastalking: interests.has('sms'), slade360: interests.has('insurance') },
-    subscription: { plan: 'trial', billingCycle: 'monthly', amount: 0, maxBranches: Math.max(plan.maxBranches, branches.length), maxUsers: plan.maxUsers, endsAt: new Date(Date.now() + plan.days * 86_400_000) },
+    // The chosen plan's modules and limits apply from day one; the first period is a free trial when the plan offers one.
+    subscription: { plan: plan.key, status: plan.trialDays > 0 ? 'trialing' : 'active', billingCycle: 'monthly', amount: 0, maxBranches: Math.max(plan.maxBranches, branches.length), maxUsers: plan.maxUsers, endsAt: plan.trialDays > 0 ? new Date(Date.now() + plan.trialDays * 86_400_000) : undefined },
   };
 }
 
@@ -139,7 +142,7 @@ async function approve(app: App, reviewer: { id?: string; name?: string } | null
   if (problem) throw conflict('A facility with this web address already exists', undefined, 'TENANT_EXISTS');
   let result;
   try {
-    result = await provisionFacility(toProvisioningInput(app), reviewer?.id, { adminPasswordHash: app.admin?.passwordHash ?? undefined });
+    result = await provisionFacility(toProvisioningInput(app, await planFor(app.plan)), reviewer?.id, { adminPasswordHash: app.admin?.passwordHash ?? undefined });
   } catch (err) {
     app.provisioningError = (err as Error).message.slice(0, 300);
     await app.save();
@@ -160,7 +163,7 @@ async function approve(app: App, reviewer: { id?: string; name?: string } | null
 export const onboardingPublicRouter = Router();
 
 onboardingPublicRouter.get('/onboarding/config', h(async (_req, res) => {
-  res.json({ success: true, data: { platformDomain: env.PLATFORM_DOMAIN, approvalMode: await approvalMode(), plans: PLANS, interests: INTERESTS } });
+  res.json({ success: true, data: { platformDomain: env.PLATFORM_DOMAIN, approvalMode: await approvalMode(), plans: await publicPlans(), interests: INTERESTS } });
 }));
 
 onboardingPublicRouter.get('/onboarding/slug', h(async (req, res) => {
@@ -190,7 +193,7 @@ const applicationSchema = z.object({
   slug: z.string().toLowerCase(),
   branches: z.array(z.object({ branchName: z.string().trim().min(2).max(120), branchCode: z.string().trim().toUpperCase().regex(/^[A-Z0-9-]{2,20}$/, 'Branch codes use 2–20 letters, digits or hyphens'), county: optionalText(60), subCounty: optionalText(60), physicalAddress: optionalText(300), phone: optionalText(30) })).min(1).max(10),
   admin: z.object({ name: z.string().trim().min(3).max(120), email: z.string().trim().toLowerCase().email(), phone: z.string().trim().min(9).max(30), jobTitle: optionalText(80), password: passwordPolicy }),
-  plan: z.enum(['trial', 'basic', 'standard', 'premium']).default('trial'),
+  plan: z.string().trim().max(40).default('trial'),
   interests: z.array(z.enum(INTERESTS)).max(INTERESTS.length).default([]),
   expectedUsers: z.number().int().min(1).max(5000).optional(),
   heardFrom: optionalText(120),
@@ -202,6 +205,7 @@ onboardingPublicRouter.post('/onboarding/applications', h(async (req, res) => {
   const body = parse(applicationSchema, req.body);
   const problem = await slugProblem(body.slug);
   if (problem) throw conflict(problem, undefined, 'SLUG_UNAVAILABLE');
+  if (!(await meta().SubscriptionPlan.exists({ key: body.plan, active: true, public: true }))) throw badRequest('Choose one of the available plans');
   const codes = body.branches.map((b) => b.branchCode);
   if (new Set(codes).size !== codes.length) throw badRequest('Branch codes must be unique');
   const { FacilityApplication } = meta();
@@ -267,7 +271,7 @@ onboardingPublicRouter.post('/onboarding/applications/verify', h(async (req, res
   } else {
     await notifyEmail(null, `onboarding-received:${app._id}`, app.admin!.email!, `We received your AfeySync registration (${app.reference})`, `Thank you for registering ${app.facility?.name}.\n\nOur team will review your application and email you when your facility is ready, usually within one working day. Reference: ${app.reference}.`);
     const owners = await meta().PlatformUser.find({ status: 'active', role: { $in: ['super_owner', 'platform_admin'] } }).select('email').lean();
-    for (const o of owners) await notifyEmail(null, `onboarding-new:${app._id}:${o._id}`, o.email, `New facility registration: ${app.facility?.name}`, `${app.facility?.name} (${app.facility?.county}) applied for ${platformSubdomain(app.slug)} on the ${PLANS[app.plan as Plan].label} plan. Review it in the Owner Portal → Registrations. Reference ${app.reference}.`);
+    for (const o of owners) await notifyEmail(null, `onboarding-new:${app._id}:${o._id}`, o.email, `New facility registration: ${app.facility?.name}`, `${app.facility?.name} (${app.facility?.county}) applied for ${platformSubdomain(app.slug)} on the ${app.plan} plan. Review it in the Owner Portal → Registrations. Reference ${app.reference}.`);
   }
   res.json({ success: true, data: publicView(app) });
 }));
@@ -318,8 +322,8 @@ async function loadForReview(id: string) {
 
 onboardingOwnerRouter.post('/applications/:id/approve', requirePermission('owner.tenants'), h(async (req, res) => {
   const app = await loadForReview(String(req.params.id));
-  const body = parse(z.object({ plan: z.enum(['trial', 'basic', 'standard', 'premium']).optional() }), req.body ?? {});
-  if (body.plan) app.plan = body.plan;
+  const body = parse(z.object({ plan: z.string().trim().max(40).optional() }), req.body ?? {});
+  if (body.plan) app.plan = (await planFor(body.plan)).key;
   const r = await approve(app, { id: req.platformUser!.id, name: req.platformUser!.name }, req);
   res.json({ success: true, data: { ...r, reference: app.reference } });
 }));

@@ -34,6 +34,7 @@ export interface Me {
   activeBranch: { id: string; name: string; code: string } | null;
   branches: Branch[];
   integrations: Record<'sha' | 'dha' | 'mpesa' | 'africastalking' | 'smtp' | 'slade360', IntegrationFlag>;
+  subscription?: { plan: string; planName?: string; status: string; endsAt?: string; modules: string[]; unrestricted: boolean };
 }
 
 export interface Patient {

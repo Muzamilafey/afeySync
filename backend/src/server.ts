@@ -2,6 +2,7 @@ import { env } from './config/env';
 import { connectMeta, disconnectAll } from './db/connections';
 import { ensureMetaIndexes } from './models/meta';
 import { seedHieContracts } from './integrations/hie/contractService';
+import { seedPlans } from './modules/plans/planService';
 import { bootstrapPlatformConfigsFromEnv } from './modules/integrations/integrationConfigService';
 import { registerJobHandlers } from './jobs/handlers';
 import { startWorker, stopWorker } from './jobs/queue';
@@ -13,6 +14,7 @@ async function main() {
   await connectMeta();
   await ensureMetaIndexes();
   await seedHieContracts();
+  await seedPlans();
   await bootstrapPlatformConfigsFromEnv();
   await runTenantMigrations();
   registerJobHandlers();

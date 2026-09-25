@@ -1,6 +1,7 @@
 'use client';
 
 import { useState } from 'react';
+import { useOwnerPlans } from '@/features/billing-docs/useOwnerPlans';
 import Link from 'next/link';
 import { useMutation } from '@tanstack/react-query';
 import { Check, Plus, Trash2 } from 'lucide-react';
@@ -22,6 +23,7 @@ export default function NewFacilityWizard() {
   const [domainInput, setDomainInput] = useState('');
   const [branches, setBranches] = useState<BranchIn[]>([{ branchName: 'Main Branch', branchCode: 'MAIN', county: '', facilityLevel: '', facilityCode: '', bedCapacity: 0 }]);
   const [integrations, setIntegrations] = useState({ sha: true, dha: true, mpesa: false, africastalking: false, smtp: false, slade360: false });
+  const plans = useOwnerPlans();
   const [subscription, setSubscription] = useState({ plan: 'trial', billingCycle: 'monthly', amount: 0, maxBranches: 3, maxUsers: 25 });
 
   const slugify = (s: string) => s.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-+|-+$/g, '').slice(0, 40);
@@ -139,7 +141,7 @@ export default function NewFacilityWizard() {
         )}
         {step === 6 && (
           <div className="grid gap-3 sm:grid-cols-3">
-            <Field label="Plan"><Select value={subscription.plan} onChange={(e) => setSubscription({ ...subscription, plan: e.target.value })}>{['trial', 'basic', 'standard', 'premium', 'enterprise'].map((p) => <option key={p}>{p}</option>)}</Select></Field>
+            <Field label="Plan"><Select value={subscription.plan} onChange={(e) => { const p = plans.data?.find((x) => x.key === e.target.value); setSubscription({ ...subscription, plan: e.target.value, ...(p ? { maxBranches: p.maxBranches, maxUsers: p.maxUsers, amount: p.prices[subscription.billingCycle as 'monthly'] ?? 0 } : {}) }); }}>{(plans.data ?? []).filter((p) => p.active).map((p) => <option key={p.key} value={p.key}>{p.name}</option>)}</Select></Field>
             <Field label="Billing cycle"><Select value={subscription.billingCycle} onChange={(e) => setSubscription({ ...subscription, billingCycle: e.target.value })}>{['monthly', 'quarterly', 'annual'].map((p) => <option key={p}>{p}</option>)}</Select></Field>
             <Field label="Amount (KES)"><Input type="number" min={0} value={subscription.amount} onChange={(e) => setSubscription({ ...subscription, amount: Number(e.target.value) })} /></Field>
             <Field label="Max branches"><Input type="number" min={1} value={subscription.maxBranches} onChange={(e) => setSubscription({ ...subscription, maxBranches: Number(e.target.value) })} /></Field>

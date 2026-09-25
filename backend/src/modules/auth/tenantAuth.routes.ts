@@ -1,4 +1,5 @@
 import { Router, type Request, type Response } from 'express';
+import { tenantEntitlements } from '../plans/planService';
 import { z } from 'zod';
 import { h } from '../../utils/asyncHandler';
 import { parse } from '../../utils/validate';
@@ -198,6 +199,10 @@ router.get(
         activeBranch: req.branch ?? null,
         branches,
         integrations: await integrationStatusForTenant(req.tenant!.id),
+        subscription: await (async () => {
+          const e = await tenantEntitlements(req.tenant!.id);
+          return { plan: e.plan, planName: e.planName, status: e.status, endsAt: e.endsAt, modules: e.modules, unrestricted: e.unrestricted };
+        })(),
       },
     });
   }),

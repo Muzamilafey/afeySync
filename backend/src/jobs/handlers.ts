@@ -23,7 +23,7 @@ export function registerJobHandlers() {
 
   registerHandler('EMAIL', async (payload, job) => {
     const cfg = await resolveIntegration('smtp', job.tenantId ?? null).catch(permanentIfConfig);
-    return sendMail(cfg!, { to: String(payload.to), subject: String(payload.subject), text: String(payload.text ?? ''), html: payload.html ? String(payload.html) : undefined });
+    return sendMail(cfg!, { to: String(payload.to), subject: String(payload.subject), text: String(payload.text ?? ''), html: payload.html ? String(payload.html) : undefined, attachments: Array.isArray(payload.attachments) ? (payload.attachments as Array<{ filename: string; contentBase64: string; contentType?: string }>).map((a) => ({ filename: a.filename, content: Buffer.from(a.contentBase64, 'base64'), contentType: a.contentType })) : undefined });
   });
 
   /** FHIR outbox → DHA Shared Health Record. Configuration problems park the entry as "blocked". */

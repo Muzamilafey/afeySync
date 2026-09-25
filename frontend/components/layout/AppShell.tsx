@@ -4,7 +4,7 @@ import Link from 'next/link';
 import { usePathname, useRouter } from 'next/navigation';
 import { useEffect, useRef, useState, type ReactNode } from 'react';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
-import { Activity, Baby, Banknote, BedDouble, Bell, Cross, HeartHandshake, Smile, Boxes, Pill, ShoppingCart, FlaskConical, ScanLine, CalendarDays, ListOrdered, Stethoscope, Receipt, Building2, ChevronDown, ClipboardList, FileSearch, HeartPulse, LayoutDashboard, LogOut, Menu, Network, Search, Settings, ShieldCheck, UserPlus, Users, X, Wallet, BarChart3, IdCard, Umbrella } from 'lucide-react';
+import { Activity, Baby, Banknote, BedDouble, Bell, Cross, HeartHandshake, Smile, Boxes, Pill, ShoppingCart, FlaskConical, ScanLine, CalendarDays, ListOrdered, Stethoscope, Receipt, Building2, ChevronDown, ClipboardList, FileSearch, HeartPulse, LayoutDashboard, LogOut, Menu, Network, Search, Settings, ShieldCheck, UserPlus, Users, X, Wallet, BarChart3, IdCard, Umbrella, CreditCard } from 'lucide-react';
 import { useMe } from '@/hooks/useMe';
 import { api } from '@/services/api';
 import { useSessionStore } from '@/stores/session';
@@ -64,8 +64,17 @@ const NAV: Array<{ section: string; items: NavItem[] }> = [
     { href: '/admin/integrations', label: 'Integrations', icon: HeartPulse, any: ['admin.integrations'] },
     { href: '/admin/audit', label: 'Audit Trail', icon: FileSearch, any: ['admin.audit'] },
     { href: '/admin/security', label: 'Security', icon: Settings, any: ['admin.support_access', 'admin.settings'] },
+    { href: '/admin/subscription', label: 'Subscription', icon: CreditCard, any: ['subscription.view'] },
   ] },
 ];
+
+/** Sidebar links that belong to optional (plan) modules. */
+const MODULE_OF: Record<string, string> = {
+  '/laboratory': 'laboratory', '/radiology': 'radiology', '/pharmacy': 'pharmacy', '/inventory': 'pharmacy', '/procurement': 'procurement',
+  '/inpatient': 'inpatient', '/maternity': 'maternity', '/mch': 'maternity', '/dental': 'dental', '/mortuary': 'mortuary',
+  '/finance': 'finance', '/hr': 'hr', '/reports': 'reports', '/sha': 'sha', '/sha/visits': 'sha', '/sha/claims': 'sha', '/interop': 'interop',
+  '/insurance': 'insurance', '/insurance/claims': 'insurance', '/insurance/remittances': 'insurance', '/insurance/payers': 'insurance',
+};
 
 function GlobalSearch() {
   const [q, setQ] = useState('');
@@ -218,7 +227,13 @@ export function AppShell({ children }: { children: ReactNode }) {
   if (isLoading || !me) return <div className="flex min-h-screen items-center justify-center"><Loading label="Loading AfeySync…" /></div>;
 
   const perms = new Set(me.permissions);
-  const nav = NAV.map((s) => ({ ...s, items: s.items.filter((i) => !i.any || i.any.some((p) => perms.has(p))) })).filter((s) => s.items.length);
+  // Items outside the facility's plan are hidden (the API refuses them too).
+  const sub = me?.subscription;
+  const inPlan = (href: string) => {
+    const mod = MODULE_OF[href];
+    return !mod || !sub || sub.unrestricted || sub.modules.includes(mod);
+  };
+  const nav = NAV.map((s) => ({ ...s, items: s.items.filter((i) => (!i.any || i.any.some((p) => perms.has(p))) && inPlan(i.href)) })).filter((s) => s.items.length);
 
   const logout = async () => {
     await api('/auth/logout', { method: 'POST' }).catch(() => undefined);

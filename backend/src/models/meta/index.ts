@@ -185,7 +185,8 @@ backupRunSchema.index({ createdAt: -1 });
 const tenantSubscriptionSchema = new Schema(
   {
     tenantId: { type: Schema.Types.ObjectId, ref: 'Tenant', required: true, index: true },
-    plan: { type: String, enum: ['trial', 'basic', 'standard', 'premium', 'enterprise'], default: 'trial' },
+    /** Key of a SubscriptionPlan (owner-defined). Unknown keys keep every module available (legacy tenants). */
+    plan: { type: String, default: 'trial' },
     status: { type: String, enum: ['trialing', 'active', 'past_due', 'cancelled'], default: 'trialing' },
     billingCycle: { type: String, enum: ['monthly', 'quarterly', 'annual'], default: 'monthly' },
     amount: { type: Number, default: 0 },
@@ -200,7 +201,7 @@ const tenantSubscriptionSchema = new Schema(
 );
 
 /* ---------------------------------------------------------------- Integrations */
-export const PROVIDERS = ['sha', 'dha', 'mpesa', 'africastalking', 'smtp', 'storage', 'google', 'slade360'] as const;
+export const PROVIDERS = ['sha', 'dha', 'mpesa', 'africastalking', 'smtp', 'storage', 'google', 'slade360', 'mpesa_billing'] as const;
 export type Provider = (typeof PROVIDERS)[number];
 
 const integrationConfigSchema = new Schema(
@@ -448,7 +449,7 @@ const facilityApplicationSchema = new Schema(
     },
     branches: [{ _id: false, branchName: String, branchCode: String, county: String, subCounty: String, physicalAddress: String, phone: String }],
     admin: { name: String, email: { type: String, index: true }, phone: String, jobTitle: String, passwordHash: { type: String, select: false } },
-    plan: { type: String, enum: ['trial', 'basic', 'standard', 'premium'], default: 'trial' },
+    plan: { type: String, default: 'trial' },
     interests: [String],
     expectedUsers: Number,
     heardFrom: String,
@@ -472,6 +473,110 @@ const facilityApplicationSchema = new Schema(
 );
 facilityApplicationSchema.index({ expiresAt: 1 }, { expireAfterSeconds: 0 });
 
+/* ---------------------------------------------------------------- Plans & platform billing */
+const subscriptionPlanSchema = new Schema(
+  {
+    key: { type: String, required: true, unique: true },
+    name: { type: String, required: true },
+    description: String,
+    currency: { type: String, default: 'KES' },
+    /** Price per billing cycle (0 = on request). */
+    prices: { monthly: { type: Number, default: 0 }, quarterly: { type: Number, default: 0 }, annual: { type: Number, default: 0 } },
+    setupFee: { type: Number, default: 0 },
+    maxBranches: { type: Number, default: 1 },
+    maxUsers: { type: Number, default: 10 },
+    trialDays: { type: Number, default: 0 },
+    /** Optional module keys included in the plan (core modules are always included). */
+    modules: [String],
+    features: [String],
+    public: { type: Boolean, default: true },
+    active: { type: Boolean, default: true },
+    highlight: { type: Boolean, default: false },
+    sortOrder: { type: Number, default: 0 },
+  },
+  { timestamps: true },
+);
+
+const docLineSchema = new Schema(
+  { description: { type: String, required: true }, quantity: { type: Number, default: 1 }, unitPrice: { type: Number, default: 0 }, amount: { type: Number, default: 0 }, kind: { type: String, enum: ['subscription', 'setup', 'service', 'other'], default: 'service' }, planKey: String, billingCycle: String, periods: Number },
+  { _id: false },
+);
+
+/** Quotations, invoices and contracts issued by the platform owner to facilities (or prospects). */
+const billingDocumentSchema = new Schema(
+  {
+    type: { type: String, enum: ['quotation', 'invoice', 'contract'], required: true, index: true },
+    number: { type: String, required: true, unique: true },
+    status: { type: String, enum: ['draft', 'issued', 'accepted', 'declined', 'partially_paid', 'paid', 'void', 'expired'], default: 'draft', index: true },
+    tenantId: { type: Schema.Types.ObjectId, index: true },
+    customer: { name: String, contactName: String, email: String, phone: String, address: String, kraPin: String },
+    currency: { type: String, default: 'KES' },
+    lines: [docLineSchema],
+    subtotal: { type: Number, default: 0 },
+    vatRate: { type: Number, default: 0 },
+    vatAmount: { type: Number, default: 0 },
+    total: { type: Number, default: 0 },
+    amountPaid: { type: Number, default: 0 },
+    balance: { type: Number, default: 0 },
+    issueDate: Date,
+    dueDate: Date,
+    validUntil: Date,
+    notes: String,
+    terms: String,
+    contract: { planKey: String, billingCycle: String, amount: Number, startDate: Date, termMonths: Number, specialTerms: String, body: String },
+    sourceQuotationId: Schema.Types.ObjectId,
+    convertedInvoiceId: Schema.Types.ObjectId,
+    /** Frozen at issue: who signed and which stamp/signature/logo versions were applied, plus a content hash. */
+    signing: { signedAt: Date, signatoryName: String, signatoryTitle: String, signatureAssetId: Schema.Types.ObjectId, stampAssetId: Schema.Types.ObjectId, logoAssetId: Schema.Types.ObjectId, business: Schema.Types.Mixed, hash: String },
+    acceptance: { at: Date, byName: String, byTitle: String, byEmail: String, userId: Schema.Types.ObjectId, ip: String, userAgent: String },
+    subscriptionAppliedAt: Date,
+    sentAt: Date,
+    sentTo: String,
+    voidReason: String,
+    history: [{ _id: false, at: Date, action: String, byName: String, note: String }],
+    createdBy: Schema.Types.ObjectId,
+  },
+  { timestamps: true },
+);
+billingDocumentSchema.index({ tenantId: 1, type: 1, createdAt: -1 });
+
+const platformPaymentSchema = new Schema(
+  {
+    documentId: { type: Schema.Types.ObjectId, index: true },
+    tenantId: { type: Schema.Types.ObjectId, index: true },
+    method: { type: String, enum: ['mpesa_stk', 'mpesa_c2b', 'bank', 'cash', 'cheque', 'other'], required: true },
+    amount: { type: Number, required: true },
+    currency: { type: String, default: 'KES' },
+    status: { type: String, enum: ['pending', 'completed', 'failed'], default: 'pending', index: true },
+    reference: String,
+    mpesa: { checkoutRequestId: { type: String, index: true }, merchantRequestId: String, phone: String, receiptNumber: String, resultCode: Number, resultDesc: String, transactionDate: String, billRef: String, payerName: String },
+    notes: String,
+    receivedAt: Date,
+    recordedBy: Schema.Types.ObjectId,
+    recordedByName: String,
+    initiatedBy: String,
+  },
+  { timestamps: true },
+);
+platformPaymentSchema.index({ 'mpesa.receiptNumber': 1 }, { unique: true, partialFilterExpression: { 'mpesa.receiptNumber': { $type: 'string' } } });
+
+const platformCounterSchema = new Schema({ key: { type: String, required: true, unique: true }, seq: { type: Number, default: 0 } });
+
+/** Owner branding used on documents. Versions are never overwritten, so issued documents keep the images they were signed with. */
+const brandAssetSchema = new Schema(
+  {
+    kind: { type: String, enum: ['logo', 'stamp', 'signature'], required: true, index: true },
+    mimeType: { type: String, required: true },
+    data: { type: Buffer, required: true, select: false },
+    sha256: String,
+    sizeBytes: Number,
+    current: { type: Boolean, default: true },
+    uploadedBy: Schema.Types.ObjectId,
+    uploadedByName: String,
+  },
+  { timestamps: true },
+);
+
 const schemas = {
   PlatformUser: platformUserSchema,
   Tenant: tenantSchema,
@@ -492,6 +597,11 @@ const schemas = {
   MfaChallenge: mfaChallengeSchema,
   OAuthState: oauthStateSchema,
   FacilityApplication: facilityApplicationSchema,
+  SubscriptionPlan: subscriptionPlanSchema,
+  BillingDocument: billingDocumentSchema,
+  PlatformPayment: platformPaymentSchema,
+  PlatformCounter: platformCounterSchema,
+  BrandAsset: brandAssetSchema,
 };
 
 type Schemas = typeof schemas;

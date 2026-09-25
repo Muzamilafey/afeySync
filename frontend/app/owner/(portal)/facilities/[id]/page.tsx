@@ -1,6 +1,8 @@
 'use client';
 
 import { use, useState } from 'react';
+import Link from 'next/link';
+import { useOwnerPlans } from '@/features/billing-docs/useOwnerPlans';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { ownerApi } from '@/services/api';
 import { Alert, Badge, Button, Card, ErrorText, Field, Input, KV, Loading, Modal, PageHeader, Select, StatusDot, statusTone, Table, Tabs, Td } from '@/components/ui';
@@ -21,6 +23,7 @@ export default function FacilityDetail({ params }: { params: Promise<{ id: strin
   const { id } = use(params);
   const qc = useQueryClient();
   const [tab, setTab] = useState<Tab>('overview');
+  const plans = useOwnerPlans();
   const [modal, setModal] = useState<'suspend' | 'reset' | 'branch' | null>(null);
   const [reason, setReason] = useState('');
   const [resetEmail, setResetEmail] = useState('');
@@ -106,7 +109,7 @@ export default function FacilityDetail({ params }: { params: Promise<{ id: strin
         </Card>
       )}
       {tab === 'subscription' && (
-        <Card>
+        <Card title="Subscription" actions={<div className="flex flex-wrap gap-2">{(['invoice', 'quotation', 'contract'] as const).map((t) => <Link key={t} href={`/owner/billing/new?type=${t}&tenantId=${id}`}><Button size="sm" variant="outline">New {t === 'contract' ? 'agreement' : t}</Button></Link>)}</div>}>
           {sub ? (
             <form
               className="grid gap-3 sm:grid-cols-3"
@@ -116,7 +119,7 @@ export default function FacilityDetail({ params }: { params: Promise<{ id: strin
                 subMut.mutate({ plan: f.get('plan'), status: f.get('status'), billingCycle: f.get('billingCycle'), amount: Number(f.get('amount')), maxBranches: Number(f.get('maxBranches')), maxUsers: Number(f.get('maxUsers')) });
               }}
             >
-              <Field label="Plan"><Select name="plan" defaultValue={sub.plan}>{['trial', 'basic', 'standard', 'premium', 'enterprise'].map((p) => <option key={p}>{p}</option>)}</Select></Field>
+              <Field label="Plan" hint="Changing plan applies its modules and limits"><Select name="plan" defaultValue={sub.plan}>{(plans.data ?? []).map((p) => <option key={p.key} value={p.key}>{p.name}{p.active ? '' : ' (inactive)'}</option>)}{plans.data && !plans.data.some((p) => p.key === sub.plan) && <option value={sub.plan}>{sub.plan}</option>}</Select></Field>
               <Field label="Status"><Select name="status" defaultValue={sub.status}>{['trialing', 'active', 'past_due', 'cancelled'].map((p) => <option key={p}>{p}</option>)}</Select></Field>
               <Field label="Billing"><Select name="billingCycle" defaultValue={sub.billingCycle}>{['monthly', 'quarterly', 'annual'].map((p) => <option key={p}>{p}</option>)}</Select></Field>
               <Field label="Amount (KES)"><Input name="amount" type="number" defaultValue={sub.amount} /></Field>

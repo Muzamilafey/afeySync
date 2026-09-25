@@ -5,12 +5,12 @@ import Link from 'next/link';
 import { Activity, ArrowLeft, ArrowRight, Building2, Check, CheckCircle2, Clock, Globe2, Loader2, Lock, Mail, Plus, ShieldCheck, Sparkles, Trash2, UserRound, X, Layers, ClipboardCheck, MailCheck, Server } from 'lucide-react';
 import { api, ApiError } from '@/services/api';
 import { cn } from '@/lib/utils';
-import { COUNTIES, FACILITY_LEVELS, FACILITY_TYPES, HEARD_FROM, INTEREST_COPY, OWNERSHIP, PLAN_COPY, type PlanKey } from './constants';
+import { COUNTIES, FACILITY_LEVELS, FACILITY_TYPES, HEARD_FROM, INTEREST_COPY, OWNERSHIP } from './constants';
 
 /* ------------------------------------------------------------------ Types & persistence */
 interface Branch { branchName: string; branchCode: string; county: string; physicalAddress: string }
 interface Form {
-  plan: PlanKey;
+  plan: string;
   facility: { name: string; legalName: string; facilityType: string; facilityLevel: string; ownership: string; facilityCode: string; registrationNumber: string; county: string; subCounty: string; physicalAddress: string; phone: string; email: string; bedCapacity: string };
   slug: string;
   slugTouched: boolean;
@@ -22,9 +22,10 @@ interface Form {
   notes: string;
   acceptTerms: boolean;
 }
-interface Config { platformDomain: string; approvalMode: 'manual' | 'automatic'; plans: Record<PlanKey, { label: string; days: number; maxBranches: number; maxUsers: number }>; interests: string[] }
+interface PublicPlan { key: string; name: string; description?: string; prices: { monthly: number; quarterly: number; annual: number }; setupFee: number; maxBranches: number; maxUsers: number; trialDays: number; features: string[]; highlight?: boolean }
+interface Config { platformDomain: string; approvalMode: 'manual' | 'automatic'; plans: PublicPlan[]; interests: string[] }
 interface AppRef { token: string; reference: string; sentTo: string }
-interface AppView { reference: string; status: 'email_pending' | 'submitted' | 'approved' | 'rejected'; facilityName: string; address: string; plan: PlanKey; email: string; rejectionReason?: string; loginUrl?: string }
+interface AppView { reference: string; status: 'email_pending' | 'submitted' | 'approved' | 'rejected'; facilityName: string; address: string; plan: string; email: string; rejectionReason?: string; loginUrl?: string }
 interface SlugCheck { slug: string; address: string | null; available: boolean; reason: string | null; suggestion: string | null }
 
 const EMPTY: Form = {
@@ -389,6 +390,7 @@ export function OnboardingWizard() {
   }, [code, step, busy, verify]);
 
   const plans = config?.plans;
+  const selectedPlan = plans?.find((p) => p.key === form.plan);
   const domain = config?.platformDomain ?? 'afeysync.com';
   const locked = step === 'verify' || step === 'done';
   const progress = step === 'done' ? 100 : Math.round(((idx + 1) / STEPS.length) * 100);
@@ -451,19 +453,22 @@ export function OnboardingWizard() {
           <div key={step} className="animate-[fadeUp_.35s_ease-out]">
             {step === 'plan' && (
               <>
-                <StepTitle eyebrow="Welcome" title="Let's set up your facility on AfeySync" subtitle="Pick the plan that fits today. Every facility starts with a free 30-day trial, and our team confirms pricing with you before it ends." />
+                <StepTitle eyebrow="Welcome" title="Let's set up your facility on AfeySync" subtitle="Pick the plan that fits today. You can change plans at any time from inside AfeySync." />
+                {!plans && <p className="flex items-center gap-2 text-sm text-slate-500"><Loader2 className="h-4 w-4 animate-spin" /> Loading plans…</p>}
                 <div className="grid gap-4 sm:grid-cols-2">
-                  {(Object.keys(PLAN_COPY) as PlanKey[]).map((k) => {
-                    const p = PLAN_COPY[k];
+                  {(plans ?? []).map((p) => {
+                    const k = p.key;
                     const sel = form.plan === k;
                     return (
                       <button type="button" key={k} onClick={() => upd('plan', k)} aria-pressed={sel} className={cn('relative rounded-2xl border bg-white p-5 text-left shadow-sm transition hover:-translate-y-0.5 hover:shadow-md dark:bg-slate-900', sel ? 'border-brand-500 ring-4 ring-brand-500/15' : 'border-slate-200 dark:border-slate-800')}>
                         {p.highlight && <span className="absolute -top-2.5 right-4 rounded-full bg-gradient-to-r from-brand-600 to-emerald-500 px-2.5 py-0.5 text-[11px] font-semibold text-white shadow">Most popular</span>}
                         <div className="flex items-center justify-between">
-                          <p className="text-base font-semibold text-slate-900 dark:text-white">{plans?.[k]?.label ?? k}</p>
+                          <p className="text-base font-semibold text-slate-900 dark:text-white">{p.name}</p>
                           <span className={cn('grid h-5 w-5 place-items-center rounded-full border', sel ? 'border-brand-600 bg-brand-600 text-white' : 'border-slate-300')}>{sel && <Check className="h-3 w-3" />}</span>
                         </div>
-                        <p className="mt-1 text-sm text-slate-500">{p.tagline}</p>
+                        <p className="mt-1 text-sm text-slate-500">{p.description}</p>
+                        <p className="mt-3 text-lg font-semibold text-slate-900 dark:text-white">{p.prices.monthly > 0 ? <>KES {p.prices.monthly.toLocaleString()}<span className="text-sm font-normal text-slate-500"> / month</span></> : p.trialDays > 0 && p.key === 'trial' ? 'Free' : <span className="text-sm font-medium text-slate-500">Pricing on request</span>}</p>
+                        {p.trialDays > 0 && <p className="text-xs font-medium text-brand-600">{p.trialDays}-day free trial</p>}
                         <ul className="mt-4 space-y-1.5 text-sm text-slate-700 dark:text-slate-300">{p.features.map((x) => <li key={x} className="flex gap-2"><CheckCircle2 className="mt-0.5 h-4 w-4 shrink-0 text-brand-600" />{x}</li>)}</ul>
                       </button>
                     );
@@ -533,7 +538,7 @@ export function OnboardingWizard() {
                     </div>
                   ))}
                 </div>
-                {plans && form.branches.length > plans[form.plan].maxBranches && <p className="mt-3 rounded-xl bg-amber-50 px-4 py-2.5 text-sm text-amber-800 dark:bg-amber-950/40 dark:text-amber-200">The {plans[form.plan].label} plan normally includes {plans[form.plan].maxBranches} branch{plans[form.plan].maxBranches > 1 ? 'es' : ''}. We will set up all {form.branches.length} for your trial and confirm the right plan with you.</p>}
+                {selectedPlan && form.branches.length > selectedPlan.maxBranches && <p className="mt-3 rounded-xl bg-amber-50 px-4 py-2.5 text-sm text-amber-800 dark:bg-amber-950/40 dark:text-amber-200">The {selectedPlan.name} plan includes {selectedPlan.maxBranches} branch{selectedPlan.maxBranches > 1 ? 'es' : ''}. We will set up all {form.branches.length} for your trial and confirm the right plan with you.</p>}
               </>
             )}
 
@@ -590,7 +595,7 @@ export function OnboardingWizard() {
                 <StepTitle eyebrow="Review" title="Check your details" subtitle="Make sure everything is correct. You can edit any section before submitting." />
                 <div className="space-y-4">
                   {[
-                    { k: 'plan' as const, title: 'Plan', rows: [['Plan', plans?.[form.plan]?.label ?? form.plan]] },
+                    { k: 'plan' as const, title: 'Plan', rows: [['Plan', selectedPlan?.name ?? form.plan]] },
                     { k: 'facility' as const, title: 'Facility', rows: [['Name', f.name], ['Type', [f.facilityType, f.facilityLevel].filter(Boolean).join(' · ')], ['Ownership', f.ownership], ['Location', [f.subCounty, f.county].filter(Boolean).join(', ')], ['Phone', f.phone], ['KMHFL code', f.facilityCode || '—']] },
                     { k: 'address' as const, title: 'Web address & branches', rows: [['Address', `${form.slug}.${domain}`], ['Branches', form.branches.map((b) => `${b.branchName} (${b.branchCode})`).join(', ')]] },
                     { k: 'admin' as const, title: 'Administrator', rows: [['Name', [form.admin.name, form.admin.jobTitle].filter(Boolean).join(' · ')], ['Email', form.admin.email], ['Mobile', form.admin.phone]] },

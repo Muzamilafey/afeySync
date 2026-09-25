@@ -68,9 +68,13 @@ export default function ProviderConfig({ params }: { params: Promise<{ provider:
                 <Input type="password" autoComplete="new-password" placeholder={f.configured ? '••••••••••••' : ''} value={secrets[f.key] ?? ''} onChange={(e) => setSecrets({ ...secrets, [f.key]: e.target.value })} />
               </Field>
             ))}
-            <label className="col-span-full flex items-center gap-2 text-sm">
-              <input type="checkbox" checked={allowTenant} onChange={(e) => setAllowTenant(e.target.checked)} /> Allow facilities to use their own credentials for this provider
-            </label>
+            {cfg.platformOnly ? (
+              <p className="muted col-span-full text-sm">This is your own collection account. Facilities never see or use these credentials.</p>
+            ) : (
+              <label className="col-span-full flex items-center gap-2 text-sm">
+                <input type="checkbox" checked={allowTenant} onChange={(e) => setAllowTenant(e.target.checked)} /> Allow facilities to use their own credentials for this provider
+              </label>
+            )}
             <div className="col-span-full space-y-3">
               <ErrorText error={save.error} />
               {save.isSuccess && <Alert tone="green">Saved. Credentials are encrypted and not retrievable.</Alert>}

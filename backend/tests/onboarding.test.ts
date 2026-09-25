@@ -1,6 +1,7 @@
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import { api, createFacility, hostOf, OWNER_HOST, ownerToken, setupApp, teardown } from './helpers';
 import { meta } from '../src/models/meta';
+import { seedPlans } from '../src/modules/plans/planService';
 
 const PW = 'Welcome2Afey!';
 let owner: string;
@@ -34,6 +35,7 @@ async function applyAndVerify(slug: string, email: string) {
 
 beforeAll(async () => {
   await setupApp();
+  await seedPlans();
   owner = await ownerToken();
   await createFacility(owner, 'takenfac');
 });
@@ -98,7 +100,7 @@ describe('owner review', () => {
     const tenant = await meta().Tenant.findOne({ slug: 'baraka' }).lean();
     expect(tenant!.integrations).toMatchObject({ sha: true, mpesa: true, slade360: true, africastalking: false });
     const sub = await meta().TenantSubscription.findOne({ tenantId: tenant!._id }).lean();
-    expect(sub).toMatchObject({ plan: 'trial', status: 'trialing', maxBranches: 3, maxUsers: 60 });
+    expect(sub).toMatchObject({ plan: 'standard', status: 'trialing', maxBranches: 3, maxUsers: 60 });
     const after = await meta().FacilityApplication.findById(row._id).select('+admin.passwordHash').lean();
     expect(after!.admin!.passwordHash).toBeUndefined();
     expect((await own('post', `/applications/${row._id}/approve`).send({})).body.error.code).toBe('INVALID_TRANSITION');

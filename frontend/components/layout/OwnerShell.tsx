@@ -4,7 +4,7 @@ import Link from 'next/link';
 import { usePathname, useRouter } from 'next/navigation';
 import { useEffect, useState, type ReactNode } from 'react';
 import { useQuery } from '@tanstack/react-query';
-import { Activity, Boxes, Building2, Cable, FileCode2, HeartPulse, LayoutDashboard, LifeBuoy, ListChecks, LogOut, Menu, ScrollText, Settings2, Users, X, DatabaseBackup, ShieldCheck, Inbox } from 'lucide-react';
+import { Activity, Boxes, Building2, Cable, FileCode2, HeartPulse, LayoutDashboard, LifeBuoy, ListChecks, LogOut, Menu, ScrollText, Settings2, Users, X, DatabaseBackup, ShieldCheck, Inbox, Layers, Receipt } from 'lucide-react';
 import { ownerApi } from '@/services/api';
 import { useSessionStore } from '@/stores/session';
 import { cn } from '@/lib/utils';
@@ -17,6 +17,8 @@ const NAV = [
   { href: '/owner', label: 'Dashboard', icon: LayoutDashboard },
   { href: '/owner/facilities', label: 'Facilities', icon: Building2, perm: 'owner.tenants' },
   { href: '/owner/registrations', label: 'Registrations', icon: Inbox, perm: 'owner.tenants' },
+  { href: '/owner/plans', label: 'Plans & Modules', icon: Layers, perm: 'owner.subscriptions' },
+  { href: '/owner/billing', label: 'Billing', icon: Receipt, perm: 'owner.subscriptions' },
   { href: '/owner/integrations', label: 'Integrations', icon: Cable, perm: 'owner.integrations' },
   { href: '/owner/api-config', label: 'API Config', icon: FileCode2, perm: 'owner.integrations' },
   { href: '/owner/logs', label: 'Integration Logs', icon: ScrollText, perm: 'owner.logs' },

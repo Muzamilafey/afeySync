@@ -26,6 +26,7 @@ import { clearTokenCache } from '../../integrations/hie/hieClient';
 import { randomToken } from '../../utils/crypto';
 import { getConnectionStats } from '../health/health.routes';
 import { ALL_TENANT_PERMISSIONS } from '../rbac/catalog';
+import { clearEntitlementCache } from '../plans/planService';
 
 const router = Router();
 router.use(authenticatePlatform);
@@ -303,7 +304,7 @@ router.put(
     const id = oid(req.params.id as string);
     const body = parse(
       z.object({
-        plan: z.enum(['trial', 'basic', 'standard', 'premium', 'enterprise']),
+        plan: z.string().trim().max(40),
         status: z.enum(['trialing', 'active', 'past_due', 'cancelled']),
         billingCycle: z.enum(['monthly', 'quarterly', 'annual']),
         amount: z.number().min(0),
@@ -314,9 +315,17 @@ router.put(
       }).partial(),
       req.body,
     );
-    const { TenantSubscription } = meta();
+    const { TenantSubscription, SubscriptionPlan } = meta();
+    if (body.plan) {
+      const plan = await SubscriptionPlan.findOne({ key: body.plan }).lean();
+      if (!plan) throw badRequest('Unknown plan');
+      // Changing plan applies its limits unless the owner sets them explicitly.
+      body.maxBranches ??= plan.maxBranches;
+      body.maxUsers ??= plan.maxUsers;
+    }
     const before = await TenantSubscription.findOne({ tenantId: id }).sort({ createdAt: -1 }).lean();
     const after = await TenantSubscription.findOneAndUpdate({ tenantId: id }, { $set: body }, { returnDocument: 'after', upsert: true, sort: { createdAt: -1 } }).lean();
+    clearEntitlementCache(id);
     await platformAudit(req, { action: 'subscription.update', resource: 'subscription', resourceId: String(after?._id), tenantId: id, oldValue: before, newValue: after });
     res.json({ success: true, data: after });
   }),

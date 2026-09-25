@@ -1,4 +1,5 @@
 export interface OwnerIntegration {
+  platformOnly?: boolean;
   provider: string;
   label: string;
   exists: boolean;

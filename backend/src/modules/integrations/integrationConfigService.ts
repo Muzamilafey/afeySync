@@ -28,6 +28,7 @@ export function toPublicConfig(doc: ConfigDoc | null, provider: Provider) {
   return {
     provider,
     label: def.label,
+    platformOnly: Boolean(def.platformOnly),
     exists: Boolean(doc),
     enabled: doc?.enabled ?? false,
     environment: doc?.environment ?? def.environments[0],
@@ -103,6 +104,10 @@ export async function upsertConfig(scope: 'platform' | 'tenant', provider: Provi
   }
   if (scope === 'platform' && update.allowTenantCredentials !== undefined) doc.allowTenantCredentials = update.allowTenantCredentials;
   if (scope === 'platform' && def.facilityCredentialsOnly) doc.allowTenantCredentials = true;
+  if (def.platformOnly) {
+    if (scope !== 'platform') throw forbidden('This integration belongs to the platform owner', 'PLATFORM_ONLY_INTEGRATION');
+    doc.allowTenantCredentials = false;
+  }
   if (scope === 'tenant' && update.useTenantConfig !== undefined) doc.useTenantConfig = update.useTenantConfig;
   if (update.enabled !== undefined) {
     if (update.enabled && !(scope === 'platform' && def.facilityCredentialsOnly)) {
@@ -193,6 +198,7 @@ export async function integrationStatusForTenant(tenantId: string) {
 }
 
 export async function assertTenantCredentialsAllowed(provider: Provider) {
+  if (PROVIDER_DEFINITIONS[provider].platformOnly) throw forbidden('This integration belongs to the platform owner', 'PLATFORM_ONLY_INTEGRATION');
   const platform = await meta().IntegrationConfig.findOne({ scope: 'platform', tenantId: null, provider }).lean();
   if (!platform?.allowTenantCredentials) throw forbidden('Facility-level credentials are not permitted for this integration', 'TENANT_CREDENTIALS_NOT_ALLOWED');
 }

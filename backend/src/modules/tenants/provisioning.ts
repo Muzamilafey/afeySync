@@ -65,7 +65,8 @@ export const createFacilitySchema = z.object({
     .default({}),
   subscription: z
     .object({
-      plan: z.enum(['trial', 'basic', 'standard', 'premium', 'enterprise']).default('trial'),
+      plan: z.string().trim().regex(/^[a-z0-9-]{2,40}$/, 'Invalid plan').default('trial'),
+      status: z.enum(['trialing', 'active']).optional(),
       billingCycle: z.enum(['monthly', 'quarterly', 'annual']).default('monthly'),
       amount: z.number().min(0).default(0),
       maxBranches: z.number().int().min(1).default(1),
@@ -172,7 +173,7 @@ export async function provisionFacility(input: CreateFacilityInput, actorId?: st
     }
     steps.push('domains');
 
-    await TenantSubscription.create({ tenantId, ...input.subscription, status: input.subscription.plan === 'trial' ? 'trialing' : 'active' });
+    await TenantSubscription.create({ tenantId, ...input.subscription, status: input.subscription.status ?? (input.subscription.plan === 'trial' ? 'trialing' : 'active') });
     steps.push('subscription');
 
     await m.FacilitySetting.insertMany([
