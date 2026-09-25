@@ -147,7 +147,8 @@ export async function startHieStub() {
       // AfeySync's submission plumbing; they are not SHA endpoints.
       if (url.pathname.startsWith('/api/v1/__test__/')) {
         if (query.fail === '1' || body.includes('"FORCE_REJECT"')) return json(422, { message: 'Validation failed at SHA' });
-        return json(201, { claim_id: `EXT-${state.calls.length}` });
+        const ext = `EXT-${state.calls.length}`;
+        return json(201, { claim_id: ext, id: ext });
       }
       return json(404, { message: 'no route' });
     });

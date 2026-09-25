@@ -128,6 +128,21 @@ const creditNoteSchema = new Schema(
     reason: { type: String, required: true },
     approvedBy: ObjectId,
     approvedByName: String,
+    /** M-Pesa B2C payout of an approved refund. 'timeout' means the outcome is unknown and must be checked, never retried blindly. */
+    payout: {
+      status: { type: String, enum: ['submitted', 'completed', 'failed', 'timeout'] },
+      phone: String,
+      originatorConversationId: { type: String, index: true, sparse: true },
+      conversationId: String,
+      transactionId: String,
+      resultCode: Number,
+      resultDesc: String,
+      receiverName: String,
+      requestedBy: ObjectId,
+      requestedByName: String,
+      requestedAt: Date,
+      completedAt: Date,
+    },
   },
   { timestamps: true },
 );

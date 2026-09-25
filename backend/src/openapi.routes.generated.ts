@@ -1422,6 +1422,13 @@ export const generatedRoutes: Record<string, Record<string, RouteDoc>> = {
       "public": true
     }
   },
+  "/api/v1/payments/mpesa/refunds/{creditNoteId}/payout": {
+    "post": {
+      "summary": "Create/perform payments mpesa refunds payout",
+      "tag": "Payments",
+      "permission": "billing.refund"
+    }
+  },
   "/api/v1/payments/mpesa/stk": {
     "post": {
       "summary": "Create/perform payments mpesa stk",
@@ -1488,6 +1495,34 @@ export const generatedRoutes: Record<string, Record<string, RouteDoc>> = {
       "summary": "Create/perform pharmacy prescriptions dispense",
       "tag": "Pharmacy",
       "permission": "pharmacy.dispense"
+    }
+  },
+  "/api/v1/pharmacy/prescriptions/{id}/eprescription": {
+    "post": {
+      "summary": "Create/perform pharmacy prescriptions eprescription",
+      "tag": "Pharmacy",
+      "permission": "prescription.create"
+    }
+  },
+  "/api/v1/pharmacy/prescriptions/{id}/eprescription/bundle": {
+    "get": {
+      "summary": "Get pharmacy prescriptions eprescription bundle",
+      "tag": "Pharmacy",
+      "permission": "prescription.create | pharmacy.view"
+    }
+  },
+  "/api/v1/pharmacy/prescriptions/{id}/eprescription/dispense": {
+    "post": {
+      "summary": "Create/perform pharmacy prescriptions eprescription dispense",
+      "tag": "Pharmacy",
+      "permission": "pharmacy.dispense"
+    }
+  },
+  "/api/v1/pharmacy/prescriptions/{id}/eprescription/preview": {
+    "post": {
+      "summary": "Create/perform pharmacy prescriptions eprescription preview",
+      "tag": "Pharmacy",
+      "permission": "prescription.create | pharmacy.dispense"
     }
   },
   "/api/v1/pharmacy/prescriptions/{id}/return": {
@@ -1752,6 +1787,13 @@ export const generatedRoutes: Record<string, Record<string, RouteDoc>> = {
       "permission": "sha.view"
     }
   },
+  "/api/v1/sha/emergency/protocols": {
+    "get": {
+      "summary": "Get sha emergency protocols",
+      "tag": "SHA",
+      "permission": "sha.claim"
+    }
+  },
   "/api/v1/sha/facility/beds-occupancy": {
     "get": {
       "summary": "Get sha facility beds occupancy",
@@ -1810,6 +1852,24 @@ export const generatedRoutes: Record<string, Record<string, RouteDoc>> = {
   "/api/v1/sha/transactions/{id}/decision": {
     "post": {
       "summary": "Create/perform sha transactions decision",
+      "tag": "SHA"
+    }
+  },
+  "/api/v1/sha/transactions/{id}/emergency/doctors": {
+    "post": {
+      "summary": "Create/perform sha transactions emergency doctors",
+      "tag": "SHA"
+    }
+  },
+  "/api/v1/sha/transactions/{id}/emergency/doctors/{reg}": {
+    "delete": {
+      "summary": "Delete sha transactions emergency doctors",
+      "tag": "SHA"
+    }
+  },
+  "/api/v1/sha/transactions/{id}/emergency/protocols": {
+    "post": {
+      "summary": "Create/perform sha transactions emergency protocols",
       "tag": "SHA"
     }
   },

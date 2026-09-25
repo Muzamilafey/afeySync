@@ -230,6 +230,35 @@ export function toClaim(cfg: FhirConfig, tx: Obj & { _id: unknown; lines: Array<
   });
 }
 
+/** ePrescription: one MedicationRequest per prescribed item. */
+export function toMedicationRequests(cfg: FhirConfig, rx: Obj & { _id: unknown; items: Array<Obj & { _id: unknown }> }, extra: { itemCodes?: Record<string, string | undefined> } = {}) {
+  return rx.items.filter((i) => i.status !== 'cancelled').map((i) => clean({
+    resourceType: 'MedicationRequest', id: `${rx._id}-${i._id}`, meta: meta(cfg, 'MedicationRequest'),
+    identifier: [{ system: `${AFS}/rx-number`, value: `${rx.rxNumber}/${String(i._id).slice(-6)}` }],
+    status: rx.status === 'cancelled' ? 'cancelled' : 'active', intent: 'order',
+    medicationCodeableConcept: { coding: extra.itemCodes?.[String(i.itemId)] ? [{ system: `${AFS}/item-code`, code: extra.itemCodes[String(i.itemId)] }] : undefined, text: i.drugName },
+    subject: ref('Patient', rx.patientId), encounter: rx.visitId ? ref('Encounter', rx.visitId) : undefined,
+    authoredOn: dt(rx.createdAt as Date), requester: rx.prescriberId ? ref('Practitioner', rx.prescriberId, rx.prescriberName as string) : undefined,
+    dosageInstruction: [{ text: [i.dose, i.frequency, i.route, i.durationDays ? `for ${i.durationDays} days` : undefined, i.instructions].filter(Boolean).join(' '), route: i.route ? { text: i.route } : undefined }],
+    dispenseRequest: { quantity: { value: i.quantity }, expectedSupplyDuration: i.durationDays ? { value: i.durationDays, unit: 'days', system: 'http://unitsofmeasure.org', code: 'd' } : undefined },
+  }));
+}
+
+/** ePrescription dispense: one MedicationDispense per dispensed line. */
+export function toMedicationDispenses(cfg: FhirConfig, rx: Obj & { _id: unknown; items: Array<Obj & { _id: unknown }>; dispenses: Array<Obj & { lines: Array<Obj> }> }) {
+  const byItem = new Map(rx.items.map((i) => [String(i._id), i]));
+  return rx.dispenses.flatMap((d, di) => d.lines.map((l, li) => {
+    const item = byItem.get(String(l.rxItemId));
+    return clean({
+      resourceType: 'MedicationDispense', id: `${rx._id}-d${di}-${li}`, meta: meta(cfg, 'MedicationDispense'), status: 'completed',
+      medicationCodeableConcept: { text: item?.drugName ?? 'Medication' }, subject: ref('Patient', rx.patientId),
+      authorizingPrescription: [ref('MedicationRequest', `${rx._id}-${l.rxItemId}`)],
+      quantity: { value: l.quantity }, whenHandedOver: dt(d.at as Date), performer: d.by ? [{ actor: ref('Practitioner', d.by, d.byName as string) }] : undefined,
+      note: l.batchNumber ? [{ text: `Batch ${l.batchNumber}` }] : undefined,
+    });
+  }));
+}
+
 export function bundle(type: 'collection' | 'transaction' | 'searchset', resources: Obj[], cfg: FhirConfig) {
   return clean({
     resourceType: 'Bundle', type, timestamp: new Date().toISOString(), total: type === 'searchset' ? resources.length : undefined,

@@ -98,7 +98,8 @@ const prescriptionSchema = new Schema(
         lines: [{ _id: false, rxItemId: ObjectId, itemId: { type: ObjectId, ref: 'Item' }, batchId: ObjectId, batchNumber: String, quantity: Number }],
       },
     ],
-    ePrescription: { externalId: String, status: String },
+    /** National ePrescription (DHA HIE) exchange state. */
+    ePrescription: { externalId: String, status: { type: String, enum: ['sent', 'failed', 'dispense_reported'] }, sentAt: Date, dispenseReportedAt: Date, lastError: String, attempts: { type: Number, default: 0 } },
   },
   { timestamps: true },
 );

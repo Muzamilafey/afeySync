@@ -310,4 +310,70 @@ router.post(
   }),
 );
 
+/* ---------------- Emergency claims: protocols and attending doctors (HIE contract operations) */
+router.get(
+  '/emergency/protocols',
+  requirePermission('sha.claim'),
+  h(async (req, res) => {
+    const query = Object.fromEntries(Object.entries(req.query).map(([k, v]) => [k, String(v).slice(0, 100)]));
+    const r = await hieRequest('sha', ctx(req), { operation: 'sha.emergency.protocols.list', query });
+    res.json({ success: true, data: r.data });
+  }),
+);
+
+async function loadEmergency(req: Request) {
+  const tx = await loadTx(req, req.params.id, 'sha.claim');
+  if (tx.kind !== 'emergency_claim') throw badRequest('Only emergency claims have protocols and attending doctors');
+  if (!tx.externalReference) throw conflict('Submit the emergency claim to SHA first', undefined, 'SHA_TX_NOT_SUBMITTED');
+  if (['cancelled', 'paid'].includes(tx.status)) throw conflict(`Emergency claim is ${tx.status}`, undefined, 'INVALID_SHA_TRANSITION');
+  return tx;
+}
+
+router.post(
+  '/transactions/:id/emergency/protocols',
+  h(async (req, res) => {
+    const body = parse(z.object({ code: z.string().min(1).max(60), name: z.string().max(200).optional(), notes: z.string().max(1000).optional() }), req.body);
+    const tx = await loadEmergency(req);
+    if (tx.emergency?.protocols?.some((p) => p.code === body.code)) throw conflict('Protocol already added');
+    const r = await hieRequest('sha', ctx(req), { operation: 'sha.emergency.protocol.add', body: { claim_reference: tx.externalReference, protocol_code: body.code, notes: body.notes }, idempotencyKey: `${tx.idempotencyKey}:proto:${body.code}` });
+    tx.set('emergency.protocols', [...(tx.emergency?.protocols ?? []), { ...body, addedAt: new Date(), by: req.user!.id }]);
+    tx.lastResponse = r.data as never;
+    await tx.save();
+    await audit(req, { action: 'sha.emergency.protocol_add', resource: 'sha_transaction', resourceId: String(tx._id), newValue: body });
+    res.json({ success: true, data: tx });
+  }),
+);
+
+router.post(
+  '/transactions/:id/emergency/doctors',
+  h(async (req, res) => {
+    const { userId } = parse(z.object({ userId: z.string() }), req.body);
+    const tx = await loadEmergency(req);
+    const u = await req.tenant!.models.User.findById(oid(userId, 'User')).select('name practitioner').lean();
+    const reg = u?.practitioner?.licenseNumber ?? u?.practitioner?.registryId;
+    if (!u || !reg) throw badRequest('The doctor needs a licence or Health Worker Registry number on their user profile');
+    if (tx.emergency?.doctors?.some((d) => d.registrationNumber === reg)) throw conflict('Doctor already added');
+    const r = await hieRequest('sha', ctx(req), { operation: 'sha.emergency.doctor.add', body: { claim_reference: tx.externalReference, registration_number: reg }, idempotencyKey: `${tx.idempotencyKey}:doc:${reg}` });
+    tx.set('emergency.doctors', [...(tx.emergency?.doctors ?? []), { userId: u._id, name: u.name, registrationNumber: reg, addedAt: new Date() }]);
+    tx.lastResponse = r.data as never;
+    await tx.save();
+    await audit(req, { action: 'sha.emergency.doctor_add', resource: 'sha_transaction', resourceId: String(tx._id), newValue: { doctor: u.name, registrationNumber: reg } });
+    res.json({ success: true, data: tx });
+  }),
+);
+
+router.delete(
+  '/transactions/:id/emergency/doctors/:reg',
+  h(async (req, res) => {
+    const tx = await loadEmergency(req);
+    const reg = String(req.params.reg);
+    if (!tx.emergency?.doctors?.some((d) => d.registrationNumber === reg)) throw badRequest('Doctor is not on this claim');
+    await hieRequest('sha', ctx(req), { operation: 'sha.emergency.doctor.remove', body: { claim_reference: tx.externalReference, registration_number: reg } });
+    tx.set('emergency.doctors', (tx.emergency?.doctors ?? []).filter((d) => d.registrationNumber !== reg));
+    await tx.save();
+    await audit(req, { action: 'sha.emergency.doctor_remove', resource: 'sha_transaction', resourceId: String(tx._id), newValue: { registrationNumber: reg } });
+    res.json({ success: true, data: tx });
+  }),
+);
+
 export default router;

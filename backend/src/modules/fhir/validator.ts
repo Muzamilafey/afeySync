@@ -22,6 +22,8 @@ const REQUIRED: Record<string, string[]> = {
   Consent: ['status', 'scope', 'category'],
   EpisodeOfCare: ['status', 'patient'],
   Provenance: ['target', 'recorded', 'agent'],
+  MedicationRequest: ['status', 'intent', 'medicationCodeableConcept', 'subject'],
+  MedicationDispense: ['status', 'medicationCodeableConcept'],
   Claim: ['status', 'type', 'use', 'patient', 'created', 'provider', 'priority', 'insurance'],
   Bundle: ['type'],
 };
@@ -41,7 +43,7 @@ function walk(node: unknown, path: string, errors: string[]) {
     for (const [k, v] of Object.entries(o)) {
       if (v === '' || v === null) errors.push(`${path}.${k}: empty value`);
       if (typeof v === 'string' && /(^|\.)(birthDate|date)$/.test(k) && !DATE_RE.test(v) && !DATETIME_RE.test(v)) errors.push(`${path}.${k}: invalid date`);
-      if (typeof v === 'string' && /DateTime$|^(recorded|issued|authoredOn|created|lastModified)$/.test(k) && !DATETIME_RE.test(v)) errors.push(`${path}.${k}: invalid dateTime`);
+      if (typeof v === 'string' && /DateTime$|^(recorded|issued|authoredOn|created|lastModified|whenHandedOver|whenPrepared)$/.test(k) && !DATETIME_RE.test(v)) errors.push(`${path}.${k}: invalid dateTime`);
       walk(v, `${path}.${k}`, errors);
     }
   }

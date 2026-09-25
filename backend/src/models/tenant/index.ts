@@ -270,6 +270,11 @@ const shaTransactionSchema = new Schema(
     attachmentIds: [{ type: ObjectId, ref: 'Document' }],
     /** SHA remittances recorded against this claim (each posts a Payment with method 'sha'). */
     remittances: [{ _id: false, amount: Number, reference: String, paymentId: ObjectId, at: Date, by: ObjectId }],
+    /** Emergency claims: protocols applied and attending doctors, as registered with SHA. */
+    emergency: {
+      protocols: [{ _id: false, code: String, name: String, notes: String, addedAt: Date, by: ObjectId }],
+      doctors: [{ _id: false, userId: ObjectId, name: String, registrationNumber: String, addedAt: Date }],
+    },
     createdBy: ObjectId,
   },
   { timestamps: true },

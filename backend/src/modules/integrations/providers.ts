@@ -56,11 +56,16 @@ export const PROVIDER_DEFINITIONS: Record<Provider, ProviderDefinition> = {
       { key: 'paybill', label: 'Paybill Number' },
       { key: 'transactionType', label: 'STK Transaction Type', default: 'CustomerPayBillOnline' },
       { key: 'baseUrl', label: 'API base URL (defaults per environment)' },
+      { key: 'b2cEnabled', label: 'B2C refund payouts enabled (true/false)', default: 'false' },
+      { key: 'b2cShortcode', label: 'B2C shortcode (disbursement account)' },
+      { key: 'b2cInitiatorName', label: 'B2C initiator username' },
     ],
     secrets: [
       { key: 'consumerKey', label: 'Consumer Key', required: true },
       { key: 'consumerSecret', label: 'Consumer Secret', required: true },
       { key: 'passkey', label: 'Passkey', required: true },
+      { key: 'b2cInitiatorPassword', label: 'B2C initiator password' },
+      { key: 'b2cCertificate', label: 'Safaricom public certificate (PEM) for the environment' },
     ],
   },
   africastalking: {

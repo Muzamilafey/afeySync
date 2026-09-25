@@ -3,7 +3,7 @@ import rateLimit from 'express-rate-limit';
 import { z } from 'zod';
 import { h } from '../../utils/asyncHandler';
 import { parse } from '../../utils/validate';
-import { conflict, notFound } from '../../utils/errors';
+import { AppError, conflict, forbidden, notFound } from '../../utils/errors';
 import { authenticateTenant, requirePermission } from '../../middleware/auth';
 import { audit } from '../audit/auditService';
 import { meta } from '../../models/meta';
@@ -11,7 +11,7 @@ import { env } from '../../config/env';
 import { randomToken, sha256 } from '../../utils/crypto';
 import { IntegrationSecretService } from '../integrations/secretService';
 import { resolveIntegration } from '../integrations/integrationConfigService';
-import { registerC2BUrls, stkPush, stkQuery, toMsisdn } from '../../integrations/mpesa/mpesaService';
+import { b2cPayment, b2cReady, registerC2BUrls, stkPush, stkQuery, toMsisdn } from '../../integrations/mpesa/mpesaService';
 import { loadTenant } from '../tenants/tenantLoader';
 import { assertPayable, completePayment, recalcInvoice } from './billingService';
 import { loadScoped, round2 } from '../common/helpers';
@@ -32,6 +32,43 @@ const base = () => `${env.API_URL.replace(/\/$/, '')}/api/v1/payments/mpesa`;
 /* ------------------------------------------------------------ Authenticated (cashier) */
 export const mpesaRouter = Router();
 mpesaRouter.use(authenticateTenant);
+
+/**
+ * Pays an approved M-Pesa refund to the customer's phone via B2C. The refund itself was already approved
+ * (segregation of duties); the payout must be started by a different user than the one who approved it.
+ */
+mpesaRouter.post(
+  '/refunds/:creditNoteId/payout',
+  requirePermission('billing.refund'),
+  h(async (req, res) => {
+    const { phone } = parse(z.object({ phone: z.string().min(9).max(20) }), req.body);
+    const m = req.tenant!.models;
+    const cn = await loadScoped(req, m.CreditNote, req.params.creditNoteId, 'Refund');
+    if (cn.type !== 'refund' || cn.method !== 'mpesa') throw conflict('Only M-Pesa refunds can be paid out by B2C', undefined, 'NOT_MPESA_REFUND');
+    if (cn.payout?.status && cn.payout.status !== 'failed') throw conflict(cn.payout.status === 'timeout' ? 'The previous payout timed out; confirm its status with Safaricom before retrying' : `Payout already ${cn.payout.status}`, undefined, 'PAYOUT_EXISTS');
+    if (String(cn.approvedBy) === req.user!.id) throw forbidden('The payout must be started by someone other than the refund approver', 'SEGREGATION_OF_DUTIES');
+    const cfg = await resolveIntegration('mpesa', req.tenant!.id);
+    if (!b2cReady(cfg)) throw new AppError(503, 'MPESA_B2C_NOT_CONFIGURED', 'M-Pesa B2C payouts are not enabled. Contact AfeySync platform administration.');
+    const msisdn = toMsisdn(phone);
+    const token = await mpesaEndpoint(req.tenant!.id);
+    const originatorConversationId = `AFS-${cn.creditNoteNumber}-${Date.now()}`;
+    cn.set('payout', { status: 'submitted', phone: msisdn, originatorConversationId, requestedBy: req.user!.id, requestedByName: req.user!.name, requestedAt: new Date() });
+    await cn.save();
+    try {
+      const r = await b2cPayment(cfg, { originatorConversationId, phone: msisdn, amount: cn.amount, remarks: `Refund ${cn.creditNoteNumber}`, occasion: req.tenant!.name, resultUrl: `${base()}/b2c/${token}/result`, timeoutUrl: `${base()}/b2c/${token}/timeout` });
+      cn.set('payout.conversationId', r.conversationId);
+      await cn.save();
+    } catch (err) {
+      cn.set('payout.status', 'failed');
+      cn.set('payout.resultDesc', (err as Error).message.slice(0, 300));
+      await cn.save();
+      await audit(req, { action: 'billing.mpesa_payout', resource: 'credit_note', resourceId: String(cn._id), result: 'failure', newValue: { amount: cn.amount } });
+      throw err;
+    }
+    await audit(req, { action: 'billing.mpesa_payout', resource: 'credit_note', resourceId: String(cn._id), newValue: { amount: cn.amount, phone: `***${msisdn.slice(-3)}` } });
+    res.status(202).json({ success: true, data: cn });
+  }),
+);
 
 mpesaRouter.post(
   '/stk',
@@ -158,6 +195,46 @@ mpesaPublicRouter.post(
     res.json(ack);
   }),
 );
+
+/* ------------------------------------------------------------ B2C refund payouts (results) */
+type B2CResult = { Result?: { ResultType?: number; ResultCode?: number | string; ResultDesc?: string; OriginatorConversationID?: string; ConversationID?: string; TransactionID?: string; ResultParameters?: { ResultParameter?: Array<{ Key: string; Value?: string | number }> } } };
+
+for (const kind of ['result', 'timeout'] as const) {
+  mpesaPublicRouter.post(
+    `/payments/mpesa/b2c/:token/${kind}`,
+    h(async (req: Request, res) => {
+      const tenant = await tenantForToken(String(req.params.token));
+      if (!tenant) return res.status(404).json({ ResultCode: 1, ResultDesc: 'Unknown endpoint' });
+      const r = (req.body as B2CResult)?.Result ?? {};
+      const id = r.OriginatorConversationID;
+      const cn = id ? await tenant.models.CreditNote.findOne({ 'payout.originatorConversationId': id }) : null;
+      if (!cn || !cn.payout) {
+        logger.warn({ tenant: tenant.slug }, 'B2C result for unknown OriginatorConversationID');
+        return res.json(ack);
+      }
+      if (['completed', 'failed'].includes(cn.payout.status ?? '')) return res.json(ack); // idempotent
+      const param = (k: string) => r.ResultParameters?.ResultParameter?.find((p) => p.Key === k)?.Value;
+      if (kind === 'timeout') {
+        cn.set('payout.status', 'timeout');
+        cn.set('payout.resultDesc', 'Request timed out in the M-Pesa queue. Check the transaction status before any retry.');
+      } else {
+        const ok = Number(r.ResultCode) === 0;
+        cn.set('payout.status', ok ? 'completed' : 'failed');
+        cn.set('payout.resultCode', Number(r.ResultCode));
+        cn.set('payout.resultDesc', r.ResultDesc);
+        cn.set('payout.conversationId', r.ConversationID);
+        if (ok) {
+          cn.set('payout.transactionId', r.TransactionID);
+          cn.set('payout.receiverName', String(param('ReceiverPartyPublicName') ?? '').slice(0, 120) || undefined);
+          cn.set('payout.completedAt', new Date());
+        }
+      }
+      await cn.save();
+      await tenant.models.AuditLog.create({ actorType: 'integration', action: `billing.mpesa_payout_${cn.payout.status}`, resource: 'credit_note', resourceId: String(cn._id), newValue: { resultCode: r.ResultCode, transactionId: r.TransactionID } });
+      res.json(ack);
+    }),
+  );
+}
 
 /** C2B validation: accept payments to the paybill (unmatched references are reconciled manually). */
 mpesaPublicRouter.post(

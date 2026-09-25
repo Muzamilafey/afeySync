@@ -1,3 +1,4 @@
+import crypto from 'node:crypto';
 import type { ResolvedIntegration } from '../../modules/integrations/integrationConfigService';
 import { AppError } from '../../utils/errors';
 
@@ -84,6 +85,44 @@ export async function registerC2BUrls(cfg: ResolvedIntegration, confirmationUrl:
   const data = (await res.json().catch(() => ({}))) as Record<string, string>;
   if (!res.ok) throw new AppError(502, 'MPESA_C2B_REGISTER_FAILED', data.errorMessage || `HTTP ${res.status}`);
   return data;
+}
+
+/**
+ * SecurityCredential for B2C: the initiator password encrypted with Safaricom's public certificate
+ * (RSA, PKCS#1 v1.5) and base64-encoded. The certificate is supplied by the platform owner per environment.
+ */
+export function securityCredential(initiatorPassword: string, certificatePem: string) {
+  return crypto.publicEncrypt({ key: certificatePem, padding: crypto.constants.RSA_PKCS1_PADDING }, Buffer.from(initiatorPassword)).toString('base64');
+}
+
+export function b2cReady(cfg: ResolvedIntegration) {
+  return cfg.settings.b2cEnabled === 'true' && Boolean(cfg.settings.b2cShortcode && cfg.settings.b2cInitiatorName && cfg.secrets.b2cInitiatorPassword && cfg.secrets.b2cCertificate);
+}
+
+/** B2C payment request: POST /mpesa/b2c/v3/paymentrequest (asynchronous; result arrives at ResultURL). */
+export async function b2cPayment(cfg: ResolvedIntegration, input: { originatorConversationId: string; phone: string; amount: number; remarks: string; occasion?: string; resultUrl: string; timeoutUrl: string }) {
+  const token = await darajaToken(cfg);
+  const res = await fetch(`${baseUrl(cfg)}/mpesa/b2c/v3/paymentrequest`, {
+    method: 'POST',
+    headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' },
+    body: JSON.stringify({
+      OriginatorConversationID: input.originatorConversationId,
+      InitiatorName: cfg.settings.b2cInitiatorName,
+      SecurityCredential: securityCredential(cfg.secrets.b2cInitiatorPassword, cfg.secrets.b2cCertificate),
+      CommandID: 'BusinessPayment',
+      Amount: Math.floor(input.amount),
+      PartyA: cfg.settings.b2cShortcode,
+      PartyB: input.phone,
+      Remarks: input.remarks.slice(0, 100),
+      QueueTimeOutURL: input.timeoutUrl,
+      ResultURL: input.resultUrl,
+      Occasion: (input.occasion ?? '').slice(0, 100),
+    }),
+    signal: AbortSignal.timeout(30_000),
+  });
+  const data = (await res.json().catch(() => ({}))) as Record<string, string>;
+  if (!res.ok || data.ResponseCode !== '0') throw new AppError(502, 'MPESA_B2C_FAILED', data.errorMessage || data.ResponseDescription || `B2C request failed (HTTP ${res.status})`);
+  return { conversationId: data.ConversationID, originatorConversationId: data.OriginatorConversationID };
 }
 
 /** Normalize a Kenyan MSISDN to 2547XXXXXXXX / 2541XXXXXXXX as Daraja expects. */
