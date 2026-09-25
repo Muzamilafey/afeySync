@@ -96,3 +96,19 @@ are built on the same base the user is browsing (`localhost` → `<facility>.loc
 
 See EMAIL.md. A reset revokes all sessions. MFA stays in place and is still required at the next
 sign-in.
+
+## New accounts and first sign-in
+
+* When a facility administrator creates a user, or the owner creates a facility, the new person gets
+  a welcome email. It gives the facility's sign-in address, their email (username), their role, and
+  a **Choose your password** link. The link works once, expires in 72 hours, and only works on that
+  facility's address. Passwords are never emailed.
+* The administrator still sees a temporary password, as a fallback if the email does not arrive or
+  email is not set up. The screen says which case applies.
+* Until a new or reset account chooses its own password, the API refuses everything except the
+  password change, profile, two-factor and sign-out endpoints (`PASSWORD_CHANGE_REQUIRED`). The app
+  shows only the password screen. The API enforces this; the app is not the only guard.
+* When an administrator (or the owner, for a facility admin) resets a password, the user is emailed
+  a fresh link (valid 24 hours), and any earlier unused links stop working.
+* Email goes through the facility's SMTP, the platform SMTP, or the `SMTP_*` settings in the API
+  `.env`, in that order.

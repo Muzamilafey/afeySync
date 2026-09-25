@@ -147,6 +147,8 @@ const passwordResetSchema = new Schema(
     tokenHash: { type: String, required: true, unique: true },
     expiresAt: { type: Date, required: true },
     usedAt: Date,
+    /** reset = "forgot password"; welcome = new account; admin_reset = password reset by an administrator. */
+    purpose: { type: String, enum: ['reset', 'welcome', 'admin_reset'], default: 'reset' },
   },
   { timestamps: true },
 );

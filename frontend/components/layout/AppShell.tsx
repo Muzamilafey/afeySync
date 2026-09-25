@@ -223,12 +223,48 @@ export function AppShell({ children }: { children: ReactNode }) {
   const [mobileOpen, setMobileOpen] = useState(false);
   const [menu, setMenu] = useState(false);
   const clear = useSessionStore((s) => s.clear);
+  const qc = useQueryClient();
 
   useEffect(() => {
     if (error) router.replace(`/login?next=${encodeURIComponent(pathname)}`);
   }, [error, router, pathname]);
 
+  const mustChange = !!me?.user.mustChangePassword;
+  useEffect(() => {
+    if (mustChange && pathname !== '/account') router.replace('/account?first=1');
+  }, [mustChange, pathname, router]);
+
   if (isLoading || !me) return <div className="flex min-h-screen items-center justify-center"><Loading label="Loading AfeySync…" /></div>;
+
+  // Until a new or reset account chooses its own password, only the password screen is available (the API enforces this too).
+  if (mustChange)
+    return (
+      <div className="flex min-h-screen flex-col">
+        <header className="surface flex h-14 items-center justify-between border-x-0 border-t-0 px-4">
+          <span className="flex items-center gap-2 font-semibold">
+            {branding?.logoUrl ? (
+              // eslint-disable-next-line @next/next/no-img-element
+              <img src={branding.logoUrl} alt="" className="h-7 w-7 rounded object-contain" />
+            ) : (
+              <Activity className="h-5 w-5 text-brand-600" />
+            )}
+            {branding?.name ?? me.tenant.name}
+          </span>
+          <button
+            onClick={async () => {
+              await api('/auth/logout', { method: 'POST' }).catch(() => undefined);
+              clear('tenant');
+              qc.clear();
+              router.replace('/login');
+            }}
+            className="flex items-center gap-1.5 rounded px-2 py-1 text-sm text-red-600 hover:bg-[var(--surface-2)]"
+          >
+            <LogOut className="h-4 w-4" /> Sign out
+          </button>
+        </header>
+        <main className="mx-auto w-full max-w-xl flex-1 p-4 md:p-8">{pathname === '/account' ? children : <Loading label="Opening password setup…" />}</main>
+      </div>
+    );
 
   const perms = new Set(me.permissions);
   // Items outside the facility's plan are hidden (the API refuses them too).

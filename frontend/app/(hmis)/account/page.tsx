@@ -41,12 +41,20 @@ function Inner() {
   const [cur, setCur] = useState('');
   const [next, setNext] = useState('');
   const [confirm, setConfirm] = useState('');
-  const m = useMutation({ mutationFn: () => api('/auth/change-password', { method: 'POST', body: { currentPassword: cur, newPassword: next } }), onSuccess: () => setTimeout(() => router.push('/dashboard'), 800) });
+  const qc = useQueryClient();
+  const first = !!params.get('first');
+  const m = useMutation({
+    mutationFn: () => api('/auth/change-password', { method: 'POST', body: { currentPassword: cur, newPassword: next } }),
+    onSuccess: async () => {
+      await qc.invalidateQueries({ queryKey: ['me'] });
+      setTimeout(() => router.push('/dashboard'), 800);
+    },
+  });
   return (
     <>
-      <PageHeader title="Account security" />
-      <Card title="Change password" className="max-w-lg">
-        {params.get('first') && <div className="mb-3"><Alert tone="amber">Please set a new password before continuing.</Alert></div>}
+      <PageHeader title={first ? 'Welcome! Choose your password' : 'Account security'} />
+      <Card title={first ? 'Set your own password' : 'Change password'} className="max-w-lg">
+        {first && <div className="mb-3"><Alert tone="blue">For your security, choose a new password before you continue. Enter the temporary password you were given as your current password.</Alert></div>}
         <form className="space-y-3" onSubmit={(e) => { e.preventDefault(); if (next === confirm) m.mutate(); }}>
           <Field label="Current password"><Input type="password" value={cur} onChange={(e) => setCur(e.target.value)} autoComplete="current-password" /></Field>
           <Field label="New password" hint="At least 10 characters with upper and lower case letters and a digit."><Input type="password" value={next} onChange={(e) => setNext(e.target.value)} autoComplete="new-password" /></Field>

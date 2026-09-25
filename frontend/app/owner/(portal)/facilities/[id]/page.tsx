@@ -36,7 +36,7 @@ export default function FacilityDetail({ params }: { params: Promise<{ id: strin
   const refresh = () => qc.invalidateQueries({ queryKey: ['owner-tenant', id] });
 
   const statusMut = useMutation({ mutationFn: (a: 'suspend' | 'activate') => ownerApi(`/tenants/${id}/${a}`, { method: 'POST', body: { reason: reason || undefined } }), onSuccess: () => { setModal(null); setReason(''); refresh(); } });
-  const resetMut = useMutation({ mutationFn: async () => (await ownerApi<{ temporaryPassword: string }>(`/tenants/${id}/reset-admin`, { method: 'POST', body: { email: resetEmail } })).data });
+  const resetMut = useMutation({ mutationFn: async () => (await ownerApi<{ temporaryPassword: string; emailed?: boolean }>(`/tenants/${id}/reset-admin`, { method: 'POST', body: { email: resetEmail } })).data });
   const domainMut = useMutation({ mutationFn: () => ownerApi(`/tenants/${id}/domains`, { method: 'POST', body: { hostname: domain } }), onSuccess: () => { setDomain(''); refresh(); } });
   const verifyMut = useMutation({ mutationFn: (domainId: string) => ownerApi(`/tenants/${id}/domains/${domainId}/verify`, { method: 'POST' }), onSuccess: refresh });
   const removeDomain = useMutation({ mutationFn: (domainId: string) => ownerApi(`/tenants/${id}/domains/${domainId}`, { method: 'DELETE' }), onSuccess: refresh });
@@ -168,7 +168,7 @@ export default function FacilityDetail({ params }: { params: Promise<{ id: strin
         <div className="space-y-3">
           <Field label="Administrator email"><Select value={resetEmail} onChange={(e) => setResetEmail(e.target.value)}><option value="">Select…</option>{d.data.users.filter((u) => u.roleIds.some((r) => /Administrator|Owner/.test(r.name))).map((u) => <option key={u._id} value={u.email}>{u.email}</option>)}</Select></Field>
           <ErrorText error={resetMut.error} />
-          {resetMut.data && <Alert tone="amber" title="Temporary password (shown once)"><code>{resetMut.data.temporaryPassword}</code></Alert>}
+          {resetMut.data && <Alert tone="amber" title="Temporary password (shown once)"><code>{resetMut.data.temporaryPassword}</code>{resetMut.data.emailed && <span className="mt-1 block text-xs">The administrator was also emailed a link to choose a new password.</span>}</Alert>}
           <Button onClick={() => resetMut.mutate()} disabled={!resetEmail} loading={resetMut.isPending}>Reset password</Button>
         </div>
       </Modal>

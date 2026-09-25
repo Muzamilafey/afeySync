@@ -18,24 +18,37 @@ function UserForm({ roles, branches, onDone }: { roles: Role[]; branches: Branch
   const qc = useQueryClient();
   const { data: me } = useMe();
   const [form, setForm] = useState({ name: '', email: '', phone: '', roleId: '', branchAccess: 'specific' as 'all' | 'specific', branchIds: [] as string[], cadre: '', licenseNumber: '' });
-  const [temp, setTemp] = useState<string | null>(null);
+  const [temp, setTemp] = useState<{ password: string; email: string; emailed: boolean } | null>(null);
   const m = useMutation({
     mutationFn: async () =>
       (
-        await api<{ temporaryPassword?: string }>('/users', {
+        await api<{ temporaryPassword?: string; email: string; welcomeEmail?: 'sent' | 'email_not_configured' }>('/users', {
           method: 'POST',
           body: { name: form.name, email: form.email, phone: form.phone || undefined, roleIds: [form.roleId], branchAccess: form.branchAccess, branchIds: form.branchIds, practitioner: form.cadre || form.licenseNumber ? { cadre: form.cadre, licenseNumber: form.licenseNumber } : undefined },
         })
       ).data,
     onSuccess: (d) => {
-      setTemp(d.temporaryPassword ?? null);
+      if (d.temporaryPassword) setTemp({ password: d.temporaryPassword, email: d.email, emailed: d.welcomeEmail === 'sent' });
+      else onDone();
       qc.invalidateQueries({ queryKey: ['users'] });
     },
   });
   if (temp) return (
     <div className="space-y-3">
-      <Alert tone="green" title="User created">Share this temporary password securely. The user must change it at first login.</Alert>
-      <code className="block rounded bg-[var(--surface-2)] p-3 text-center font-mono text-lg">{temp}</code>
+      {temp.emailed ? (
+        <Alert tone="green" title="User created and welcome email sent">
+          We emailed <strong>{temp.email}</strong> their sign-in address, username and a link to choose their own password (valid for 72 hours).
+        </Alert>
+      ) : (
+        <Alert tone="amber" title="User created, but the welcome email could not be sent">
+          Email isn&apos;t set up yet (Owner → Integrations → SMTP, or SMTP settings in the API .env). Share the temporary password below securely instead.
+        </Alert>
+      )}
+      <div>
+        <p className="muted mb-1 text-xs">{temp.emailed ? 'If they cannot find the email, they can sign in with this temporary password instead:' : 'Temporary password:'}</p>
+        <code className="block rounded bg-[var(--surface-2)] p-3 text-center font-mono text-lg">{temp.password}</code>
+      </div>
+      <p className="muted text-xs">Either way, they must choose a new password the first time they sign in before they can use anything else.</p>
       <Button onClick={onDone}>Done</Button>
     </div>
   );
@@ -119,7 +132,7 @@ export default function UsersPage() {
   const [tab, setTab] = useState<'users' | 'roles'>(can('admin.users') ? 'users' : 'roles');
   const [q, setQ] = useState('');
   const [modal, setModal] = useState<'user' | 'role' | null>(null);
-  const [reset, setReset] = useState<string | null>(null);
+  const [reset, setReset] = useState<{ password: string; emailed: boolean } | null>(null);
   const users = useQuery({ queryKey: ['users', q], queryFn: async () => (await api<User[]>('/users', { query: { q, limit: 100 } })).data, enabled: can('admin.users') });
   const roles = useQuery({ queryKey: ['roles'], queryFn: async () => (await api<Role[]>('/roles')).data });
   const branches = useQuery({ queryKey: ['branches'], queryFn: async () => (await api<Branch[]>('/branches')).data });
@@ -130,9 +143,9 @@ export default function UsersPage() {
     onSuccess: () => { setMfaUser(null); setMfaReason(''); qc.invalidateQueries({ queryKey: ['users'] }); },
   });
   const action = useMutation({
-    mutationFn: async ({ id, act }: { id: string; act: 'suspend' | 'activate' | 'reset-password' }) => (await api<{ temporaryPassword?: string }>(`/users/${id}/${act}`, { method: 'POST' })).data,
+    mutationFn: async ({ id, act }: { id: string; act: 'suspend' | 'activate' | 'reset-password' }) => (await api<{ temporaryPassword?: string; email?: 'sent' | 'email_not_configured' }>(`/users/${id}/${act}`, { method: 'POST' })).data,
     onSuccess: (d) => {
-      if (d?.temporaryPassword) setReset(d.temporaryPassword);
+      if (d?.temporaryPassword) setReset({ password: d.temporaryPassword, emailed: d.email === 'sent' });
       qc.invalidateQueries({ queryKey: ['users'] });
     },
   });
@@ -196,8 +209,13 @@ export default function UsersPage() {
         <RoleForm onDone={() => setModal(null)} />
       </Modal>
       <Modal open={!!reset} onClose={() => setReset(null)} title="Temporary password">
-        <Alert tone="amber">Share securely. All sessions for this user were signed out.</Alert>
-        <code className="mt-3 block rounded bg-[var(--surface-2)] p-3 text-center font-mono text-lg">{reset}</code>
+        {reset?.emailed ? (
+          <Alert tone="green">We emailed the user a link to choose a new password. All their sessions were signed out.</Alert>
+        ) : (
+          <Alert tone="amber">Email isn&apos;t set up, so share this temporary password securely. All sessions for this user were signed out.</Alert>
+        )}
+        <code className="mt-3 block rounded bg-[var(--surface-2)] p-3 text-center font-mono text-lg">{reset?.password}</code>
+        <p className="muted mt-2 text-xs">They must choose a new password when they next sign in.</p>
       </Modal>
     </>
   );

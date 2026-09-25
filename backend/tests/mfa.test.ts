@@ -161,9 +161,12 @@ describe('facility policy', () => {
     const conf = await t(S, restricted).post('/api/v1/auth/mfa/totp/confirm').send({ code: totp(setup.body.data.secret) });
     const full = conf.body.data.accessToken;
     expect(full).toBeTruthy();
+    // a new account must still choose its own password before anything else
+    expect((await t(S, full).get('/api/v1/patients')).body.error.code).toBe('PASSWORD_CHANGE_REQUIRED');
+    expect((await t(S, full).post('/api/v1/auth/change-password').send({ currentPassword: PASSWORD, newPassword: `${PASSWORD}x` })).status).toBe(200);
     expect((await t(S, full).get('/api/v1/patients')).status).toBe(200);
     // the last method cannot be removed while policy requires MFA
-    expect((await t(S, full).post('/api/v1/auth/mfa/totp/disable').send({ password: PASSWORD })).body.error.code).toBe('MFA_REQUIRED_BY_POLICY');
+    expect((await t(S, full).post('/api/v1/auth/mfa/totp/disable').send({ password: `${PASSWORD}x` })).body.error.code).toBe('MFA_REQUIRED_BY_POLICY');
   });
 
   it('admins can reset a user who lost their device', async () => {
@@ -171,7 +174,7 @@ describe('facility policy', () => {
     const id = users.body.data[0]._id;
     expect((await t(S, admin).post(`/api/v1/users/${id}/mfa/reset`).send({ reason: 'x' })).status).toBe(400);
     expect((await t(S, admin).post(`/api/v1/users/${id}/mfa/reset`).send({ reason: 'Lost phone, identity confirmed in person' })).status).toBe(200);
-    const l = await login(S, 'rec@mfa.test');
+    const l = await login(S, 'rec@mfa.test', `${PASSWORD}x`);
     expect(l.body.data.mfaEnrollmentRequired).toBe(true);
     await t(S, admin).put('/api/v1/admin/security/mfa-policy').send({ mode: 'optional', methods: ['totp', 'email', 'sms'] });
   });

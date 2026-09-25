@@ -28,7 +28,7 @@ export interface IntegrationFlag {
 }
 
 export interface Me {
-  user: { id: string; name: string; email: string; kind: 'tenant' | 'support'; roles: string[]; branchAccess: 'all' | 'specific' };
+  user: { id: string; name: string; email: string; kind: 'tenant' | 'support'; roles: string[]; branchAccess: 'all' | 'specific'; mustChangePassword?: boolean };
   permissions: string[];
   tenant: { id: string; name: string; slug: string };
   activeBranch: { id: string; name: string; code: string } | null;

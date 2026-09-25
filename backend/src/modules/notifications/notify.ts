@@ -30,9 +30,9 @@ export async function notifyPatientSms(tenant: { id: string; name: string }, pat
   }
 }
 
-export async function notifyEmail(tenantId: string | null, key: string, to: string, subject: string, text: string) {
+export async function notifyEmail(tenantId: string | null, key: string, to: string, subject: string, text: string, html?: string) {
   try {
-    await enqueueJob('EMAIL', `${tenantId ?? 'platform'}:${key}`, { to, subject, text }, tenantId ?? undefined);
+    await enqueueJob('EMAIL', `${tenantId ?? 'platform'}:${key}`, html ? { to, subject, text, html } : { to, subject, text }, tenantId ?? undefined);
   } catch (err) {
     logger.warn({ err }, 'email enqueue failed');
   }

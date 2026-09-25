@@ -55,7 +55,20 @@ export async function createFacility(owner: string, slug: string, branches = [{ 
       subscription: { plan: 'standard', maxBranches: 10, maxUsers: 50 },
     });
   if (res.status !== 201) throw new Error(`create facility failed ${res.status} ${JSON.stringify(res.body)}`);
+  await completeFirstLogin(slug, `admin@${slug}.test`);
   return res.body.data as { id: string; slug: string; branches: Array<{ id: string; branchCode: string }>; admin: { email: string } };
+}
+
+/**
+ * New accounts must choose their own password before anything else (enforced by the API). Changes it and
+ * back to PASSWORD, as a real user would on first sign-in, so tests can keep signing in with PASSWORD.
+ */
+export async function completeFirstLogin(slug: string, email: string) {
+  const first = (await tenantLogin(slug, email)).token;
+  const a = await t(slug, first).post('/api/v1/auth/change-password').send({ currentPassword: PASSWORD, newPassword: `${PASSWORD}x` });
+  if (a.status !== 200) throw new Error(`first password change failed ${a.status} ${JSON.stringify(a.body)}`);
+  const second = (await tenantLogin(slug, email, `${PASSWORD}x`)).token;
+  await t(slug, second).post('/api/v1/auth/change-password').send({ currentPassword: `${PASSWORD}x`, newPassword: PASSWORD });
 }
 
 export const hostOf = (slug: string) => `${slug}.afeysync.test`;
@@ -87,6 +100,7 @@ export async function createUser(slug: string, adminToken: string, opts: { email
   const role = roles.body.data.find((r: { key: string }) => r.key === opts.roleKey);
   const res = await t(slug, adminToken).post('/api/v1/users').send({ name: opts.email.split('@')[0], email: opts.email, roleIds: [role._id], branchAccess: opts.branchAccess, branchIds: opts.branchIds, password: PASSWORD });
   if (res.status !== 201) throw new Error(`create user failed ${res.status} ${JSON.stringify(res.body)}`);
+  await completeFirstLogin(slug, opts.email);
   return (await tenantLogin(slug, opts.email)).token;
 }
 

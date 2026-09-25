@@ -2,6 +2,7 @@ import { Router, type Request, type Response } from 'express';
 import { env } from '../../config/env';
 import { explainUnknownHost, isLoopbackHost, platformSubdomain } from '../../middleware/tenantResolver';
 import { tenantsForEmail } from './directory';
+import { requestOrigin } from '../../utils/origin';
 import { logoFile, publicBranding } from '../branding/brandingService';
 import { tenantEntitlements } from '../plans/planService';
 import { z } from 'zod';
@@ -338,7 +339,7 @@ router.get(
     res.json({
       success: true,
       data: {
-        user: { id: u.id, name: u.name, email: u.email, kind: u.kind, roles: u.roleKeys, branchAccess: u.branchAccess },
+        user: { id: u.id, name: u.name, email: u.email, kind: u.kind, roles: u.roleKeys, branchAccess: u.branchAccess, mustChangePassword: u.kind === 'tenant' ? !!(await req.tenant!.models.User.findById(u.id).select('mustChangePassword').lean())?.mustChangePassword : false },
         permissions: [...u.permissions].sort(),
         tenant: { id: req.tenant!.id, name: req.tenant!.name, slug: req.tenant!.slug },
         activeBranch: req.branch ?? null,
@@ -387,7 +388,7 @@ router.post(
     if (user) {
       const token = randomToken(32);
       await tenant.models.PasswordReset.create({ userId: user._id, tokenHash: sha256(token), expiresAt: new Date(Date.now() + 30 * 60_000) });
-      const link = `${req.protocol}://${req.get('host')}/reset-password?token=${token}`;
+      const link = `${requestOrigin(req)}/reset-password?token=${token}`;
       await notifyEmail(tenant.id, `pwreset:${user._id}:${sha256(token).slice(0, 12)}`, user.email, `${tenant.name}: reset your AfeySync password`, `A password reset was requested for your account.\n\nOpen this link within 30 minutes to set a new password:\n${link}\n\nIf you did not request this, ignore this email.`);
       await audit(req, { action: 'auth.password_reset_requested', resource: 'user', resourceId: String(user._id) });
     }

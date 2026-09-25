@@ -27,6 +27,8 @@ import { randomToken } from '../../utils/crypto';
 import { getConnectionStats } from '../health/health.routes';
 import { ALL_TENANT_PERMISSIONS } from '../rbac/catalog';
 import { clearEntitlementCache } from '../plans/planService';
+import { sendAccountEmail } from '../users/accountEmails';
+import { facilityLoginUrl } from '../onboarding/onboarding.routes';
 import { brandingSchema, editorBranding, logoUploadSchema, removeLogo, setLogo, updateBranding } from '../branding/brandingService';
 
 const router = Router();
@@ -117,6 +119,9 @@ router.post(
     const input = parse(createFacilitySchema, req.body);
     const result = await provisionFacility(input, req.platformUser!.id);
     await platformAudit(req, { action: 'tenant.create', resource: 'tenant', resourceId: String(result.tenant._id), tenantId: String(result.tenant._id), newValue: { slug: input.facility.slug, name: input.facility.name, domains: result.domains, branches: result.branches.length } });
+    // Welcome the first administrator with their sign-in address and a link to choose their password.
+    const tid = String(result.tenant._id);
+    await sendAccountEmail({ tenantId: tid, PasswordReset: getTenantModels(result.dbName).PasswordReset, user: { _id: result.admin.id, name: input.administrator.name, email: result.admin.email }, origin: facilityLoginUrl(result.tenant.slug).replace(/\/login$/, ''), kind: 'welcome', roleNames: ['Facility Administrator'] }).catch(() => undefined);
     res.status(201).json({
       success: true,
       data: {
@@ -221,7 +226,9 @@ router.post(
     await revokeAllForSubject(String(user._id), 'admin_reset');
     await m.AuditLog.create({ actorType: 'system', action: 'user.admin_reset_by_platform', resource: 'user', resourceId: String(user._id), newValue: { by: req.platformUser!.email } });
     await platformAudit(req, { action: 'tenant.reset_admin', resource: 'user', resourceId: String(user._id), tenantId: id, newValue: { email: user.email } });
-    res.json({ success: true, data: { email: user.email, temporaryPassword } });
+    const tenant = await meta().Tenant.findById(id).select('slug').lean();
+    const { emailed } = tenant ? await sendAccountEmail({ tenantId: id, PasswordReset: m.PasswordReset, user, origin: facilityLoginUrl(tenant.slug).replace(/\/login$/, ''), kind: 'admin_reset', byName: 'AfeySync support' }) : { emailed: false };
+    res.json({ success: true, data: { email: user.email, temporaryPassword, emailed } });
   }),
 );
 

@@ -1,3 +1,5 @@
+import { sendAccountEmail } from './accountEmails';
+import { requestOrigin } from '../../utils/origin';
 import { Router } from 'express';
 import { registerDirectoryEntry } from '../auth/directory';
 import { isValidObjectId, Types } from 'mongoose';
@@ -99,7 +101,9 @@ usersRouter.post(
     await registerDirectoryEntry(u.email, req.tenant!.id);
     await refreshTenantStats(req.tenant!.id, req.tenant!.models);
     await audit(req, { action: 'user.create', resource: 'user', resourceId: String(u._id), newValue: { ...body, password: undefined } });
-    res.status(201).json({ success: true, data: { id: u._id, email: u.email, temporaryPassword } });
+    const roleNames = (await req.tenant!.models.Role.find({ _id: { $in: body.roleIds } }).select('name').lean()).map((r) => r.name);
+    const { emailed } = await sendAccountEmail({ tenantId: req.tenant!.id, PasswordReset: req.tenant!.models.PasswordReset, user: u, origin: requestOrigin(req), kind: 'welcome', roleNames, byName: req.user!.name });
+    res.status(201).json({ success: true, data: { id: u._id, email: u.email, temporaryPassword, welcomeEmail: emailed ? 'sent' : 'email_not_configured' } });
   }),
 );
 
@@ -181,7 +185,8 @@ usersRouter.post(
     await user.save();
     await revokeAllForSubject(id, 'password_reset');
     await audit(req, { action: 'user.password_reset', resource: 'user', resourceId: id });
-    res.json({ success: true, data: { temporaryPassword } });
+    const { emailed } = await sendAccountEmail({ tenantId: req.tenant!.id, PasswordReset: req.tenant!.models.PasswordReset, user, origin: requestOrigin(req), kind: 'admin_reset', byName: req.user!.name });
+    res.json({ success: true, data: { temporaryPassword, email: emailed ? 'sent' : 'email_not_configured' } });
   }),
 );
 

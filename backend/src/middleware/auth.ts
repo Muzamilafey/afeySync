@@ -67,6 +67,10 @@ export async function authenticateTenant(req: Request, _res: Response, next: Nex
     };
   } else {
     const { user, roles, permissions } = await loadTenantUserAccess(req, claims.sub);
+    // A new or reset account must choose its own password before using anything else (enforced here, not only in the UI).
+    if (user.mustChangePassword && !/^\/api\/v1\/auth\/(me|logout|change-password|mfa|passkeys?)(\/|\?|$)/.test(req.originalUrl)) {
+      throw forbidden('Choose a new password to continue', 'PASSWORD_CHANGE_REQUIRED');
+    }
     const tenantWideRole = roles.some((r) => r.scope === 'tenant');
     req.user = {
       kind: 'tenant',

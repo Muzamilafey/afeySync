@@ -210,7 +210,7 @@ describe('FHIR', () => {
     expect((await t(S, doctor).get('/api/v1/fhir/outbox')).status).toBe(403);
 
     // Run the queue: the SHR write op has no documented path, so the entry is blocked (never faked as sent).
-    for (let i = 0; i < 20 && (await runNextJob()); i++);
+    for (let i = 0; i < 200 && (await runNextJob()); i++);
     const after = await t(S, admin).get(`/api/v1/fhir/outbox/${entry._id}`);
     expect(['blocked', 'failed']).toContain(after.body.data.status);
     expect(after.body.data.status).not.toBe('sent');
