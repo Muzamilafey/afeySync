@@ -636,7 +636,7 @@ userDirectorySchema.index({ emailHash: 1, tenantId: 1 }, { unique: true });
 
 /** Single-use, short-lived handoff from the main-domain sign-in to a facility's own address. */
 const loginHandoffSchema = new Schema(
-  { tokenHash: { type: String, required: true, unique: true }, tenantId: { type: Schema.Types.ObjectId, required: true }, userId: { type: Schema.Types.ObjectId, required: true }, usedAt: Date, ip: String, expiresAt: { type: Date, required: true } },
+  { tokenHash: { type: String, required: true, unique: true }, tenantId: { type: Schema.Types.ObjectId, required: true }, userId: { type: Schema.Types.ObjectId, required: true }, usedAt: Date, ip: String, uaHash: String, facilitySlug: String, expiresAt: { type: Date, required: true } },
   { timestamps: true },
 );
 loginHandoffSchema.index({ expiresAt: 1 }, { expireAfterSeconds: 0 });

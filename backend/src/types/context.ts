@@ -47,6 +47,8 @@ declare global {
       /** Tenant resolved from the hostname / custom domain (never from client-supplied IDs) */
       hostTenantId?: string | null;
       isOwnerHost?: boolean;
+      /** The central sign-in address (accounts.*). */
+      isAccountsHost?: boolean;
       tenant?: TenantContext;
       user?: TenantUserContext;
       platformUser?: PlatformUserContext;

@@ -131,3 +131,39 @@ Every facility user has two pages, in the sidebar under **My account** and in th
 API: `GET/PATCH /api/v1/auth/profile`, `GET /api/v1/auth/sessions`,
 `POST /api/v1/auth/sessions/:id/revoke`, `POST /api/v1/auth/sessions/revoke-others`,
 `GET /api/v1/auth/activity`. Users only ever see and change their own account.
+
+## Central sign-in (accounts address)
+
+Staff type their password in one place only: **`accounts.<PLATFORM_DOMAIN>`** (for example
+`accounts.afey.co.ke`), or **`http://accounts.localhost:3000`** on a development computer.
+
+1. Opening any facility's sign-in page (`<slug>.afey.co.ke/login`) or the main address redirects to the
+   accounts address, carrying the facility (`?facility=<slug>`, so the page says "to continue to …") and
+   the page to return to (`?next=`, relative paths only).
+2. On the accounts address the email and password are checked (same lockout rules). For each facility where
+   they are valid, the server creates a **handoff**:
+   * a random 256-bit token, of which only the SHA-256 hash is stored;
+   * it works **once**, for **60 seconds**, and only on **that facility's address**;
+   * it is bound to the **same browser**: the client IP and User-Agent that entered the password;
+   * the link carries it in the URL **fragment** (`/login#handoff=…`), which browsers never send to servers
+     or put in Referer headers. The facility page removes it from the address bar immediately.
+3. The facility page redeems the handoff (`POST /auth/handoff`, CSRF header required). Any attempt uses
+   it up, so a leaked link cannot be retried. A wrong IP or browser is refused and audited as
+   `auth.handoff_rejected`. **Two-step verification is then still required on the facility address.**
+4. The facility session is the usual one: an HttpOnly, SameSite=Strict refresh cookie **for that host
+   only** (no Domain attribute), so one facility's session never works on another facility.
+
+With central sign-in on (`CENTRAL_LOGIN=true`, the default):
+
+* password sign-in on facility addresses returns `USE_ACCOUNTS_LOGIN` with the accounts URL;
+* sign-in calls without the app's `X-Requested-With: AfeySync` header are refused (`CSRF_REJECTED`);
+* Google sign-in on facility addresses is turned off;
+* **Forgot password** on the accounts address sends one reset link per facility, each to that facility's
+  own reset page.
+
+The name `accounts` and other system names (`www`, `owner`, `api`, `auth`, `sso`, `login`, …) can never
+be facility addresses, and the accounts address never resolves to a facility.
+
+Settings: `CENTRAL_LOGIN` (default `true`) and `ACCOUNTS_HOST` (default `accounts.<PLATFORM_DOMAIN>`).
+In production, point DNS and the TLS certificate for `accounts.afey.co.ke` at the same server as the
+facility subdomains. A wildcard `*.afey.co.ke` certificate covers both.

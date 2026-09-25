@@ -34,7 +34,7 @@ export default function ForgotPasswordPage() {
           <Alert tone="green">{sent} The link expires in 30 minutes.</Alert>
         ) : (
           <form onSubmit={submit} className="space-y-4">
-            <p className="muted text-sm">Enter the email address on your AfeySync account at this facility.</p>
+            <p className="muted text-sm">Enter the email address on your AfeySync account. We&apos;ll send a reset link for each facility you work at.</p>
             <ErrorText error={error} />
             <Field label="Email"><Input type="email" autoFocus required value={email} onChange={(e) => setEmail(e.target.value)} /></Field>
             <Button type="submit" className="w-full" loading={busy}>Send reset link</Button>

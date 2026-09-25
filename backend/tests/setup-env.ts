@@ -12,3 +12,5 @@ process.env.OWNER_HOSTS = 'owner.afeysync.test';
 process.env.API_URL = 'https://api.afeysync.test';
 process.env.BCRYPT_ROUNDS = '4';
 process.env.RUN_WORKERS = 'false';
+// Most suites sign in directly on the facility address; tests/centralLogin.test.ts turns central sign-in on.
+process.env.CENTRAL_LOGIN = 'false';

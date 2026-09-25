@@ -50,7 +50,8 @@ export async function api<T = unknown>(path: string, opts: ApiOptions = {}): Pro
   for (const [k, v] of Object.entries(opts.query ?? {})) if (v !== undefined && v !== null && v !== '') url.searchParams.set(k, String(v));
 
   const doFetch = async (token: string | null) => {
-    const headers: Record<string, string> = { Accept: 'application/json' };
+    // Marks requests as coming from the app's own pages (the API refuses sign-in calls without it).
+    const headers: Record<string, string> = { Accept: 'application/json', 'X-Requested-With': 'AfeySync' };
     if (opts.body !== undefined) headers['Content-Type'] = 'application/json';
     if (token) headers.Authorization = `Bearer ${token}`;
     const branch = useSessionStore.getState().branchId;

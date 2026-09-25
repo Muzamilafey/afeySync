@@ -19,6 +19,7 @@ import type { LoginResult, MfaChallengeData } from '@/features/auth/types';
 const schema = z.object({ email: z.string().email('Enter a valid email'), password: z.string().min(1, 'Password is required') });
 
 interface FacilityMatch { name: string; slug: string; url: string }
+const HANDOFF_URL = /^https?:\/\/[a-z0-9][a-z0-9-]{0,62}\.[a-z0-9.-]+(:\d{1,5})?\/login#handoff=[A-Za-z0-9_-]{20,100}$/;
 
 function LoginForm({ ctx }: { ctx: HostContext | null }) {
   const router = useRouter();
@@ -30,7 +31,26 @@ function LoginForm({ ctx }: { ctx: HostContext | null }) {
   const [challenge, setChallenge] = useState<MfaChallengeData | null>(null);
   const [choices, setChoices] = useState<FacilityMatch[] | null>(null);
   const [handingOff, setHandingOff] = useState(false);
-  const platform = ctx?.kind === 'platform';
+  const [leaving, setLeaving] = useState(false);
+  const central = !!ctx?.centralLogin;
+  const accounts = ctx?.kind === 'accounts';
+  // Where the password form looks up the user's facilities: the accounts address (central sign-in) or the main page.
+  const platform = central ? accounts : ctx?.kind === 'platform';
+  const next = params.get('next');
+  const safeNext = next && next.startsWith('/') && !next.startsWith('//') && !next.includes('\\') ? next : null;
+
+  // Central sign-in: every other address sends the user to accounts, unless a handoff arrived here
+  // (remembered from the first render: the fragment is removed from the address straight away).
+  const arrived = useRef<boolean | null>(null);
+  if (arrived.current === null && typeof window !== 'undefined') arrived.current = /handoff=/.test(window.location.hash);
+  useEffect(() => {
+    if (!ctx || !central || accounts || !ctx.accountsUrl || arrived.current) return;
+    const q = new URLSearchParams();
+    if (ctx.kind === 'facility' && ctx.facility?.slug) q.set('facility', ctx.facility.slug);
+    if (safeNext) q.set('next', safeNext);
+    setLeaving(true);
+    window.location.replace(`${ctx.accountsUrl}/login${q.toString() ? `?${q}` : ''}`);
+  }, [ctx, central, accounts, safeNext]);
 
   // Arriving from the main-domain sign-in: exchange the one-time handoff (kept in the URL fragment, never sent to servers).
   const started = useRef(false);
@@ -50,8 +70,7 @@ function LoginForm({ ctx }: { ctx: HostContext | null }) {
   const finish = (r: LoginResult) => {
     setToken('tenant', r.accessToken!);
     qc.clear();
-    const next = params.get('next');
-    router.replace(r.mfaEnrollmentRequired ? '/setup-2fa' : r.mustChangePassword ? '/account?first=1' : next && next.startsWith('/') && !next.startsWith('//') ? next : '/dashboard');
+    router.replace(r.mfaEnrollmentRequired ? '/setup-2fa' : r.mustChangePassword ? '/account?first=1' : safeNext ?? '/dashboard');
   };
 
   const onSubmit = handleSubmit(async (values) => {
@@ -60,10 +79,14 @@ function LoginForm({ ctx }: { ctx: HostContext | null }) {
       if (platform) {
         // Main domain: find the user's facility and continue on its own address.
         const r = await api<{ facilities: FacilityMatch[] }>('/auth/find-facility', { method: 'POST', body: values, auth: false });
-        const next = params.get('next');
-        const withNext = (u: string) => (next && next.startsWith('/') && !next.startsWith('//') ? u.replace('/login#', `/login?next=${encodeURIComponent(next)}#`) : u);
-        if (r.data.facilities.length === 1) window.location.assign(withNext(r.data.facilities[0].url));
-        else setChoices(r.data.facilities.map((f) => ({ ...f, url: withNext(f.url) })));
+        // Only follow links of the exact expected shape: a facility address, its sign-in page, a one-time handoff.
+        const safe = r.data.facilities.filter((f) => HANDOFF_URL.test(f.url));
+        const withNext = (u: string) => (safeNext ? u.replace('/login#', `/login?next=${encodeURIComponent(safeNext)}#`) : u);
+        const wanted = safe.find((f) => f.slug === params.get('facility'));
+        if (wanted || safe.length === 1) {
+          setLeaving(true);
+          window.location.assign(withNext((wanted ?? safe[0]).url));
+        } else setChoices(safe.map((f) => ({ ...f, url: withNext(f.url) })));
         return;
       }
       const res = await api<LoginResult & Partial<MfaChallengeData>>('/auth/login', { method: 'POST', body: values, auth: false });
@@ -75,6 +98,7 @@ function LoginForm({ ctx }: { ctx: HostContext | null }) {
   });
 
   if (challenge) return <MfaChallenge realm="tenant" challenge={challenge} onSuccess={finish} onCancel={() => setChallenge(null)} />;
+  if (leaving) return <p className="flex items-center justify-center gap-2 py-10 text-sm"><Loader2 className="h-4 w-4 animate-spin" /> {accounts ? 'Taking you to your facility…' : 'Opening secure sign-in…'}</p>;
   if (handingOff) return <p className="flex items-center justify-center gap-2 py-10 text-sm"><Loader2 className="h-4 w-4 animate-spin" /> Signing you in…</p>;
   if (choices)
     return (
@@ -87,7 +111,7 @@ function LoginForm({ ctx }: { ctx: HostContext | null }) {
             <ChevronRight className="h-4 w-4 text-slate-400" />
           </a>
         ))}
-        <p className="muted text-xs">These links work once and expire in 2 minutes.</p>
+        <p className="muted text-xs">These links work once, only in this browser, and expire in 60 seconds.</p>
         <button type="button" className="muted w-full text-center text-xs underline" onClick={() => setChoices(null)}>Back to sign in</button>
       </div>
     );
@@ -109,9 +133,9 @@ function LoginForm({ ctx }: { ctx: HostContext | null }) {
       <Button type="submit" className="w-full" loading={formState.isSubmitting} disabled={!ctx}>
         Sign in
       </Button>
-      {!platform && <p className="text-center text-sm"><a className="text-brand-600" href="/forgot-password">Forgot password?</a></p>}
-      {platform && <p className="muted text-center text-xs">We&apos;ll take you to your facility&apos;s own AfeySync address. Forgot your password? Reset it from your facility&apos;s sign-in page.</p>}
-      {!platform && <GoogleButton realm="tenant" next={params.get('next')} />}
+      {(!platform || accounts) && <p className="text-center text-sm"><a className="text-brand-600" href="/forgot-password">Forgot password?</a></p>}
+      {platform && <p className="muted text-center text-xs">After signing in we take you securely to your facility&apos;s own AfeySync address.</p>}
+      {!platform && !central && <GoogleButton realm="tenant" next={params.get('next')} />}
     </form>
   );
 }
@@ -120,10 +144,17 @@ export default function LoginPage() {
   const { data: ctx, isError } = useHostContext();
   const context: HostContext | null = ctx ?? (isError ? { kind: 'unknown' } : null);
   const branding = context?.kind === 'facility' ? context.branding ?? null : null;
+  const continuing = context?.kind === 'accounts' ? context.facility : null;
   return (
     <div className="flex min-h-screen items-center justify-center bg-gradient-to-br from-brand-900 to-slate-900 p-4">
       <div className="surface w-full max-w-sm rounded-2xl p-6 shadow-2xl">
         <BrandMark branding={branding} className="mb-4" />
+        {context?.kind === 'accounts' && (
+          <div className="mb-4">
+            <p className="text-lg font-semibold">Sign in to AfeySync</p>
+            <p className="muted text-sm">{continuing ? <>to continue to <strong>{continuing.name}</strong></> : 'One account for your facility.'}</p>
+          </div>
+        )}
         {branding?.welcomeMessage && <p className="mb-4 rounded-lg bg-brand-50 px-3 py-2 text-sm text-brand-900 dark:bg-brand-900/30 dark:text-brand-100">{branding.welcomeMessage}</p>}
         <Suspense>
           <LoginForm ctx={context} />

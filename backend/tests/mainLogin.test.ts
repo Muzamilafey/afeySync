@@ -7,7 +7,7 @@ const APEX = 'afeysync.test';
 const A = 'mainfac';
 const B = 'mainother';
 const EMAIL = 'nurse.joy@main.test';
-const find = (body: Record<string, string>, host = APEX) => api().post('/api/v1/auth/find-facility').set('Host', host).set('Origin', `http://${host}:3000`).send(body);
+const find = (body: Record<string, string>, host = APEX) => api().post('/api/v1/auth/find-facility').set('X-Requested-With', 'AfeySync').set('Host', host).set('Origin', `http://${host}:3000`).send(body);
 const tokenOf = (url: string) => new URL(url).hash.replace('#handoff=', '');
 
 beforeAll(async () => {
@@ -23,7 +23,7 @@ afterAll(teardown);
 
 describe('sign-in on the main domain', () => {
   it('tells the sign-in page what kind of address it is on', async () => {
-    expect((await api().get('/api/v1/auth/context').set('Host', APEX)).body.data).toEqual({ kind: 'platform' });
+    expect((await api().get('/api/v1/auth/context').set('Host', APEX)).body.data).toMatchObject({ kind: 'platform' });
     expect((await api().get('/api/v1/auth/context').set('Host', OWNER_HOST)).body.data).toEqual({ kind: 'owner' });
     expect((await api().get('/api/v1/auth/context').set('Host', hostOf(A))).body.data).toMatchObject({ kind: 'facility', facility: { name: `${A} Hospital`, slug: A } });
   });
@@ -50,25 +50,25 @@ describe('sign-in on the main domain', () => {
     const a = r.body.data.facilities.find((f: { slug: string }) => f.slug === A);
     const b = r.body.data.facilities.find((f: { slug: string }) => f.slug === B);
     // a token for facility A is useless on facility B
-    expect((await api().post('/api/v1/auth/handoff').set('Host', hostOf(B)).send({ token: tokenOf(a.url) })).body.error.code).toBe('HANDOFF_INVALID');
+    expect((await api().post('/api/v1/auth/handoff').set('X-Requested-With', 'AfeySync').set('Host', hostOf(B)).send({ token: tokenOf(a.url) })).body.error.code).toBe('HANDOFF_INVALID');
     // (and it was consumed by that attempt)
-    expect((await api().post('/api/v1/auth/handoff').set('Host', hostOf(A)).send({ token: tokenOf(a.url) })).body.error.code).toBe('HANDOFF_INVALID');
-    const ok = await api().post('/api/v1/auth/handoff').set('Host', hostOf(B)).send({ token: tokenOf(b.url) });
+    expect((await api().post('/api/v1/auth/handoff').set('X-Requested-With', 'AfeySync').set('Host', hostOf(A)).send({ token: tokenOf(a.url) })).body.error.code).toBe('HANDOFF_INVALID');
+    const ok = await api().post('/api/v1/auth/handoff').set('X-Requested-With', 'AfeySync').set('Host', hostOf(B)).send({ token: tokenOf(b.url) });
     expect(ok.status).toBe(200);
     expect(ok.body.data.accessToken).toBeTruthy();
     const me = await api().get('/api/v1/auth/me').set('Host', hostOf(B)).set('Authorization', `Bearer ${ok.body.data.accessToken}`);
     expect(me.body.data).toMatchObject({ user: { email: EMAIL }, tenant: { slug: B } });
-    expect((await api().post('/api/v1/auth/handoff').set('Host', hostOf(B)).send({ token: tokenOf(b.url) })).body.error.code).toBe('HANDOFF_INVALID');
+    expect((await api().post('/api/v1/auth/handoff').set('X-Requested-With', 'AfeySync').set('Host', hostOf(B)).send({ token: tokenOf(b.url) })).body.error.code).toBe('HANDOFF_INVALID');
   });
 
   it('treats plain localhost as the main sign-in page in development and sends people to <slug>.localhost', async () => {
-    expect((await api().get('/api/v1/auth/context').set('Host', 'localhost:3000')).body.data).toEqual({ kind: 'platform' });
-    expect((await api().get('/api/v1/auth/context').set('Host', '127.0.0.1:3000')).body.data).toEqual({ kind: 'platform' });
+    expect((await api().get('/api/v1/auth/context').set('Host', 'localhost:3000')).body.data).toMatchObject({ kind: 'platform' });
+    expect((await api().get('/api/v1/auth/context').set('Host', '127.0.0.1:3000')).body.data).toMatchObject({ kind: 'platform' });
     const r = await find({ email: EMAIL, password: PASSWORD }, 'localhost');
     expect(r.status).toBe(200);
     const a = r.body.data.facilities.find((f: { slug: string }) => f.slug === A);
     expect(a.url).toMatch(new RegExp(`^http://${A}\\.localhost:3000/login#handoff=`));
-    const ok = await api().post('/api/v1/auth/handoff').set('Host', `${A}.localhost`).send({ token: tokenOf(a.url) });
+    const ok = await api().post('/api/v1/auth/handoff').set('X-Requested-With', 'AfeySync').set('Host', `${A}.localhost`).send({ token: tokenOf(a.url) });
     expect(ok.status).toBe(200);
   });
 

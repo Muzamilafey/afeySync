@@ -36,10 +36,13 @@ export const branchInput = z.object({
   bedCapacity: z.number().int().min(0).max(5000).optional(),
 });
 
+/** Addresses the platform itself uses; a facility can never take them (accounts.* is the central sign-in). */
+export const SYSTEM_SLUGS = ['accounts', 'account', 'auth', 'sso', 'id', 'login', 'www', 'owner', 'api', 'admin', 'app', 'mail', 'static', 'cdn', 'assets'];
+
 export const createFacilitySchema = z.object({
   facility: z.object({
     name: z.string().min(2).max(160),
-    slug: z.string().toLowerCase().regex(/^[a-z0-9][a-z0-9-]{1,40}$/, 'Slug may contain lowercase letters, digits and hyphens'),
+    slug: z.string().toLowerCase().regex(/^[a-z0-9][a-z0-9-]{1,40}$/, 'Slug may contain lowercase letters, digits and hyphens').refine((v) => !SYSTEM_SLUGS.includes(v), 'This address is reserved for AfeySync'),
     legalName: z.string().max(200).optional(),
     facilityCode: z.string().max(40).optional(),
     registrationNumber: z.string().max(60).optional(),

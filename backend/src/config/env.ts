@@ -29,6 +29,12 @@ const schema = z.object({
   /** Root platform domain: tenants live on <slug>.<PLATFORM_DOMAIN> */
   PLATFORM_DOMAIN: z.string().default('localhost'),
   OWNER_HOSTS: z.string().default('owner.localhost'),
+  /**
+   * Central sign-in: passwords are only accepted on the accounts address (default accounts.<PLATFORM_DOMAIN>;
+   * accounts.localhost always works locally), which hands the user over to their facility's own address.
+   */
+  ACCOUNTS_HOST: z.string().optional(),
+  CENTRAL_LOGIN: bool(true),
   CORS_ORIGINS: z.string().default(''),
   TRUST_PROXY: z.string().default('loopback'),
   COOKIE_SECURE: bool(false),
@@ -86,3 +92,7 @@ if (!parsed.success) {
 export const env = parsed.data;
 export const isProd = env.NODE_ENV === 'production';
 export const ownerHosts = env.OWNER_HOSTS.split(',').map((h) => h.trim().toLowerCase()).filter(Boolean);
+export const accountsHost = (env.ACCOUNTS_HOST || `accounts.${env.PLATFORM_DOMAIN}`).trim().toLowerCase();
+/** Read at request time so it can be switched in tests. */
+export const authConfig = { centralLogin: env.CENTRAL_LOGIN };
+

@@ -45,7 +45,7 @@ describe('editing users', () => {
     const r = await t(S, admin).patch(`/api/v1/users/${u._id}`).send({ email: 'Baraka.Otieno@editfac.test' });
     expect(r.body.data.email).toBe('baraka.otieno@editfac.test');
     expect((await api().post('/api/v1/auth/login').set('Host', `${S}.afeysync.test`).send({ email: 'baraka.otieno@editfac.test', password: PASSWORD })).status).toBe(200);
-    const main = (email: string) => api().post('/api/v1/auth/find-facility').set('Host', 'afeysync.test').send({ email, password: PASSWORD });
+    const main = (email: string) => api().post('/api/v1/auth/find-facility').set('X-Requested-With', 'AfeySync').set('Host', 'afeysync.test').send({ email, password: PASSWORD });
     expect((await main('baraka.otieno@editfac.test')).status).toBe(200);
     expect((await main('baraka@editfac.test')).status).toBe(401);
     const mails = await meta().Job.find({ type: 'EMAIL', 'payload.subject': { $regex: /sign-in email/ } }).lean();

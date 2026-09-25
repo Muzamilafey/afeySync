@@ -1,5 +1,5 @@
 import type { NextFunction, Request, Response } from 'express';
-import { env, ownerHosts } from '../config/env';
+import { accountsHost, env, ownerHosts } from '../config/env';
 import { meta } from '../models/meta';
 
 /**
@@ -49,10 +49,18 @@ export function slugFromHost(host: string): string | null {
   return null;
 }
 
+/** The central sign-in address: ACCOUNTS_HOST (accounts.<PLATFORM_DOMAIN>) or, on this computer, accounts.localhost. */
+export const isAccountsHostname = (host: string) => {
+  const h = (host || '').toLowerCase();
+  return h === accountsHost || h === 'accounts.localhost';
+};
+
 export async function resolveTenantHost(req: Request, _res: Response, next: NextFunction) {
   const host = (req.hostname || '').toLowerCase();
   req.isOwnerHost = ownerHosts.includes(host);
-  req.hostTenantId = req.isOwnerHost ? null : await lookupHostTenant(host);
+  req.isAccountsHost = !req.isOwnerHost && isAccountsHostname(host);
+  // The accounts address never belongs to a facility, whatever is in the database.
+  req.hostTenantId = req.isOwnerHost || req.isAccountsHost ? null : await lookupHostTenant(host);
   next();
 }
 

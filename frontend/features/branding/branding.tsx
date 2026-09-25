@@ -7,7 +7,7 @@ import { api } from '@/services/api';
 import { cn } from '@/lib/utils';
 
 export interface Branding { name: string; legalName: string; tagline: string | null; welcomeMessage: string | null; primaryColor: string | null; logoUrl: string | null }
-export interface HostContext { kind: 'facility' | 'platform' | 'owner' | 'unknown'; facility?: { name: string; slug: string } | null; branding?: Branding | null; message?: string }
+export interface HostContext { kind: 'facility' | 'platform' | 'accounts' | 'owner' | 'unknown'; facility?: { name: string; slug: string } | null; branding?: Branding | null; facilityBranding?: Branding | null; message?: string; centralLogin?: boolean; accountsUrl?: string }
 
 const CACHE_KEY = 'afs.branding';
 const readCache = (): Branding | null => {
@@ -23,7 +23,11 @@ const readCache = (): Branding | null => {
 export function useHostContext() {
   return useQuery({
     queryKey: ['host-context'],
-    queryFn: async () => (await api<HostContext>('/auth/context', { auth: false })).data,
+    queryFn: async () => {
+      // On the accounts address, ?facility=<slug> names the facility the user is signing in to.
+      const facility = typeof window === 'undefined' ? null : new URLSearchParams(window.location.search).get('facility');
+      return (await api<HostContext>('/auth/context', { auth: false, query: { facility: facility && /^[a-z0-9-]{1,63}$/.test(facility) ? facility : undefined } })).data;
+    },
     staleTime: 5 * 60_000,
     retry: 1,
   });

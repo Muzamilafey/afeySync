@@ -39,7 +39,8 @@ async function planFor(key: string | null | undefined) {
 export const INTERESTS = ['sha', 'dha', 'mpesa', 'sms', 'insurance', 'laboratory', 'pharmacy', 'inpatient', 'maternity', 'radiology'] as const;
 
 /** Names that can never be a facility web address. */
-const RESERVED = new Set(['www', 'owner', 'api', 'admin', 'app', 'mail', 'smtp', 'support', 'help', 'status', 'docs', 'static', 'cdn', 'assets', 'login', 'signup', 'get-started', 'onboarding', 'billing', 'afeysync', 'dashboard', 'test', 'demo', 'root', 'system']);
+const RESERVED = new Set(['accounts', 'account', 'auth', 'sso', 'id', 'login', 'www', 'owner', 'api', 'admin', 'app', 'mail', 'smtp', 'support', 'help', 'status', 'docs', 'static', 'cdn', 'assets', 'login', 'signup', 'get-started', 'onboarding', 'billing', 'afeysync', 'dashboard', 'test', 'demo', 'root', 'system']);
+export const RESERVED_SLUGS = RESERVED;
 const SLUG_RE = /^[a-z0-9][a-z0-9-]{1,38}[a-z0-9]$/;
 
 const CODE_TTL_MS = 15 * 60_000;

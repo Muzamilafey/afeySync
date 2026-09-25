@@ -1,5 +1,5 @@
 import { Router, type Request, type Response } from 'express';
-import { env } from '../../config/env';
+import { authConfig, accountsHost, env } from '../../config/env';
 import { explainUnknownHost, isLoopbackHost, platformSubdomain } from '../../middleware/tenantResolver';
 import { tenantsForEmail } from './directory';
 import { requestOrigin } from '../../utils/origin';
@@ -8,7 +8,7 @@ import { tenantEntitlements } from '../plans/planService';
 import { z } from 'zod';
 import { h } from '../../utils/asyncHandler';
 import { parse } from '../../utils/validate';
-import { badRequest, forbidden, unauthorized } from '../../utils/errors';
+import { AppError, badRequest, forbidden, unauthorized } from '../../utils/errors';
 import { ALL_METHODS, MFA_SELECT, beginLoginChallenge, buildMfaRouter, DEFAULT_POLICY, enabledMethods, policySchema, type MfaAdapter, type MfaDoc, type MfaPolicy } from './mfa/mfaService';
 import { loadTenant } from '../tenants/tenantLoader';
 import { createSession, revokeFamily, rotateSession, signAccessToken } from './tokens';
@@ -27,7 +27,7 @@ const COOKIE_PATH = '/api/v1/auth';
 const router = Router();
 
 /* ------------------------------------------------------------------ Main-domain sign-in (facility discovery) */
-const HANDOFF_TTL_MS = 2 * 60_000;
+const HANDOFF_TTL_MS = 60_000;
 /**
  * The main sign-in address: PLATFORM_DOMAIN (or www.), the host of FRONTEND_URL, and this computer's own
  * addresses (localhost, 127.0.0.1) in any mode — so the main page works locally even with NODE_ENV=production or a
@@ -37,6 +37,7 @@ const HANDOFF_TTL_MS = 2 * 60_000;
 function platformBase(req: Request): string | null {
   if (req.isOwnerHost || req.hostTenantId) return null;
   const host = (req.hostname || '').toLowerCase();
+  if (req.isAccountsHost) return host.replace(/^accounts\./, '');
   const apex = env.PLATFORM_DOMAIN.toLowerCase();
   if (host === apex || host === `www.${apex}`) return apex;
   if (isLoopbackHost(host)) return 'localhost';
@@ -50,6 +51,25 @@ function platformBase(req: Request): string | null {
   return null;
 }
 const platformHost = (req: Request) => platformBase(req) !== null;
+
+/** Where passwords are entered: only the accounts address when central sign-in is on. */
+const signInHost = (req: Request) => (authConfig.centralLogin ? !!req.isAccountsHost : platformHost(req));
+
+/**
+ * The accounts address, on the scheme and port the user is browsing: accounts.localhost locally,
+ * ACCOUNTS_HOST (accounts.<PLATFORM_DOMAIN>) otherwise.
+ */
+export function accountsOrigin(req: Request) {
+  const front = new URL(env.FRONTEND_URL);
+  const host = (req.hostname || '').toLowerCase();
+  const local = host === 'localhost' || host.endsWith('.localhost') || isLoopbackHost(host);
+  return `${front.protocol}//${local ? 'accounts.localhost' : accountsHost}${front.port ? `:${front.port}` : ''}`;
+}
+
+/** Same browser that entered the password: exact client IP and User-Agent. */
+const uaHash = (req: Request) => sha256(`ua:${req.get('user-agent') ?? ''}`);
+
+const useAccounts = (req: Request) => new AppError(403, 'USE_ACCOUNTS_LOGIN', `Sign in at ${accountsOrigin(req).replace(/^https?:\/\//, '')}. You will be brought back to your facility.`, { accountsUrl: accountsOrigin(req) });
 /** Builds a facility address on the same scheme, base domain and port the user is browsing (works on localhost too). */
 function facilityOrigin(req: Request, slug: string) {
   let proto = new URL(env.FRONTEND_URL).protocol;
@@ -73,12 +93,20 @@ router.get(
   '/context',
   h(async (req, res) => {
     if (req.isOwnerHost) return res.json({ success: true, data: { kind: 'owner' } });
+    const central = authConfig.centralLogin;
+    const sso = { centralLogin: central, accountsUrl: accountsOrigin(req) };
+    if (req.isAccountsHost) {
+      // ?facility=<slug> (set when a facility page sent the user here) shows that facility's name and logo.
+      const slug = typeof req.query.facility === 'string' && /^[a-z0-9][a-z0-9-]{0,62}$/.test(req.query.facility) ? req.query.facility : null;
+      const t = slug ? await meta().Tenant.findOne({ slug, status: 'active' }).select('name slug branding').lean() : null;
+      return res.json({ success: true, data: { kind: 'accounts', ...sso, facility: t ? { name: t.name, slug: t.slug } : null, branding: null, facilityBranding: t ? { ...publicBranding(t), logoUrl: null } : null } });
+    }
     if (req.hostTenantId) {
       const t = await meta().Tenant.findById(req.hostTenantId).select('name slug status branding').lean();
-      return res.json({ success: true, data: { kind: 'facility', facility: t ? { name: t.name, slug: t.slug } : null, branding: t ? publicBranding(t) : null } });
+      return res.json({ success: true, data: { kind: 'facility', ...sso, facility: t ? { name: t.name, slug: t.slug } : null, branding: t ? publicBranding(t) : null } });
     }
-    if (platformHost(req)) return res.json({ success: true, data: { kind: 'platform' } });
-    res.json({ success: true, data: { kind: 'unknown', message: await explainUnknownHost(req.hostname) } });
+    if (platformHost(req)) return res.json({ success: true, data: { kind: 'platform', ...sso } });
+    res.json({ success: true, data: { kind: 'unknown', ...sso, message: await explainUnknownHost(req.hostname) } });
   }),
 );
 
@@ -105,8 +133,12 @@ router.get(
 router.post(
   '/find-facility',
   h(async (req, res) => {
+    assertCsrfHeader(req);
     const body = parse(z.object({ email: z.string().email().max(200), password: z.string().min(1).max(200) }), req.body);
-    if (!platformHost(req)) throw badRequest('Sign in at your facility address', undefined, 'NOT_PLATFORM_HOST');
+    if (!signInHost(req)) {
+      if (authConfig.centralLogin) throw useAccounts(req);
+      throw badRequest('Sign in at your facility address', undefined, 'NOT_PLATFORM_HOST');
+    }
     const email = body.email.toLowerCase();
     const matches: Array<{ name: string; slug: string; url: string }> = [];
     let locked = false;
@@ -117,7 +149,7 @@ router.post(
       } catch {
         continue; // suspended or unavailable facilities are skipped
       }
-      const user = await tenant.models.User.findOne({ email }).select('+passwordHash status failedLogins lockedUntil');
+      const user = await tenant.models.User.findOne({ email }).select('+passwordHash name status failedLogins lockedUntil');
       if (!user) continue;
       if (user.lockedUntil && user.lockedUntil > new Date()) {
         locked = true;
@@ -135,7 +167,9 @@ router.post(
       }
       if (user.status !== 'active') continue;
       const token = randomToken(32);
-      await meta().LoginHandoff.create({ tokenHash: sha256(`handoff:${token}`), tenantId, userId: user._id, ip: req.ip, expiresAt: new Date(Date.now() + HANDOFF_TTL_MS) });
+      // Only the hash is stored; the link works once, for 60 seconds, from this browser (IP + User-Agent), on this facility only.
+      await meta().LoginHandoff.create({ tokenHash: sha256(`handoff:${token}`), tenantId, userId: user._id, ip: req.ip, uaHash: uaHash(req), facilitySlug: tenant.slug, expiresAt: new Date(Date.now() + HANDOFF_TTL_MS) });
+      await tenant.models.AuditLog.create({ actorType: 'user', userId: user._id, userName: user.name, action: 'auth.handoff_issued', resource: 'user', resourceId: String(user._id), newValue: { via: 'accounts' }, ip: req.ip }).catch(() => undefined);
       matches.push({ name: tenant.name, slug: tenant.slug, url: `${facilityOrigin(req, tenant.slug)}/login#handoff=${token}` });
     }
     if (!matches.length) {
@@ -150,14 +184,20 @@ router.post(
 router.post(
   '/handoff',
   h(async (req, res) => {
+    assertCsrfHeader(req);
     const { token } = parse(z.object({ token: z.string().min(20).max(100) }), req.body);
     if (!req.hostTenantId) throw badRequest(await explainUnknownHost(req.hostname), undefined, 'TENANT_NOT_RESOLVED');
     const invalid = () => unauthorized('This sign-in link has expired. Sign in again.', 'HANDOFF_INVALID');
-    // Consume atomically: a handoff works once, only on the facility it was issued for.
+    // Consume atomically: a handoff works once, only on the facility it was issued for. Any attempt,
+    // even a rejected one below, uses it up, so a leaked link cannot be retried.
     const handoff = await meta().LoginHandoff.findOneAndUpdate({ tokenHash: sha256(`handoff:${token}`), usedAt: null, expiresAt: { $gt: new Date() } }, { usedAt: new Date() }, { returnDocument: 'before' });
     if (!handoff || String(handoff.tenantId) !== req.hostTenantId) throw invalid();
     const tenant = await loadTenant(req.hostTenantId);
     req.tenant = tenant;
+    if (handoff.ip !== req.ip || (handoff.uaHash && handoff.uaHash !== uaHash(req))) {
+      await audit(req, { action: 'auth.handoff_rejected', resource: 'user', resourceId: String(handoff.userId), newValue: { reason: handoff.ip !== req.ip ? 'different_ip' : 'different_browser' }, result: 'denied' });
+      throw invalid();
+    }
     const user = await tenant.models.User.findById(handoff.userId).select(MFA_SELECT);
     if (!user || user.status !== 'active' || (user.lockedUntil && user.lockedUntil > new Date())) throw invalid();
     user.failedLogins = 0;
@@ -171,6 +211,8 @@ router.post(
   '/login',
   h(async (req, res) => {
     const body = parse(z.object({ email: z.string().email().max(200), password: z.string().min(1).max(200) }), req.body);
+    // Central sign-in: passwords are only ever typed on the accounts address.
+    if (authConfig.centralLogin) throw useAccounts(req);
     if (!req.hostTenantId) throw badRequest(await explainUnknownHost(req.hostname), undefined, 'TENANT_NOT_RESOLVED');
     const tenant = await loadTenant(req.hostTenantId);
     req.tenant = tenant;
@@ -283,7 +325,7 @@ const tenantGoogle: GoogleAdapter = {
   portal: 'tenant',
   authenticate: authenticateTenant,
   allowed: async (req) => {
-    if (!(await googleEnabled())) return false;
+    if (authConfig.centralLogin || !(await googleEnabled())) return false;
     const tenant = await hostTenant(req);
     const setting = await tenant.models.FacilitySetting.findOne({ key: 'security.googleLogin' }).lean();
     return setting?.value !== false;
@@ -411,17 +453,26 @@ router.post(
   '/forgot-password',
   h(async (req, res) => {
     const { email } = parse(z.object({ email: z.string().email().max(200) }), req.body);
-    if (!req.hostTenantId) throw badRequest(await explainUnknownHost(req.hostname), undefined, 'TENANT_NOT_RESOLVED');
-    const tenant = await loadTenant(req.hostTenantId);
-    req.tenant = tenant;
-    const user = await tenant.models.User.findOne({ email: email.toLowerCase(), status: 'active' }).lean();
-    if (user) {
+    const sendReset = async (tenant: Tenant, origin: string) => {
+      req.tenant = tenant;
+      const user = await tenant.models.User.findOne({ email: email.toLowerCase(), status: 'active' }).lean();
+      if (!user) return;
       const token = randomToken(32);
       await tenant.models.PasswordReset.create({ userId: user._id, tokenHash: sha256(token), expiresAt: new Date(Date.now() + 30 * 60_000) });
-      const link = `${requestOrigin(req)}/reset-password?token=${token}`;
-      await notifyEmail(tenant.id, `pwreset:${user._id}:${sha256(token).slice(0, 12)}`, user.email, `${tenant.name}: reset your AfeySync password`, `A password reset was requested for your account.\n\nOpen this link within 30 minutes to set a new password:\n${link}\n\nIf you did not request this, ignore this email.`);
+      // The reset page is on the facility's own address (the token only works there).
+      const link = `${origin}/reset-password?token=${token}`;
+      await notifyEmail(tenant.id, `pwreset:${user._id}:${sha256(token).slice(0, 12)}`, user.email, `${tenant.name}: reset your AfeySync password`, `A password reset was requested for your account at ${tenant.name}.\n\nOpen this link within 30 minutes to set a new password:\n${link}\n\nIf you did not request this, ignore this email.`);
       await audit(req, { action: 'auth.password_reset_requested', resource: 'user', resourceId: String(user._id) });
-    }
+    };
+    if (req.hostTenantId) await sendReset(await loadTenant(req.hostTenantId), requestOrigin(req));
+    else if (signInHost(req)) {
+      // Accounts address: one reset link per facility where this email has an active account.
+      for (const tenantId of await tenantsForEmail(email.toLowerCase())) {
+        const tenant = await loadTenant(tenantId).catch(() => null);
+        if (tenant) await sendReset(tenant, facilityOrigin(req, tenant.slug));
+      }
+    } else throw badRequest(await explainUnknownHost(req.hostname), undefined, 'TENANT_NOT_RESOLVED');
+    // Same answer whether or not the email exists.
     res.json({ success: true, message: 'If the account exists, a reset link has been sent to its email address.' });
   }),
 );
