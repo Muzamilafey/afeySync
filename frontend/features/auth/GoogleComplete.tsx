@@ -30,7 +30,7 @@ function Inner({ realm }: { realm: Realm }) {
   const [next, setNext] = useState<string | undefined>();
   const ran = useRef(false);
   const home = realm === 'owner' ? '/owner' : '/dashboard';
-  const account = realm === 'owner' ? '/owner/security' : '/account';
+  const account = realm === 'owner' ? '/owner/security' : '/account/security';
   const loginPath = realm === 'owner' ? '/owner/login' : '/login';
 
   const finish = (r: LoginResult, dest?: string) => {

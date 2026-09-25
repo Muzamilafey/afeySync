@@ -112,3 +112,22 @@ sign-in.
   a fresh link (valid 24 hours), and any earlier unused links stop working.
 * Email goes through the facility's SMTP, the platform SMTP, or the `SMTP_*` settings in the API
   `.env`, in that order.
+
+## My profile and Security (every user)
+
+Every facility user has two pages, in the sidebar under **My account** and in the user menu:
+
+* **My profile** (`/account/profile`): name, sign-in email, phone, roles, branches, cadre and licence,
+  and their own leave. Users can change their **name and phone** only. Email, roles, branches and
+  licence details are managed by an administrator (Admin → Users & Roles → Edit).
+* **Security** (`/account/security`):
+  * a summary of the account's protection
+  * change password
+  * two-step verification: authenticator app, email, SMS or passkeys
+  * link Google
+  * **Where you're signed in**: every device, with sign-out for one device or all others
+  * **Recent security activity**: sign-ins, failed attempts, password and two-step changes
+
+API: `GET/PATCH /api/v1/auth/profile`, `GET /api/v1/auth/sessions`,
+`POST /api/v1/auth/sessions/:id/revoke`, `POST /api/v1/auth/sessions/revoke-others`,
+`GET /api/v1/auth/activity`. Users only ever see and change their own account.

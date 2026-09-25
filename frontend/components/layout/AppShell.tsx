@@ -5,7 +5,7 @@ import { InstallButton } from '@/features/pwa/InstallButton';
 import { usePathname, useRouter } from 'next/navigation';
 import { useEffect, useRef, useState, type ReactNode } from 'react';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
-import { Activity, Baby, Banknote, BedDouble, Bell, Cross, HeartHandshake, Smile, Boxes, Pill, ShoppingCart, FlaskConical, ScanLine, CalendarDays, ListOrdered, Stethoscope, Receipt, Building2, ChevronDown, ClipboardList, FileSearch, HeartPulse, LayoutDashboard, LogOut, Menu, Network, Search, Settings, ShieldCheck, UserPlus, Users, X, Wallet, BarChart3, IdCard, Umbrella, CreditCard, Palette } from 'lucide-react';
+import { Activity, Baby, Banknote, BedDouble, Bell, Cross, HeartHandshake, Smile, Boxes, Pill, ShoppingCart, FlaskConical, ScanLine, CalendarDays, ListOrdered, Stethoscope, Receipt, Building2, ChevronDown, ClipboardList, FileSearch, HeartPulse, LayoutDashboard, LogOut, Menu, Network, Search, Settings, ShieldCheck, UserPlus, Users, X, Wallet, BarChart3, IdCard, Umbrella, CreditCard, Palette, UserRound, KeyRound } from 'lucide-react';
 import { useMe } from '@/hooks/useMe';
 import { useBranding } from '@/features/branding/branding';
 import { api } from '@/services/api';
@@ -68,6 +68,10 @@ const NAV: Array<{ section: string; items: NavItem[] }> = [
     { href: '/admin/security', label: 'Security', icon: Settings, any: ['admin.support_access', 'admin.settings'] },
     { href: '/admin/branding', label: 'Branding', icon: Palette, any: ['admin.settings'] },
     { href: '/admin/subscription', label: 'Subscription', icon: CreditCard, any: ['subscription.view'] },
+  ] },
+  { section: 'My account', items: [
+    { href: '/account/profile', label: 'My profile', icon: UserRound },
+    { href: '/account/security', label: 'Security', icon: KeyRound },
   ] },
 ];
 
@@ -334,8 +338,11 @@ export function AppShell({ children }: { children: ReactNode }) {
                 <span className="muted">{me.user.roles.join(', ')}</span>
               </p>
               <div className="md:hidden px-3 py-2"><BranchSwitcher /></div>
-              <Link href="/account" className="block rounded px-3 py-2 text-sm hover:bg-[var(--surface-2)]" onClick={() => setMenu(false)}>
-                Change password
+              <Link href="/account/profile" className="flex items-center gap-2 rounded px-3 py-2 text-sm hover:bg-[var(--surface-2)]" onClick={() => setMenu(false)}>
+                <UserRound className="h-4 w-4" /> My profile
+              </Link>
+              <Link href="/account/security" className="flex items-center gap-2 rounded px-3 py-2 text-sm hover:bg-[var(--surface-2)]" onClick={() => setMenu(false)}>
+                <ShieldCheck className="h-4 w-4" /> Security &amp; password
               </Link>
               <button onClick={logout} className="flex w-full items-center gap-2 rounded px-3 py-2 text-left text-sm text-red-600 hover:bg-[var(--surface-2)]">
                 <LogOut className="h-4 w-4" /> Sign out

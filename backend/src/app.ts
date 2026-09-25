@@ -19,6 +19,7 @@ import { onboardingOwnerRouter, onboardingPublicRouter } from './modules/onboard
 import { errorHandler, notFoundHandler } from './middleware/errorHandler';
 import healthRoutes from './modules/health/health.routes';
 import tenantAuthRoutes from './modules/auth/tenantAuth.routes';
+import selfServiceRoutes from './modules/auth/selfService.routes';
 import { googleCallbackRouter } from './modules/auth/google/google.routes';
 import ownerAuthRoutes from './modules/auth/ownerAuth.routes';
 import ownerRoutes from './modules/owner/owner.routes';
@@ -110,6 +111,7 @@ export function createApp() {
   api.use('/owner/auth/mfa/challenge', authLimiter);
   api.use(googleCallbackRouter);
   api.use('/auth', tenantAuthRoutes);
+  api.use('/auth', selfServiceRoutes);
   api.use('/owner/auth', ownerAuthRoutes);
   api.use(onboardingPublicRouter);
   api.use('/owner/onboarding', onboardingOwnerRouter);
