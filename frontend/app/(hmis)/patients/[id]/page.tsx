@@ -78,6 +78,7 @@ function Profile({ id }: { id: string }) {
             <div className="mt-2 flex flex-wrap gap-2">
               <Badge tone={statusTone(shaStatus)}>SHA: {shaStatus === 'unknown' ? 'Not checked' : shaStatus.replace('_', ' ').toUpperCase()}</Badge>
               {p.dha?.source === 'client_registry' && <Badge tone="blue">DHA Client Registry</Badge>}
+              {p.sha?.isAlive === false && <Badge tone="red">SHA: beneficiary reported deceased — SHA transactions blocked</Badge>}
               {p.allergies?.length ? <Badge tone="red">Allergies: {p.allergies.map((a) => a.substance).join(', ')}</Badge> : <Badge>No known allergies</Badge>}
             </div>
           </div>
@@ -87,6 +88,7 @@ function Profile({ id }: { id: string }) {
             <div className="mt-2 flex flex-wrap justify-end gap-2">
               {can('queue.manage') && <Button size="sm" variant="outline" onClick={() => setCheckIn(true)}>Check in</Button>}
               {can('sha.eligibility') && <Button size="sm" onClick={() => elig.mutate()} loading={elig.isPending}><ShieldCheck className="h-4 w-4" /> Check SHA eligibility</Button>}
+              {can('sha.authorization') && p.clientRegistryId && p.sha?.isAlive !== false && <Link href={`/sha/visits/new?patientId=${p._id}`}><Button size="sm" variant="secondary">Start SHA visit</Button></Link>}
             </div>
           </div>
         </div>

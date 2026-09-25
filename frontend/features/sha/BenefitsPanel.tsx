@@ -53,7 +53,12 @@ export function UtilizationPanel({ patientId, initialCode }: { patientId: string
   const [applied, setApplied] = useState(initialCode ?? '');
   const q = useQuery({ queryKey: ['sha-utilization', patientId, applied], queryFn: async () => (await api('/sha/utilization', { query: { patientId, interventionCode: applied } })).data, enabled: applied.length >= 2 });
   const d = (isObj(q.data) && isObj((q.data as Record<string, unknown>).data) ? (q.data as Record<string, Record<string, unknown>>).data : q.data) as Record<string, unknown> | undefined;
-  const pairs: Array<[string, string, string]> = [['Individual', 'individual_limit', 'individual_used'], ['Household', 'household_limit', 'household_used']];
+  // Documented names (individualMaxLimit/individualUtilisedLimit…) with snake_case fallbacks.
+  const pairs: Array<[string, string[], string[]]> = [
+    ['Individual', ['individualMaxLimit', 'individual_max_limit', 'individual_limit'], ['individualUtilisedLimit', 'individual_utilised_limit', 'individual_used']],
+    ['Household', ['householdMaxLimit', 'household_max_limit', 'household_limit'], ['householdUtilisedLimit', 'household_utilised_limit', 'household_used']],
+  ];
+  const first = (o: Record<string, unknown>, keys: string[]) => { for (const k of keys) if (o[k] !== undefined && o[k] !== null) return Number(o[k]); return NaN; };
   return (
     <Card title="Utilization">
       <form className="mb-4 flex gap-2" onSubmit={(e) => { e.preventDefault(); setApplied(code.trim()); }}>
@@ -65,17 +70,18 @@ export function UtilizationPanel({ patientId, initialCode }: { patientId: string
       {isObj(d) && (
         <div className="space-y-4">
           {pairs.map(([label, lk, uk]) => {
-            const limit = Number(d[lk]);
-            const used = Number(d[uk]);
+            const limit = first(d, lk);
+            const used = first(d, uk);
             if (Number.isNaN(limit) || Number.isNaN(used) || limit <= 0) return null;
             const pct = Math.min(100, Math.round((used / limit) * 100));
             return (
               <div key={label}>
-                <div className="mb-1 flex justify-between text-sm"><span className="font-medium">{label}</span><span className="muted">Used {used.toLocaleString()} of {limit.toLocaleString()} · Remaining {(limit - used).toLocaleString()}</span></div>
+                <div className="mb-1 flex justify-between text-sm"><span className="font-medium">{label}</span><span className="muted">Limit KES {limit.toLocaleString()} · Used KES {used.toLocaleString()} · Available KES {(limit - used).toLocaleString()}</span></div>
                 <div className="h-2.5 overflow-hidden rounded-full bg-[var(--surface-2)]"><div className={`h-full ${pct > 85 ? 'bg-red-500' : pct > 60 ? 'bg-amber-500' : 'bg-emerald-500'}`} style={{ width: `${pct}%` }} /></div>
               </div>
             );
           })}
+          {(d.nextAvailability ?? d.next_availability) != null && <p className="text-sm">Next availability: <strong>{String(d.nextAvailability ?? d.next_availability)}</strong></p>}
           <Scalars o={d} />
         </div>
       )}

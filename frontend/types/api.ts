@@ -54,7 +54,7 @@ export interface Patient {
   nextOfKin?: Array<{ name: string; relationship: string; phone?: string }>;
   insurance?: Array<{ provider: string; scheme?: string; memberNumber: string }>;
   allergies?: Array<{ substance: string; reaction?: string; severity?: string }>;
-  sha?: { status: 'unknown' | 'eligible' | 'not_eligible' | 'error'; lastCheckedAt?: string };
+  sha?: { status: 'unknown' | 'eligible' | 'not_eligible' | 'error'; lastCheckedAt?: string; isAlive?: boolean; whitelistedForOTP?: boolean; facilityBiometricsEnforced?: boolean; schemes?: Array<{ code?: string; name?: string; policyNumber?: string; principalCrId?: string }>; pomsf?: { code?: string; policyNumber?: string; principalCrId?: string } | null };
   dha?: { source: 'local' | 'client_registry'; importedAt?: string };
   consent?: { dataSharing?: boolean; sms?: boolean };
   registeredBranchName?: string;

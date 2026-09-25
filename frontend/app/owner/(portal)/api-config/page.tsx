@@ -6,7 +6,7 @@ import { ownerApi } from '@/services/api';
 import { Alert, Badge, Button, Card, ErrorText, Field, Input, Loading, PageHeader, Select, Table, Td } from '@/components/ui';
 import { fmtDateTime } from '@/lib/utils';
 
-interface Op { key: string; group: string; description: string; method: string; path: string | null; documented: boolean; documentationRef?: string }
+interface Op { key: string; group: string; description: string; method: string; path: string | null; documented: boolean; documentationRef?: string; verification?: 'documented' | 'spec_unverified' | 'owner_verified' }
 interface Contract { provider: string; contractVersion: string; documentationURL: string; lastVerified?: string; verifiedBy?: string; supportedOperations: Op[] }
 
 export default function ApiConfigPage() {
@@ -58,7 +58,7 @@ export default function ApiConfigPage() {
                         </Select>
                       </Td>
                       <Td><Input className="min-w-60 font-mono text-xs" value={e?.path ?? o.path ?? ''} placeholder="not configured" onChange={(ev) => setEdits({ ...edits, [o.key]: { method: e?.method ?? o.method, path: ev.target.value } })} /></Td>
-                      <Td>{o.path ? <Badge tone="green">configured</Badge> : <Badge>disabled</Badge>}</Td>
+                      <Td>{!o.path ? <Badge>disabled</Badge> : o.verification === 'spec_unverified' ? <span title="Path taken from AfeySync's eClaims integration specification. Verify it against the live hie-docs.dha.go.ke catalog and save to mark it verified."><Badge tone="amber">verify against docs</Badge></span> : o.verification === 'owner_verified' ? <Badge tone="green">verified by owner</Badge> : <Badge tone="green">documented</Badge>}{o.documentationRef?.startsWith('https://') && <a className="ml-1 text-xs text-brand-600" href={o.documentationRef} target="_blank" rel="noreferrer">docs</a>}</Td>
                     </tr>
                   );
                 })}

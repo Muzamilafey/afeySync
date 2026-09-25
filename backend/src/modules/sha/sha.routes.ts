@@ -182,6 +182,7 @@ router.get(
     if (req.query.kind) filter.kind = String(req.query.kind);
     if (req.query.status) filter.status = String(req.query.status);
     if (req.query.q) filter.reference = String(req.query.q).toUpperCase();
+    if (req.query.patientId && isValidObjectId(req.query.patientId)) filter.patientId = req.query.patientId;
     const [items, total, counts] = await Promise.all([
       ShaTransaction.find(filter).select('-requestPayload -lastResponse').populate('patientId', 'patientNumber firstName lastName clientRegistryId').sort({ updatedAt: -1 }).skip(skip).limit(limit).lean(),
       ShaTransaction.countDocuments(filter),
