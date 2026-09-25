@@ -61,6 +61,16 @@ describe('sign-in on the main domain', () => {
     expect((await api().post('/api/v1/auth/handoff').set('Host', hostOf(B)).send({ token: tokenOf(b.url) })).body.error.code).toBe('HANDOFF_INVALID');
   });
 
+  it('treats plain localhost as the main sign-in page in development and sends people to <slug>.localhost', async () => {
+    expect((await api().get('/api/v1/auth/context').set('Host', 'localhost:3000')).body.data).toEqual({ kind: 'platform' });
+    const r = await find({ email: EMAIL, password: PASSWORD }, 'localhost');
+    expect(r.status).toBe(200);
+    const a = r.body.data.facilities.find((f: { slug: string }) => f.slug === A);
+    expect(a.url).toMatch(new RegExp(`^http://${A}\\.localhost:3000/login#handoff=`));
+    const ok = await api().post('/api/v1/auth/handoff').set('Host', `${A}.localhost`).send({ token: tokenOf(a.url) });
+    expect(ok.status).toBe(200);
+  });
+
   it('applies the facility lockout to main-domain attempts', async () => {
     for (let i = 0; i < 5; i++) await find({ email: EMAIL, password: 'Wrong-password-1' });
     expect((await find({ email: EMAIL, password: PASSWORD })).body.error.code).toBe('ACCOUNT_LOCKED');
@@ -99,6 +109,7 @@ describe('explaining an address that is not an active facility', () => {
     expect(r.body.data.message).toMatch(/Pending Clinic is registered but waiting for approval/);
     const login = await api().post('/api/v1/auth/login').set('Host', 'pendingfac.localhost:3000').send({ email: 'p@pending.test', password: 'x' });
     expect(login.body.error).toMatchObject({ code: 'TENANT_NOT_RESOLVED', message: expect.stringMatching(/waiting for approval/) });
-    expect((await api().get('/api/v1/auth/context').set('Host', 'nothing-here.localhost')).body.data.message).toMatch(/No facility uses the address nothing-here\.localhost/);
+    expect((await api().get('/api/v1/auth/context').set('Host', 'nothing-here.localhost')).body.data.message).toMatch(/couldn't find a facility at nothing-here\.localhost/);
   });
+
 });

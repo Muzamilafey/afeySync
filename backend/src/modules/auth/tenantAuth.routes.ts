@@ -26,12 +26,28 @@ const router = Router();
 
 /* ------------------------------------------------------------------ Main-domain sign-in (facility discovery) */
 const HANDOFF_TTL_MS = 2 * 60_000;
-const platformHost = (req: Request) => {
+/**
+ * The main sign-in address: PLATFORM_DOMAIN (or www.), the host of FRONTEND_URL, and in development plain
+ * localhost / 127.0.0.1 — so the main page works even when PLATFORM_DOMAIN is set to the production domain.
+ * Returns the base domain facility addresses are built on, or null when this is not the main address.
+ */
+function platformBase(req: Request): string | null {
+  if (req.isOwnerHost || req.hostTenantId) return null;
   const host = (req.hostname || '').toLowerCase();
   const apex = env.PLATFORM_DOMAIN.toLowerCase();
-  return host === apex || host === `www.${apex}`;
-};
-/** Builds a facility address on the same scheme and port the user is browsing (works on localhost too). */
+  if (host === apex || host === `www.${apex}`) return apex;
+  if (env.NODE_ENV !== 'production' && (host === 'localhost' || host === '127.0.0.1')) return 'localhost';
+  let frontHost = '';
+  try {
+    frontHost = new URL(env.FRONTEND_URL).hostname.toLowerCase();
+  } catch {
+    /* invalid FRONTEND_URL */
+  }
+  if (frontHost && host === frontHost) return host === 'localhost' || host === '127.0.0.1' ? 'localhost' : host.replace(/^www\./, '');
+  return null;
+}
+const platformHost = (req: Request) => platformBase(req) !== null;
+/** Builds a facility address on the same scheme, base domain and port the user is browsing (works on localhost too). */
 function facilityOrigin(req: Request, slug: string) {
   let proto = new URL(env.FRONTEND_URL).protocol;
   let port = new URL(env.FRONTEND_URL).port;
@@ -44,7 +60,9 @@ function facilityOrigin(req: Request, slug: string) {
       /* use FRONTEND_URL */
     }
   }
-  return `${proto}//${platformSubdomain(slug)}${port ? `:${port}` : ''}`;
+  const base = platformBase(req);
+  const host = base && base !== env.PLATFORM_DOMAIN.toLowerCase() ? `${slug}.${base}` : platformSubdomain(slug);
+  return `${proto}//${host}${port ? `:${port}` : ''}`;
 }
 
 /** What kind of address the browser is on, so the sign-in page can adapt. Public, reveals only the facility name. */

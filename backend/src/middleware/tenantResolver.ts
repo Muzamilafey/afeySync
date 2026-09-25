@@ -62,18 +62,18 @@ export const platformSubdomain = (slug: string) => `${slug}.${env.PLATFORM_DOMAI
 export async function explainUnknownHost(rawHost: string): Promise<string> {
   const host = (rawHost || '').toLowerCase();
   if (!host || /^\d+\.\d+\.\d+\.\d+$/.test(host) || host === '::1' || host === 'localhost') {
-    return `This page could not tell which facility you are on (the API received the address "${host || 'none'}"). Open your facility's own address, for example http://<facility>.localhost:3000 during development. If you already are, check that TRUST_PROXY in the API .env allows the frontend proxy (the default "loopback" works when both run on the same computer).`;
+    return `We couldn't tell which facility this page belongs to. Please sign in on the main page, or open your facility's own address. If this keeps happening, ask your administrator to check the server's TRUST_PROXY setting.`;
   }
   const slug = slugFromHost(host);
   if (slug) {
     const { Tenant, FacilityApplication } = meta();
     const tenant = await Tenant.findOne({ slug }).select('status name').lean();
-    if (tenant?.status === 'suspended') return `${tenant.name} is suspended. Contact AfeySync support.`;
-    if (tenant && tenant.status !== 'active') return `${tenant.name} is still being set up. Try again in a moment.`;
+    if (tenant?.status === 'suspended') return `${tenant.name} is currently paused. Please contact AfeySync support to restore access.`;
+    if (tenant && tenant.status !== 'active') return `${tenant.name} is still being set up. Please try again in a few minutes.`;
     const app = await FacilityApplication.findOne({ slug }).sort({ createdAt: -1 }).select('status facility.name').lean();
-    if (app?.status === 'submitted') return `${app.facility?.name ?? slug} is registered but waiting for approval by AfeySync, so it cannot be used yet. The platform owner approves it in Owner → Registrations; you will get an email when it is ready.`;
-    if (app?.status === 'email_pending') return `The registration for ${app.facility?.name ?? slug} has not been confirmed yet. Finish the email verification on the registration page.`;
-    if (app?.status === 'rejected') return `The registration for ${app.facility?.name ?? slug} was not approved.`;
+    if (app?.status === 'submitted') return `${app.facility?.name ?? slug} is registered but waiting for approval by AfeySync. You'll get an email as soon as it's ready.`;
+    if (app?.status === 'email_pending') return `The registration for ${app.facility?.name ?? slug} isn't confirmed yet. Please finish the email verification step on the registration page.`;
+    if (app?.status === 'rejected') return `The registration for ${app.facility?.name ?? slug} wasn't approved. Please contact AfeySync support for details.`;
   }
-  return `No facility uses the address ${host}. Check the address, or sign in on the main page and we will take you to your facility.`;
+  return `We couldn't find a facility at ${host}. Please check the address, or sign in on the main page and we'll take you to your facility.`;
 }

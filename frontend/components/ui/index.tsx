@@ -247,12 +247,27 @@ export function KV({ items }: { items: Array<[string, ReactNode]> }) {
   );
 }
 
+/** Friendly headings for common error codes; codes listed in GENTLE are guidance rather than failures. */
+const ERROR_TITLES: Record<string, string> = {
+  TENANT_NOT_RESOLVED: 'Facility not found at this address',
+  NOT_PLATFORM_HOST: 'Use your facility address',
+  INVALID_CREDENTIALS: 'Email or password is incorrect',
+  ACCOUNT_LOCKED: 'Account temporarily locked',
+  HANDOFF_INVALID: 'Sign-in link expired',
+  VALIDATION_ERROR: 'Please check the form',
+  RATE_LIMITED: 'Too many attempts',
+  MODULE_NOT_IN_PLAN: 'Not included in your plan',
+};
+const GENTLE = new Set(['TENANT_NOT_RESOLVED', 'NOT_PLATFORM_HOST', 'HANDOFF_INVALID', 'MODULE_NOT_IN_PLAN']);
+
 export function ErrorText({ error }: { error: unknown }) {
   if (!error) return null;
   const e = error as { message?: string; code?: string };
+  const code = e.code && e.code !== 'ERROR' ? e.code : '';
+  const title = ERROR_TITLES[code] ?? (code ? code.charAt(0) + code.slice(1).toLowerCase().replace(/_/g, ' ') : 'Something went wrong');
   return (
-    <Alert tone="red" title={e.code && e.code !== 'ERROR' ? e.code.replace(/_/g, ' ') : 'Error'}>
-      {e.message ?? 'Something went wrong'}
+    <Alert tone={GENTLE.has(code) ? 'blue' : 'red'} title={title}>
+      {e.message ?? 'Please try again.'}
     </Alert>
   );
 }
