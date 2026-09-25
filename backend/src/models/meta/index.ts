@@ -641,6 +641,35 @@ const loginHandoffSchema = new Schema(
 );
 loginHandoffSchema.index({ expiresAt: 1 }, { expireAfterSeconds: 0 });
 
+/** An article on the public website, written in the owner portal (Markdown; no raw HTML is ever rendered). */
+const blogPostSchema = new Schema(
+  {
+    title: { type: String, required: true },
+    slug: { type: String, required: true, unique: true },
+    excerpt: String,
+    content: { type: String, default: '' },
+    coverImageId: Schema.Types.ObjectId,
+    coverAlt: String,
+    category: String,
+    tags: [String],
+    status: { type: String, enum: ['draft', 'published'], default: 'draft', index: true },
+    publishedAt: Date,
+    seoTitle: String,
+    seoDescription: String,
+    authorId: Schema.Types.ObjectId,
+    authorName: String,
+    updatedByName: String,
+  },
+  { timestamps: true },
+);
+blogPostSchema.index({ status: 1, publishedAt: -1 });
+
+/** An image used in website articles. Public once uploaded; the content is checked, never trusted from the browser. */
+const blogImageSchema = new Schema(
+  { mimeType: { type: String, required: true }, data: { type: Buffer, required: true, select: false }, sha256: String, sizeBytes: Number, width: Number, height: Number, originalName: String, uploadedBy: Schema.Types.ObjectId, uploadedByName: String },
+  { timestamps: true },
+);
+
 const schemas = {
   PlatformUser: platformUserSchema,
   Tenant: tenantSchema,
@@ -671,6 +700,8 @@ const schemas = {
   TenantLogo: tenantLogoSchema,
   SmsWallet: smsWalletSchema,
   SmsLedger: smsLedgerSchema,
+  BlogPost: blogPostSchema,
+  BlogImage: blogImageSchema,
 };
 
 type Schemas = typeof schemas;

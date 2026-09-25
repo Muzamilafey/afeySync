@@ -1,4 +1,5 @@
-import { Mail, MessageCircle, Phone } from 'lucide-react';
+import { Mail, Phone } from 'lucide-react';
+import { WhatsAppIcon } from '@/features/site/WhatsAppIcon';
 import { PageHero } from '@/features/site/SiteShell';
 import { ContactForm } from '@/features/site/ContactForm';
 import { CONTACT, pageMetadata } from '@/features/site/site';
@@ -8,7 +9,7 @@ export const metadata = pageMetadata('Contact Us', `Talk to AfeySync about a dem
 export default function ContactPage() {
   const channels = [
     { icon: Phone, label: 'Call us', value: CONTACT.phoneDisplay, href: `tel:${CONTACT.phoneTel}`, note: 'Talk to our team directly' },
-    { icon: MessageCircle, label: 'WhatsApp', value: CONTACT.phoneDisplay, href: CONTACT.whatsapp, note: 'Chat with us on WhatsApp', external: true },
+    { icon: WhatsAppIcon, label: 'WhatsApp', value: CONTACT.phoneDisplay, href: CONTACT.whatsapp, note: 'Chat with us on WhatsApp', external: true, tone: 'bg-[#25D366]' },
     { icon: Mail, label: 'Email', value: CONTACT.email, href: `mailto:${CONTACT.email}`, note: 'We reply as soon as we can' },
   ];
   return (
@@ -16,9 +17,9 @@ export default function ContactPage() {
       <PageHero eyebrow="Contact" title="Let’s talk about your facility" intro="Want a demo, help choosing a plan, or support with your account? Reach us any way you like." />
       <section className="mx-auto grid max-w-7xl gap-10 px-4 py-16 sm:px-6 lg:grid-cols-[1fr_1.4fr] lg:px-8">
         <div className="space-y-4">
-          {channels.map(({ icon: Icon, label, value, href, note, external }) => (
+          {channels.map(({ icon: Icon, label, value, href, note, external, tone }: { icon: React.ComponentType<{ className?: string }>; label: string; value: string; href: string; note: string; external?: boolean; tone?: string }) => (
             <a key={label} href={href} {...(external ? { target: '_blank', rel: 'noopener noreferrer' } : {})} className="flex items-center gap-4 rounded-2xl border border-slate-200 bg-white p-5 transition hover:border-brand-300 hover:shadow-md dark:border-slate-800 dark:bg-slate-900 dark:hover:border-brand-700">
-              <span className="grid h-12 w-12 shrink-0 place-items-center rounded-xl bg-brand-600 text-white"><Icon className="h-5 w-5" aria-hidden /></span>
+              <span className={`grid h-12 w-12 shrink-0 place-items-center rounded-xl text-white ${tone ?? 'bg-brand-600'}`}><Icon className="h-6 w-6" aria-hidden /></span>
               <span>
                 <span className="block text-xs font-semibold tracking-wide text-slate-500 uppercase">{label}</span>
                 <span className="block text-lg font-semibold text-slate-900 dark:text-white">{value}</span>

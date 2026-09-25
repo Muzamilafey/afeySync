@@ -3,6 +3,9 @@ import { ArrowRight, CheckCircle2, ChevronDown, Phone } from 'lucide-react';
 import { CtaBand } from './SiteShell';
 import { CONTACT, accountsLinks, siteUrl } from './site';
 import { FAQ, FEATURE_GROUPS, HIGHLIGHTS } from './content';
+import { fetchPosts } from '@/features/blog/server';
+import { PostCard } from '@/features/blog/PostCard';
+import { GUIDE_TOPICS } from './guide';
 
 /** A drawn, illustrative preview of the product (no real patient data). */
 function ProductPreview() {
@@ -59,7 +62,7 @@ function ProductPreview() {
 }
 
 export async function HomePage() {
-  const links = await accountsLinks();
+  const [links, latest] = await Promise.all([accountsLinks(), fetchPosts({ limit: 3 })]);
   const url = siteUrl();
   const jsonLd = [
     {
@@ -200,6 +203,41 @@ export async function HomePage() {
         <p className="mt-10 text-center text-sm text-slate-600 dark:text-slate-400">
           Need a hand? Read the <Link href="/user-guide" className="font-semibold text-brand-700 hover:underline dark:text-emerald-300">user guide</Link> or <Link href="/contact" className="font-semibold text-brand-700 hover:underline dark:text-emerald-300">talk to us</Link>.
         </p>
+      </section>
+
+
+      {/* Latest articles */}
+      {latest.posts.length > 0 && (
+        <section className="mx-auto max-w-7xl px-4 py-20 sm:px-6 lg:px-8">
+          <div className="flex flex-wrap items-end justify-between gap-6">
+            <div className="max-w-2xl">
+              <p className="text-sm font-semibold tracking-wide text-brand-700 uppercase dark:text-emerald-300">From our blog</p>
+              <h2 className="mt-3 text-3xl font-bold tracking-tight text-slate-900 sm:text-4xl dark:text-white">News and guides for your facility</h2>
+            </div>
+            <Link href="/blog" className="inline-flex items-center gap-1.5 text-sm font-semibold text-brand-700 hover:underline dark:text-emerald-300">All articles <ArrowRight className="h-4 w-4" aria-hidden /></Link>
+          </div>
+          <div className="mt-10 grid gap-6 md:grid-cols-3">{latest.posts.map((p) => <PostCard key={p.id} post={p} />)}</div>
+        </section>
+      )}
+
+      {/* User guide */}
+      <section className="bg-gradient-to-br from-[#062f29] to-[#0a6e5c] py-20 text-white">
+        <div className="mx-auto grid max-w-7xl gap-10 px-4 sm:px-6 lg:grid-cols-[1fr_1.4fr] lg:px-8">
+          <div>
+            <p className="text-sm font-semibold tracking-wide text-emerald-300 uppercase">User guide</p>
+            <h2 className="mt-3 text-3xl font-bold tracking-tight sm:text-4xl">Every feature, taught step by step</h2>
+            <p className="mt-4 text-emerald-50/80">{GUIDE_TOPICS.length} easy guides for every role: reception, nurses, clinicians, lab, pharmacy, cashiers and managers.</p>
+            <Link href="/user-guide" className="mt-8 inline-flex items-center gap-2 rounded-xl bg-white px-5 py-3 text-sm font-semibold text-[#062f29] hover:bg-emerald-50">Open the user guide <ArrowRight className="h-4 w-4" aria-hidden /></Link>
+          </div>
+          <div className="grid gap-3 sm:grid-cols-2">
+            {GUIDE_TOPICS.filter((t) => ['front-desk', 'consultation', 'laboratory', 'pharmacy', 'billing-and-cashier', 'sha-claims', 'inpatient', 'reports'].includes(t.slug)).map(({ slug, title, icon: Icon }) => (
+              <Link key={slug} href={`/user-guide/${slug}`} className="flex items-center gap-3 rounded-2xl bg-white/10 px-4 py-3.5 ring-1 ring-white/15 transition hover:bg-white/15">
+                <Icon className="h-5 w-5 shrink-0 text-emerald-300" aria-hidden />
+                <span className="text-sm font-medium">{title}</span>
+              </Link>
+            ))}
+          </div>
+        </div>
       </section>
 
       {/* FAQ */}

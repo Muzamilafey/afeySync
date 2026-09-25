@@ -1,6 +1,8 @@
 import Link from 'next/link';
 import type { ReactNode } from 'react';
-import { Mail, MapPin, MessageCircle, Phone } from 'lucide-react';
+import { Mail, MapPin, Phone } from 'lucide-react';
+import { WhatsAppIcon } from './WhatsAppIcon';
+import { ChatWidget } from './ChatWidget';
 import { CONTACT, NAV, accountsLinks } from './site';
 import { Logo, SiteHeader } from './SiteHeader';
 
@@ -33,6 +35,7 @@ export async function SiteShell({ children }: { children: ReactNode }) {
             <p className="text-sm font-semibold text-white">Help</p>
             <ul className="mt-4 space-y-2.5 text-sm">
               <li><Link className="hover:text-white" href="/user-guide">User guide</Link></li>
+              <li><Link className="hover:text-white" href="/blog">Blog</Link></li>
               <li><Link className="hover:text-white" href="/contact">Contact us</Link></li>
               <li><Link className="hover:text-white" href="/about">About AfeySync</Link></li>
               <li><Link className="hover:text-white" href="/privacy">Privacy</Link></li>
@@ -42,7 +45,7 @@ export async function SiteShell({ children }: { children: ReactNode }) {
             <p className="text-sm font-semibold text-white">Talk to us</p>
             <ul className="mt-4 space-y-3 text-sm">
               <li><a className="flex items-center gap-2.5 hover:text-white" href={`tel:${CONTACT.phoneTel}`}><Phone className="h-4 w-4 text-emerald-300" aria-hidden />{CONTACT.phoneDisplay}</a></li>
-              <li><a className="flex items-center gap-2.5 hover:text-white" href={CONTACT.whatsapp} target="_blank" rel="noopener noreferrer"><MessageCircle className="h-4 w-4 text-emerald-300" aria-hidden />WhatsApp us</a></li>
+              <li><a className="flex items-center gap-2.5 hover:text-white" href={CONTACT.whatsapp} target="_blank" rel="noopener noreferrer"><WhatsAppIcon className="h-4 w-4 text-[#25D366]" />WhatsApp us</a></li>
               <li><a className="flex items-center gap-2.5 hover:text-white" href={`mailto:${CONTACT.email}`}><Mail className="h-4 w-4 text-emerald-300" aria-hidden />{CONTACT.email}</a></li>
               <li className="flex items-center gap-2.5"><MapPin className="h-4 w-4 text-emerald-300" aria-hidden />{CONTACT.location}</li>
             </ul>
@@ -55,6 +58,7 @@ export async function SiteShell({ children }: { children: ReactNode }) {
           </div>
         </div>
       </footer>
+      <ChatWidget whatsapp={CONTACT.whatsapp} phoneTel={CONTACT.phoneTel} phoneDisplay={CONTACT.phoneDisplay} />
     </div>
   );
 }

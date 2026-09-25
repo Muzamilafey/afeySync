@@ -15,7 +15,7 @@ export function proxy(request: NextRequest) {
   if (host !== apex && host !== `www.${apex}`) return NextResponse.next();
 
   const { pathname, search } = request.nextUrl;
-  if (WEBSITE_PAGES.has(pathname) || pathname.startsWith('/opengraph-image')) return NextResponse.next();
+  if (WEBSITE_PAGES.has(pathname) || /^\/(blog|user-guide)(\/[a-z0-9-]+)?$/.test(pathname) || pathname.startsWith('/opengraph-image')) return NextResponse.next();
 
   const port = hostHeader.includes(':') ? `:${hostHeader.split(':').pop()}` : '';
   const proto = request.headers.get('x-forwarded-proto')?.split(',')[0].trim() || (apex === 'localhost' ? 'http' : 'https');

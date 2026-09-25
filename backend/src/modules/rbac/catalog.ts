@@ -167,11 +167,12 @@ export const PLATFORM_PERMISSIONS = {
   'owner.platform': 'Manage platform settings, users, health and backups',
   'owner.support': 'Request support access to a tenant',
   'owner.logs': 'View integration and audit logs',
+  'owner.content': 'Write and publish articles on the public website',
 } as const;
 
 export const PLATFORM_ROLE_PERMISSIONS: Record<string, string[]> = {
   super_owner: Object.keys(PLATFORM_PERMISSIONS),
-  platform_admin: ['owner.tenants', 'owner.integrations', 'owner.subscriptions', 'owner.support', 'owner.logs'],
+  platform_admin: ['owner.tenants', 'owner.integrations', 'owner.subscriptions', 'owner.support', 'owner.logs', 'owner.content'],
   platform_support: ['owner.support', 'owner.logs'],
 };
 

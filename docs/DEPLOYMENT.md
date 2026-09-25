@@ -55,3 +55,11 @@ read live from the owner portal's public plans.
 
 The contact form emails `CONTACT_EMAIL` (backend `.env`, falls back to `SUPPORT_EMAIL`) using the
 platform SMTP settings. It never sends mail to the address typed into the form.
+
+## Website articles (blog)
+
+Owner users with the **owner.content** permission (super owners and platform admins) write articles in the
+owner portal under **Website articles**. Articles are Markdown with uploaded images (PNG, JPEG, WebP or
+GIF, 5 MB max, checked by content). Images are stored in the platform database, so they are included in
+the normal database backups, and are served publicly at `/api/v1/blog/images/<id>`. Published articles
+appear at `afey.co.ke/blog` and in the sitemap; drafts stay private.
