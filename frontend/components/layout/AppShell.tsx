@@ -56,7 +56,7 @@ const NAV: Array<{ section: string; items: NavItem[] }> = [
     { href: '/admin/users', label: 'Users & Roles', icon: Users, any: ['admin.users', 'admin.roles'] },
     { href: '/admin/integrations', label: 'Integrations', icon: HeartPulse, any: ['admin.integrations'] },
     { href: '/admin/audit', label: 'Audit Trail', icon: FileSearch, any: ['admin.audit'] },
-    { href: '/admin/security', label: 'Support Access', icon: Settings, any: ['admin.support_access'] },
+    { href: '/admin/security', label: 'Security', icon: Settings, any: ['admin.support_access', 'admin.settings'] },
   ] },
 ];
 

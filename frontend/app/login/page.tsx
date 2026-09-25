@@ -10,6 +10,9 @@ import { Button, ErrorText, Field, Input } from '@/components/ui';
 import { api } from '@/services/api';
 import { useSessionStore } from '@/stores/session';
 import { useQueryClient } from '@tanstack/react-query';
+import { MfaChallenge } from '@/features/auth/MfaChallenge';
+import { GoogleButton } from '@/features/auth/GoogleButton';
+import type { LoginResult, MfaChallengeData } from '@/features/auth/types';
 
 const schema = z.object({ email: z.string().email('Enter a valid email'), password: z.string().min(1, 'Password is required') });
 
@@ -20,20 +23,26 @@ function LoginForm() {
   const qc = useQueryClient();
   const [error, setError] = useState<unknown>(null);
   const { register, handleSubmit, formState } = useForm<z.infer<typeof schema>>({ resolver: zodResolver(schema) });
+  const [challenge, setChallenge] = useState<MfaChallengeData | null>(null);
+  const finish = (r: LoginResult) => {
+    setToken('tenant', r.accessToken!);
+    qc.clear();
+    const next = params.get('next');
+    router.replace(r.mfaEnrollmentRequired ? '/setup-2fa' : r.mustChangePassword ? '/account?first=1' : next && next.startsWith('/') && !next.startsWith('//') ? next : '/dashboard');
+  };
 
   const onSubmit = handleSubmit(async (values) => {
     setError(null);
     try {
-      const res = await api<{ accessToken: string; mustChangePassword: boolean }>('/auth/login', { method: 'POST', body: values, auth: false });
-      setToken('tenant', res.data.accessToken);
-      qc.clear();
-      const next = params.get('next');
-      router.replace(res.data.mustChangePassword ? '/account?first=1' : next && next.startsWith('/') && !next.startsWith('//') ? next : '/dashboard');
+      const res = await api<LoginResult & Partial<MfaChallengeData>>('/auth/login', { method: 'POST', body: values, auth: false });
+      if (res.data.mfaRequired) setChallenge(res.data as MfaChallengeData);
+      else finish(res.data);
     } catch (e) {
       setError(e);
     }
   });
 
+  if (challenge) return <MfaChallenge realm="tenant" challenge={challenge} onSuccess={finish} onCancel={() => setChallenge(null)} />;
   return (
     <form onSubmit={onSubmit} className="space-y-4">
       <ErrorText error={error} />
@@ -47,6 +56,7 @@ function LoginForm() {
         Sign in
       </Button>
       <p className="text-center text-sm"><a className="text-brand-600" href="/forgot-password">Forgot password?</a></p>
+      <GoogleButton realm="tenant" next={params.get('next')} />
     </form>
   );
 }

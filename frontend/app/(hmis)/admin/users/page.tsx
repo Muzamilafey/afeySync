@@ -10,7 +10,9 @@ import { ago } from '@/lib/utils';
 import type { Branch } from '@/types/api';
 
 interface Role { _id: string; key: string; name: string; scope: 'tenant' | 'branch'; system: boolean; permissions: string[] }
-interface User { _id: string; name: string; email: string; status: string; branchAccess: 'all' | 'specific'; roleIds: Role[]; branchIds: Array<{ _id: string; branchName: string }>; lastLoginAt?: string }
+interface User { _id: string; name: string; email: string; status: string; branchAccess: 'all' | 'specific'; roleIds: Role[]; branchIds: Array<{ _id: string; branchName: string }>; lastLoginAt?: string; mfa?: { totp?: { confirmedAt?: string }; email?: { enabledAt?: string }; sms?: { enabledAt?: string } }; google?: { email?: string } }
+
+const mfaMethods = (u: User) => [u.mfa?.totp?.confirmedAt && 'App', u.mfa?.email?.enabledAt && 'Email', u.mfa?.sms?.enabledAt && 'SMS'].filter(Boolean) as string[];
 
 function UserForm({ roles, branches, onDone }: { roles: Role[]; branches: Branch[]; onDone: () => void }) {
   const qc = useQueryClient();
@@ -121,6 +123,12 @@ export default function UsersPage() {
   const users = useQuery({ queryKey: ['users', q], queryFn: async () => (await api<User[]>('/users', { query: { q, limit: 100 } })).data, enabled: can('admin.users') });
   const roles = useQuery({ queryKey: ['roles'], queryFn: async () => (await api<Role[]>('/roles')).data });
   const branches = useQuery({ queryKey: ['branches'], queryFn: async () => (await api<Branch[]>('/branches')).data });
+  const [mfaUser, setMfaUser] = useState<User | null>(null);
+  const [mfaReason, setMfaReason] = useState('');
+  const mfaReset = useMutation({
+    mutationFn: () => api(`/users/${mfaUser!._id}/mfa/reset`, { method: 'POST', body: { reason: mfaReason } }),
+    onSuccess: () => { setMfaUser(null); setMfaReason(''); qc.invalidateQueries({ queryKey: ['users'] }); },
+  });
   const action = useMutation({
     mutationFn: async ({ id, act }: { id: string; act: 'suspend' | 'activate' | 'reset-password' }) => (await api<{ temporaryPassword?: string }>(`/users/${id}/${act}`, { method: 'POST' })).data,
     onSuccess: (d) => {
@@ -139,17 +147,19 @@ export default function UsersPage() {
           <Input className="mb-3 max-w-sm" placeholder="Search users" value={q} onChange={(e) => setQ(e.target.value)} />
           {users.isLoading && <Loading />}
           {users.data && (
-            <Table head={['Name', 'Roles', 'Branches', 'Status', 'Last login', '']} empty={users.data.length === 0}>
+            <Table head={['Name', 'Roles', 'Branches', '2-step', 'Status', 'Last login', '']} empty={users.data.length === 0}>
               {users.data.map((u) => (
                 <tr key={u._id}>
                   <Td className="font-medium">{u.name}<span className="muted block text-xs">{u.email}</span></Td>
                   <Td>{u.roleIds.map((r) => <Badge key={r._id} className="mr-1">{r.name}</Badge>)}</Td>
                   <Td>{u.branchAccess === 'all' ? <Badge tone="purple">All branches</Badge> : u.branchIds.map((b) => b.branchName).join(', ')}</Td>
+                  <Td>{mfaMethods(u).length ? <Badge tone="green">{mfaMethods(u).join(' · ')}</Badge> : <Badge>off</Badge>}{u.google?.email && <span className="muted block text-xs">Google linked</span>}</Td>
                   <Td><Badge tone={statusTone(u.status)}>{u.status}</Badge></Td>
                   <Td>{ago(u.lastLoginAt)}</Td>
                   <Td className="whitespace-nowrap">
                     <Button size="sm" variant="ghost" onClick={() => action.mutate({ id: u._id, act: u.status === 'active' ? 'suspend' : 'activate' })}>{u.status === 'active' ? 'Suspend' : 'Activate'}</Button>
                     <Button size="sm" variant="ghost" onClick={() => action.mutate({ id: u._id, act: 'reset-password' })}>Reset password</Button>
+                    {mfaMethods(u).length > 0 && <Button size="sm" variant="ghost" onClick={() => { mfaReset.reset(); setMfaUser(u); }}>Reset 2-step</Button>}
                   </Td>
                 </tr>
               ))}
@@ -171,6 +181,14 @@ export default function UsersPage() {
           </Table>
         </Card>
       )}
+      <Modal open={!!mfaUser} onClose={() => setMfaUser(null)} title={`Reset two-step verification — ${mfaUser?.name ?? ''}`}>
+        <div className="space-y-3">
+          <Alert tone="amber">Only do this after confirming the person&apos;s identity (for example, in person). Their sessions end and they must set up two-step verification again if your policy requires it.</Alert>
+          <Field label="Reason"><Input value={mfaReason} onChange={(e) => setMfaReason(e.target.value)} placeholder="e.g. Lost phone, identity confirmed in person" /></Field>
+          <ErrorText error={mfaReset.error} />
+          <Button variant="danger" onClick={() => mfaReset.mutate()} loading={mfaReset.isPending} disabled={mfaReason.trim().length < 5}>Reset</Button>
+        </div>
+      </Modal>
       <Modal open={modal === 'user'} onClose={() => setModal(null)} title="Add user" wide>
         {roles.data && branches.data && <UserForm roles={roles.data} branches={branches.data} onDone={() => setModal(null)} />}
       </Modal>

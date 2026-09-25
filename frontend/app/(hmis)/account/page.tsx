@@ -6,6 +6,8 @@ import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { api } from '@/services/api';
 import { Alert, Badge, Button, Card, ErrorText, Field, Input, PageHeader, Select, Table, Td, statusTone } from '@/components/ui';
 import { fmtDate } from '@/lib/utils';
+import { MfaSettings } from '@/features/auth/MfaSettings';
+import { GoogleLinkCard } from '@/features/auth/GoogleLinkCard';
 
 interface MyLeave { staff: { fullName: string; employeeNumber: string } | null; items: Array<{ _id: string; type: string; startDate: string; endDate: string; days: number; status: string }> }
 
@@ -54,6 +56,7 @@ function Inner() {
           <Button type="submit" loading={m.isPending}>Update password</Button>
         </form>
       </Card>
+      {!params.get('first') && <div className="mt-5 max-w-3xl space-y-5"><MfaSettings realm="tenant" /><GoogleLinkCard realm="tenant" justLinked={params.get('google') === 'linked'} /></div>}
       {!params.get('first') && <MyLeaveCard />}
     </>
   );

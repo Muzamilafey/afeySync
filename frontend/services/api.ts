@@ -68,6 +68,11 @@ export async function api<T = unknown>(path: string, opts: ApiOptions = {}): Pro
   const body = await res.json().catch(() => ({}));
   if (!res.ok || body.success === false) {
     if (res.status === 401 && opts.auth !== false) useSessionStore.getState().clear(realm);
+    // Server-enforced: a session restricted to MFA enrollment can only reach the setup page.
+    if (body?.error?.code === 'MFA_ENROLLMENT_REQUIRED' && typeof window !== 'undefined') {
+      const target = realm === 'owner' ? '/owner/setup-2fa' : '/setup-2fa';
+      if (window.location.pathname !== target) window.location.assign(target);
+    }
     throw new ApiError(res.status, body?.error?.code ?? 'ERROR', body?.error?.message ?? `Request failed (${res.status})`, body?.error?.details);
   }
   return body;
