@@ -68,6 +68,7 @@ docs/       Architecture, security, integration and operations documentation
 cd backend && cp .env.example .env    # fill JWT_SECRET, JWT_REFRESH_SECRET, INTEGRATION_ENCRYPTION_KEY
 npm install
 AFS_OWNER_PASSWORD='ChangeMe12345' npm run seed:owner -- --email owner@example.com
+# Windows PowerShell:  $env:AFS_OWNER_PASSWORD='ChangeMe12345'; npm run seed:owner -- --email owner@example.com
 npm run dev                            # http://localhost:4000, Swagger at /api/docs
 
 cd ../frontend && cp .env.example .env.local   # OWNER_HOSTS=owner.localhost for dev

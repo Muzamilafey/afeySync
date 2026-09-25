@@ -18,12 +18,14 @@ async function main() {
   const name = arg('name') ?? 'Platform Owner';
   const password = process.env.AFS_OWNER_PASSWORD;
   if (!email || !password) {
-    console.error('Usage: AFS_OWNER_PASSWORD=... npm run seed:owner -- --email you@example.com [--name "Name"]');
+    console.error('Usage (macOS/Linux):  AFS_OWNER_PASSWORD=... npm run seed:owner -- --email you@example.com [--name "Name"]');
+    console.error("Usage (PowerShell):   $env:AFS_OWNER_PASSWORD='...'; npm run seed:owner -- --email you@example.com [--name \"Name\"]");
+    console.error('Usage (cmd):          set AFS_OWNER_PASSWORD=... && npm run seed:owner -- --email you@example.com');
     process.exit(1);
   }
   const check = passwordPolicy.safeParse(password);
   if (!check.success) {
-    console.error(check.error.issues[0].message);
+    console.error(`${check.error.issues[0].message} (at least 10 characters with upper and lower case letters and a digit)`);
     process.exit(1);
   }
   await connectMeta();
