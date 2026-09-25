@@ -1,6 +1,7 @@
 'use client';
 
 import { useEffect, useState, type ReactNode } from 'react';
+import { ThemeToggle } from '@/features/theme/ThemeToggle';
 
 type Phase = 'day' | 'night';
 
@@ -26,6 +27,7 @@ export function AuthBackground({ children }: { children: ReactNode }) {
   }, []);
   return (
     <div className={`auth-bg auth-bg-${phase} relative flex min-h-screen items-center justify-center p-4`} data-phase={phase}>
+      <ThemeToggle className="absolute top-4 right-4 bg-black/25 text-white backdrop-blur hover:bg-black/40 dark:hover:bg-black/40" />
       {children}
     </div>
   );

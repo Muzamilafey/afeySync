@@ -7,7 +7,7 @@ export const metadata = pageMetadata('About Us', 'AfeySync builds hospital manag
 export default function AboutPage() {
   return (
     <>
-      <PageHero eyebrow="About AfeySync" title="Software made for Kenyan healthcare" intro="We build AfeySync so that clinics and hospitals can spend less time on paperwork and follow-up calls, and more time caring for patients." />
+      <PageHero eyebrow="About AfeySync" title="Software made for Kenyan healthcare" intro="AfeySync, also known as Afey HMIS, is a hospital management information system made in Kenya. We build it so that clinics and hospitals can spend less time on paperwork and follow-up calls, and more time caring for patients." />
       <section className="mx-auto max-w-7xl px-4 py-16 sm:px-6 lg:px-8">
         <div className="grid gap-6 md:grid-cols-3">
           {[

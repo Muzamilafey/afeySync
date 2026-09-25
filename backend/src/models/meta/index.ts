@@ -670,6 +670,25 @@ const blogImageSchema = new Schema(
   { timestamps: true },
 );
 
+/** A "What's new" announcement from AfeySync to facilities (Markdown, like website articles). */
+const announcementSchema = new Schema(
+  {
+    title: { type: String, required: true },
+    body: { type: String, default: '' },
+    category: { type: String, enum: ['feature', 'improvement', 'fix', 'maintenance', 'notice'], default: 'notice' },
+    coverImageId: Schema.Types.ObjectId,
+    audience: { type: String, enum: ['all', 'facilities'], default: 'all' },
+    tenantIds: [Schema.Types.ObjectId],
+    pinned: { type: Boolean, default: false },
+    status: { type: String, enum: ['draft', 'published'], default: 'draft' },
+    publishedAt: Date,
+    authorName: String,
+    updatedByName: String,
+  },
+  { timestamps: true },
+);
+announcementSchema.index({ status: 1, publishedAt: -1 });
+
 const schemas = {
   PlatformUser: platformUserSchema,
   Tenant: tenantSchema,
@@ -702,6 +721,7 @@ const schemas = {
   SmsLedger: smsLedgerSchema,
   BlogPost: blogPostSchema,
   BlogImage: blogImageSchema,
+  Announcement: announcementSchema,
 };
 
 type Schemas = typeof schemas;

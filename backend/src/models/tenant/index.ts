@@ -102,6 +102,8 @@ const userSchema = new Schema(
     lockedUntil: Date,
     lastLoginAt: Date,
     passwordChangedAt: Date,
+    /** When the user last opened “What's new”; later announcements count as unread. */
+    announcementsSeenAt: Date,
     /** Two-factor authentication. Secrets are AES-256-GCM encrypted; recovery codes are stored hashed. */
     mfa: {
       totp: {

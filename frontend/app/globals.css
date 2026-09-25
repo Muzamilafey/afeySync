@@ -1,5 +1,17 @@
 @import 'tailwindcss';
 
+/* dark: follows the switch (data-theme on <html>) and otherwise the device setting. */
+@custom-variant dark {
+  &:where([data-theme='dark'], [data-theme='dark'] *) {
+    @slot;
+  }
+  @media (prefers-color-scheme: dark) {
+    &:where(:root:not([data-theme='light']), :root:not([data-theme='light']) *) {
+      @slot;
+    }
+  }
+}
+
 @theme {
   --font-sans: 'Inter', ui-sans-serif, system-ui, -apple-system, 'Segoe UI', Roboto, sans-serif;
   --color-brand-50: #ecfdf8;
@@ -12,6 +24,7 @@
 }
 
 :root {
+  color-scheme: light;
   --bg: #f5f7fa;
   --surface: #ffffff;
   --surface-2: #f8fafc;
@@ -22,6 +35,7 @@
 
 @media (prefers-color-scheme: dark) {
   :root:not([data-theme='light']) {
+    color-scheme: dark;
     --bg: #0b1220;
     --surface: #111a2b;
     --surface-2: #0f1726;
@@ -31,6 +45,7 @@
   }
 }
 :root[data-theme='dark'] {
+  color-scheme: dark;
   --bg: #0b1220;
   --surface: #111a2b;
   --surface-2: #0f1726;
@@ -177,3 +192,15 @@ body {
   :root:not([data-theme='light']) .prose-article :is(th, td, hr) { border-color: #1f2a3d; }
   :root:not([data-theme='light']) .prose-article th { background: #111a2b; }
 }
+:root[data-theme='dark'] .prose-article { color: #cbd5e1; }
+:root[data-theme='dark'] .prose-article :is(h2, h3, h4, strong, th) { color: #f1f5f9; }
+:root[data-theme='dark'] .prose-article a { color: #6ee7b7; }
+:root[data-theme='dark'] .prose-article blockquote { background: #0f2a26; color: #e2e8f0; }
+:root[data-theme='dark'] .prose-article code { background: #1e293b; }
+:root[data-theme='dark'] .prose-article :is(th, td, hr) { border-color: #1f2a3d; }
+:root[data-theme='dark'] .prose-article th { background: #111a2b; }
+
+/* Smaller article text inside panels (What's new). */
+.prose-article.prose-compact { font-size: 0.925rem; line-height: 1.7; }
+.prose-article.prose-compact h2 { margin-top: 1.2em; font-size: 1.1rem; }
+.prose-article.prose-compact h3 { margin-top: 1em; font-size: 1rem; }

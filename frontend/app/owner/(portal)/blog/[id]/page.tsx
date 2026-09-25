@@ -5,7 +5,8 @@ import { use, useEffect, useRef, useState, type ChangeEvent } from 'react';
 import { useRouter } from 'next/navigation';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { ArrowLeft, Bold, ExternalLink, Heading2, Heading3, ImagePlus, Italic, Link2, List, ListOrdered, Loader2, Minus, Quote, Table2, Trash2, Upload, X } from 'lucide-react';
-import { apiRaw, ownerApi, ApiError } from '@/services/api';
+import { ownerApi } from '@/services/api';
+import { uploadOwnerImage } from '@/features/blog/uploadImage';
 import { Alert, Button, ErrorText, Field, Input, Loading, Select, Tabs, Textarea } from '@/components/ui';
 import { Markdown } from '@/features/site/Markdown';
 import { websiteUrl, formatDate, type OwnerPost } from '@/features/blog/shared';
@@ -15,13 +16,7 @@ interface Draft { title: string; slug: string; excerpt: string; content: string;
 const EMPTY: Draft = { title: '', slug: '', excerpt: '', content: '', coverImageId: null, coverImageUrl: null, coverAlt: '', category: '', tags: '', status: 'draft', publishedAt: '', seoTitle: '', seoDescription: '' };
 const CATEGORIES = ['News', 'Guides', 'Product updates', 'SHA & insurance', 'Health facility management', 'Customer stories'];
 
-async function uploadImage(file: File) {
-  if (file.size > 5 * 1024 * 1024) throw new ApiError(413, 'FILE_TOO_LARGE', 'Images must be 5 MB or smaller');
-  const form = new FormData();
-  form.append('file', file);
-  const res = await apiRaw('/owner/blog/images', { form, realm: 'owner' });
-  return ((await res.json()) as { data: { id: string; url: string } }).data;
-}
+const uploadImage = uploadOwnerImage;
 
 const toLocalInput = (d: string | null | undefined) => (d ? new Date(new Date(d).getTime() - new Date().getTimezoneOffset() * 60_000).toISOString().slice(0, 16) : '');
 

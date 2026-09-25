@@ -95,6 +95,7 @@ export const HIGHLIGHTS: Feature[] = [
 ];
 
 export const FAQ: { q: string; a: string }[] = [
+  { q: 'What is AfeySync (Afey HMIS)?', a: 'AfeySync, also called Afey HMIS, is a cloud hospital management information system made for Kenyan health facilities. It runs reception, clinical care, laboratory, pharmacy, wards, maternity, billing, M-Pesa payments and SHA and insurance claims in one secure system at afey.co.ke.' },
   { q: 'What kind of facilities can use AfeySync?', a: 'Hospitals, medical centres, clinics, nursing and maternity homes, dental clinics and faith-based facilities of any level in Kenya. You turn on the modules you need.' },
   { q: 'Do we need to install anything?', a: 'No. AfeySync runs in the web browser on computers, tablets and phones. You can also install it on a device like an app.' },
   { q: 'Is our patient data kept separate from other facilities?', a: 'Yes. Every facility has its own database and its own web address, and every request is checked against your facility. Staff only see what their role allows.' },

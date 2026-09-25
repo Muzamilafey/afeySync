@@ -2,10 +2,11 @@
 
 import Link from 'next/link';
 import { InstallButton } from '@/features/pwa/InstallButton';
+import { ThemeToggle } from '@/features/theme/ThemeToggle';
 import { usePathname, useRouter } from 'next/navigation';
 import { useEffect, useState, type ReactNode } from 'react';
 import { useQuery } from '@tanstack/react-query';
-import { Activity, Boxes, Building2, Cable, FileCode2, HeartPulse, LayoutDashboard, LifeBuoy, ListChecks, LogOut, Menu, ScrollText, Settings2, Users, X, DatabaseBackup, ShieldCheck, Inbox, Layers, Receipt, MessageSquareText, Newspaper } from 'lucide-react';
+import { Activity, Boxes, Building2, Cable, FileCode2, HeartPulse, LayoutDashboard, LifeBuoy, ListChecks, LogOut, Menu, ScrollText, Settings2, Users, X, DatabaseBackup, ShieldCheck, Inbox, Layers, Receipt, MessageSquareText, Newspaper, Megaphone } from 'lucide-react';
 import { ownerApi } from '@/services/api';
 import { useSessionStore } from '@/stores/session';
 import { cn } from '@/lib/utils';
@@ -21,6 +22,7 @@ const NAV = [
   { href: '/owner/plans', label: 'Plans & Modules', icon: Layers, perm: 'owner.subscriptions' },
   { href: '/owner/billing', label: 'Billing', icon: Receipt, perm: 'owner.subscriptions' },
   { href: '/owner/sms', label: 'SMS', icon: MessageSquareText, perm: 'owner.subscriptions' },
+  { href: '/owner/announcements', label: 'What’s new posts', icon: Megaphone, perm: 'owner.content' },
   { href: '/owner/blog', label: 'Website articles', icon: Newspaper, perm: 'owner.content' },
   { href: '/owner/integrations', label: 'Integrations', icon: Cable, perm: 'owner.integrations' },
   { href: '/owner/api-config', label: 'API Config', icon: FileCode2, perm: 'owner.integrations' },
@@ -66,6 +68,7 @@ export function OwnerShell({ children }: { children: ReactNode }) {
         <span className="font-semibold">AfeySync Owner</span>
         <span className="ml-auto flex items-center gap-3 text-sm">
           <InstallButton className="border-white/20 hover:bg-white/10" />
+          <ThemeToggle className="p-1.5 hover:bg-white/10 dark:hover:bg-white/10" />
           <Settings2 className="h-4 w-4 opacity-60" />
           <span className="hidden sm:inline">{me.user.name}</span>
           <span className="rounded bg-white/10 px-2 py-0.5 text-xs">{me.user.role.replace('_', ' ')}</span>

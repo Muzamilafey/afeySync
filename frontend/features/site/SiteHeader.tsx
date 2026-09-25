@@ -5,6 +5,7 @@ import Link from 'next/link';
 import { usePathname } from 'next/navigation';
 import { Activity, ArrowRight, Menu, X } from 'lucide-react';
 import { cn } from '@/lib/utils';
+import { ThemeToggle } from '@/features/theme/ThemeToggle';
 
 type NavItem = { href: string; label: string };
 
@@ -46,14 +47,18 @@ export function SiteHeader({ nav, signIn, getStarted }: { nav: readonly NavItem[
           ))}
         </nav>
         <div className="hidden items-center gap-2 lg:flex">
+          <ThemeToggle className="text-slate-600 dark:text-slate-300" />
           <a href={signIn} className="rounded-lg px-3 py-2 text-sm font-semibold text-slate-700 hover:bg-slate-100 dark:text-slate-200 dark:hover:bg-slate-800">Sign in</a>
           <a href={getStarted} className="inline-flex items-center gap-1.5 rounded-xl bg-brand-600 px-4 py-2 text-sm font-semibold text-white shadow-md shadow-brand-600/25 transition hover:bg-brand-700">
             Get started <ArrowRight className="h-4 w-4" aria-hidden />
           </a>
         </div>
+        <div className="flex items-center gap-1 lg:hidden">
+        <ThemeToggle className="text-slate-700 dark:text-slate-200" />
         <button type="button" className="grid h-10 w-10 place-items-center rounded-lg text-slate-700 hover:bg-slate-100 lg:hidden dark:text-slate-200 dark:hover:bg-slate-800" aria-label={open ? 'Close menu' : 'Open menu'} aria-expanded={open} aria-controls="site-menu" onClick={() => setOpen((o) => !o)}>
           {open ? <X className="h-5 w-5" /> : <Menu className="h-5 w-5" />}
         </button>
+        </div>
       </div>
       {open && (
         <div id="site-menu" className="border-t border-slate-200 px-4 pt-2 pb-5 lg:hidden dark:border-slate-800">

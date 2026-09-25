@@ -1,7 +1,7 @@
 import Link from 'next/link';
 import { ArrowRight, CheckCircle2, ChevronDown, Phone } from 'lucide-react';
 import { CtaBand } from './SiteShell';
-import { CONTACT, accountsLinks, siteUrl } from './site';
+import { BRAND_NAMES, CONTACT, accountsLinks, siteUrl } from './site';
 import { FAQ, FEATURE_GROUPS, HIGHLIGHTS } from './content';
 import { fetchPosts } from '@/features/blog/server';
 import { PostCard } from '@/features/blog/PostCard';
@@ -68,7 +68,10 @@ export async function HomePage() {
     {
       '@context': 'https://schema.org',
       '@type': 'Organization',
+      '@id': `${url}/#organization`,
       name: 'AfeySync',
+      alternateName: BRAND_NAMES,
+      description: 'AfeySync (Afey HMIS) builds a cloud hospital management information system for Kenyan health facilities.',
       url,
       logo: `${url}/icons/icon-512.png`,
       email: CONTACT.email,
@@ -80,11 +83,25 @@ export async function HomePage() {
       '@context': 'https://schema.org',
       '@type': 'SoftwareApplication',
       name: 'AfeySync HMIS',
+      alternateName: BRAND_NAMES,
+      publisher: { '@id': `${url}/#organization` },
+      countriesSupported: 'KE',
       applicationCategory: 'BusinessApplication',
       applicationSubCategory: 'Hospital Management Information System',
       operatingSystem: 'Web browser',
       url,
       description: 'Cloud hospital management system for Kenyan hospitals and clinics: patient registration, OPD, lab, pharmacy, wards, maternity, billing, M-Pesa and SHA claims.',
+    },
+    {
+      '@context': 'https://schema.org',
+      '@type': 'WebSite',
+      '@id': `${url}/#website`,
+      name: 'AfeySync',
+      alternateName: BRAND_NAMES,
+      url: `${url}/`,
+      inLanguage: 'en-KE',
+      publisher: { '@id': `${url}/#organization` },
+      potentialAction: { '@type': 'SearchAction', target: { '@type': 'EntryPoint', urlTemplate: `${url}/blog?q={search_term_string}` }, 'query-input': 'required name=search_term_string' },
     },
     {
       '@context': 'https://schema.org',
@@ -104,7 +121,7 @@ export async function HomePage() {
         <div className="relative mx-auto grid max-w-7xl items-center gap-14 px-4 pt-14 pb-20 sm:px-6 lg:grid-cols-[1.05fr_1fr] lg:px-8 lg:pt-20 lg:pb-28">
           <div>
             <p className="inline-flex items-center gap-2 rounded-full bg-white px-3 py-1 text-xs font-semibold text-brand-700 shadow-sm ring-1 ring-brand-100 dark:bg-slate-900 dark:text-emerald-300 dark:ring-slate-800">
-              <span className="h-1.5 w-1.5 rounded-full bg-brand-500" /> Hospital management system built for Kenya
+              <span className="h-1.5 w-1.5 rounded-full bg-brand-500" /> AfeySync HMIS · Hospital management system built for Kenya
             </p>
             <h1 className="mt-6 text-4xl leading-[1.08] font-bold tracking-tight text-slate-900 sm:text-5xl lg:text-6xl dark:text-white">
               Run your whole facility <span className="bg-gradient-to-r from-brand-600 to-emerald-500 bg-clip-text text-transparent">in one secure system.</span>

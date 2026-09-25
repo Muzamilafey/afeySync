@@ -5,6 +5,7 @@ import Link from 'next/link';
 import { Activity, ArrowLeft, ArrowRight, Building2, Check, CheckCircle2, Clock, Globe2, Loader2, Lock, Mail, Plus, ShieldCheck, Sparkles, Trash2, UserRound, X, Layers, ClipboardCheck, MailCheck, Server } from 'lucide-react';
 import { api, ApiError } from '@/services/api';
 import { cn } from '@/lib/utils';
+import { ThemeToggle } from '@/features/theme/ThemeToggle';
 import { COUNTIES, FACILITY_LEVELS, FACILITY_TYPES, HEARD_FROM, INTEREST_COPY, OWNERSHIP } from './constants';
 
 /* ------------------------------------------------------------------ Types & persistence */
@@ -446,7 +447,7 @@ export function OnboardingWizard() {
           <div className="mx-auto flex max-w-3xl items-center justify-between px-5 py-3 sm:px-8">
             <Link href="/login" className="flex items-center gap-2 lg:hidden"><Activity className="h-5 w-5 text-brand-600" /><span className="font-semibold">AfeySync</span></Link>
             <p className="hidden text-sm text-slate-500 lg:block">{step === 'done' ? 'Registration complete' : `Step ${idx + 1} of ${STEPS.length} · ${STEPS[idx]?.label}`}</p>
-            <p className="text-sm text-slate-500">Already registered? <Link href="/login" className="font-medium text-brand-600 hover:underline">Sign in</Link></p>
+            <div className="flex items-center gap-2"><p className="text-sm text-slate-500">Already registered? <Link href="/login" className="font-medium text-brand-600 hover:underline">Sign in</Link></p><ThemeToggle className="text-slate-600 dark:text-slate-300" /></div>
           </div>
           <div className="h-1 bg-slate-100 dark:bg-slate-800"><div className="h-1 bg-gradient-to-r from-brand-500 to-emerald-400 transition-all duration-500" style={{ width: `${progress}%` }} /></div>
         </header>

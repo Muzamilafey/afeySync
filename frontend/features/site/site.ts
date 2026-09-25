@@ -9,6 +9,14 @@ export const CONTACT = {
   location: 'Kenya',
 } as const;
 
+/** Other names people search for; used in structured data so search engines connect them to AfeySync. */
+export const BRAND_NAMES = ['Afey', 'Afey HMIS', 'AfeySync HMIS', 'Afey Sync', 'Afeysync', 'afey.co.ke', 'Afey Hospital Management System'];
+export const BRAND_KEYWORDS = [
+  'AfeySync', 'Afey HMIS', 'afey.co.ke', 'Afey', 'HMIS Kenya', 'hospital management system Kenya', 'hospital management software Kenya',
+  'clinic management system Kenya', 'SHA claims software', 'SHA HMIS', 'M-Pesa hospital billing', 'EMR Kenya', 'electronic medical records Kenya',
+  'pharmacy management system Kenya', 'laboratory information system Kenya', 'nursing home software Kenya', 'medical centre software Kenya',
+];
+
 export const NAV = [
   { href: '/features', label: 'Features' },
   { href: '/pricing', label: 'Pricing' },
@@ -62,5 +70,6 @@ export function pageMetadata(title: string, description: string, path: string) {
     alternates: { canonical: url },
     openGraph: { title: full, description, url, siteName: 'AfeySync', type: 'website' as const, locale: 'en_KE' },
     twitter: { card: 'summary_large_image' as const, title: full, description },
+    keywords: BRAND_KEYWORDS,
   };
 }
