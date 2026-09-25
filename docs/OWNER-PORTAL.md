@@ -5,6 +5,8 @@
 * **Facilities**: search and filter; 8-step wizard; details tabs (Overview, Branches, Users,
   Domains, Subscription, Integrations, Health, Audit); suspend and activate; reset the facility
   admin; create a branch; add and verify domains.
+* **Registrations**: review self-service facility registrations from `/get-started`, approve (which
+  provisions the facility) or reject with a reason, and choose manual or automatic approval.
 * **Integrations**: SHA, DHA HIE, M-Pesa (including optional B2C payouts), Africa's Talking, SMTP, Google Sign-In, Slade360 (facility credentials only) and storage. Actions: enable or
   disable globally, set the environment, rotate credentials, allow facility credentials, and run
   tests (auth / registry / eligibility / terminology / email).

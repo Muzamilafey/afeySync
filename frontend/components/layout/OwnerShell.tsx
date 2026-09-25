@@ -4,7 +4,7 @@ import Link from 'next/link';
 import { usePathname, useRouter } from 'next/navigation';
 import { useEffect, useState, type ReactNode } from 'react';
 import { useQuery } from '@tanstack/react-query';
-import { Activity, Boxes, Building2, Cable, FileCode2, HeartPulse, LayoutDashboard, LifeBuoy, ListChecks, LogOut, Menu, ScrollText, Settings2, Users, X, DatabaseBackup, ShieldCheck } from 'lucide-react';
+import { Activity, Boxes, Building2, Cable, FileCode2, HeartPulse, LayoutDashboard, LifeBuoy, ListChecks, LogOut, Menu, ScrollText, Settings2, Users, X, DatabaseBackup, ShieldCheck, Inbox } from 'lucide-react';
 import { ownerApi } from '@/services/api';
 import { useSessionStore } from '@/stores/session';
 import { cn } from '@/lib/utils';
@@ -16,6 +16,7 @@ export const useOwnerMe = () => useQuery({ queryKey: ['owner-me'], queryFn: asyn
 const NAV = [
   { href: '/owner', label: 'Dashboard', icon: LayoutDashboard },
   { href: '/owner/facilities', label: 'Facilities', icon: Building2, perm: 'owner.tenants' },
+  { href: '/owner/registrations', label: 'Registrations', icon: Inbox, perm: 'owner.tenants' },
   { href: '/owner/integrations', label: 'Integrations', icon: Cable, perm: 'owner.integrations' },
   { href: '/owner/api-config', label: 'API Config', icon: FileCode2, perm: 'owner.integrations' },
   { href: '/owner/logs', label: 'Integration Logs', icon: ScrollText, perm: 'owner.logs' },

@@ -11,6 +11,7 @@
 * Idempotency: SHA transactions accept `idempotencyKey`. Jobs and callback events are deduplicated
   by unique keys.
 * Main groups:
+  * Public onboarding: `/onboarding/*` (see ONBOARDING.md); owner review at `/owner/onboarding/*`
   * Platform & admin: `/auth`, `/owner/*` (incl. `/owner/backups`), `/branches`, `/users`, `/roles`, `/permissions`, `/admin/*`, `/dashboard`, `/notifications`
   * Registration & front desk: `/patients`, `/visits`, `/queues`, `/referrals`, `/appointments`
   * Clinical: `/opd/*`, `/consultations`, `/laboratory/*`, `/radiology/*`, `/pharmacy/*`, `/inpatient/*`, `/maternity/*`, `/mch/*`, `/family-planning/*`, `/dental/*`, `/mortuary/*`, `/documents`

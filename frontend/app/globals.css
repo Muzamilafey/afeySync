@@ -64,3 +64,11 @@ body {
     color: var(--muted);
   }
 }
+
+@keyframes fadeUp {
+  from { opacity: 0; transform: translateY(8px); }
+  to { opacity: 1; transform: none; }
+}
+@media (prefers-reduced-motion: reduce) {
+  .animate-\[fadeUp_\.35s_ease-out\] { animation: none; }
+}

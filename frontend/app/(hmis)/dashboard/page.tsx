@@ -18,7 +18,9 @@ interface Dash {
   integrations?: Record<string, IntegrationFlag>;
 }
 
-const LABELS: Record<string, string> = { sha: 'SHA', dha: 'DHA HIE', mpesa: 'M-Pesa', africastalking: 'SMS', smtp: 'Email' };
+const LABELS: Record<string, string> = { sha: 'SHA', dha: 'DHA HIE', mpesa: 'M-Pesa', africastalking: 'SMS', smtp: 'Email', slade360: 'Private insurance' };
+/** First name for the greeting, skipping honorifics such as "Dr.". */
+const firstName = (name = '') => name.split(/\s+/).find((w) => !/^(dr|mr|mrs|ms|miss|prof|sr|rev)\.?$/i.test(w)) ?? '';
 
 export default function DashboardPage() {
   const { data: me } = useMe();
@@ -36,7 +38,7 @@ export default function DashboardPage() {
   return (
     <>
       <PageHeader
-        title={`Good day, ${me?.user.name.split(' ')[0] ?? ''}`}
+        title={`Good day, ${firstName(me?.user.name)}`}
         subtitle={`${me?.tenant.name} · ${data.branch?.name ?? 'All branches'}`}
         actions={me?.permissions.includes('patients.create') && <Link href="/frontdesk"><Button><UserPlus className="h-4 w-4" /> Register patient</Button></Link>}
       />

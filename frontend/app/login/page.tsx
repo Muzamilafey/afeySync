@@ -75,7 +75,10 @@ export default function LoginPage() {
         <Suspense>
           <LoginForm />
         </Suspense>
-        <p className="muted mt-6 text-center text-xs">Access is logged and audited. Authorized personnel only.</p>
+        <div className="mt-6 rounded-xl border border-[var(--border)] bg-[var(--surface-2)] p-3 text-center text-sm">
+          New to AfeySync? <a href="/get-started" className="font-semibold text-brand-600 hover:underline">Register your facility →</a>
+        </div>
+        <p className="muted mt-4 text-center text-xs">Access is logged and audited. Authorized personnel only.</p>
       </div>
     </div>
   );

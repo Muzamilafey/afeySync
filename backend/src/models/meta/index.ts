@@ -430,6 +430,48 @@ const jobSchema = new Schema(
 );
 jobSchema.index({ status: 1, runAt: 1 });
 
+/**
+ * Self-service facility registration. An application is created unverified, becomes `submitted`
+ * once the applicant proves control of the administrator email, and is provisioned only on
+ * approval (by a platform owner, or automatically when the owner enables it). The chosen admin
+ * password is stored only as a hash; the email code only as a hash.
+ */
+const facilityApplicationSchema = new Schema(
+  {
+    reference: { type: String, required: true, unique: true },
+    status: { type: String, enum: ['email_pending', 'submitted', 'approved', 'rejected'], default: 'email_pending', index: true },
+    tokenHash: { type: String, required: true, unique: true, select: false },
+    slug: { type: String, required: true, index: true },
+    facility: {
+      name: String, legalName: String, facilityType: String, facilityLevel: String, ownership: String, facilityCode: String, registrationNumber: String,
+      county: String, subCounty: String, physicalAddress: String, phone: String, email: String, dhaFacilityRegistryCode: String, bedCapacity: Number,
+    },
+    branches: [{ _id: false, branchName: String, branchCode: String, county: String, subCounty: String, physicalAddress: String, phone: String }],
+    admin: { name: String, email: { type: String, index: true }, phone: String, jobTitle: String, passwordHash: { type: String, select: false } },
+    plan: { type: String, enum: ['trial', 'basic', 'standard', 'premium'], default: 'trial' },
+    interests: [String],
+    expectedUsers: Number,
+    heardFrom: String,
+    notes: String,
+    termsAcceptedAt: Date,
+    verification: { codeHash: { type: String, select: false }, sentAt: Date, sends: { type: Number, default: 0 }, attempts: { type: Number, default: 0 }, verifiedAt: Date },
+    submittedAt: Date,
+    reviewedBy: Schema.Types.ObjectId,
+    reviewedByName: String,
+    reviewedAt: Date,
+    rejectionReason: String,
+    autoApproved: Boolean,
+    tenantId: Schema.Types.ObjectId,
+    provisioningError: String,
+    ip: String,
+    userAgent: String,
+    /** Unverified applications are removed automatically after this time. */
+    expiresAt: Date,
+  },
+  { timestamps: true },
+);
+facilityApplicationSchema.index({ expiresAt: 1 }, { expireAfterSeconds: 0 });
+
 const schemas = {
   PlatformUser: platformUserSchema,
   Tenant: tenantSchema,
@@ -449,6 +491,7 @@ const schemas = {
   BackupRun: backupRunSchema,
   MfaChallenge: mfaChallengeSchema,
   OAuthState: oauthStateSchema,
+  FacilityApplication: facilityApplicationSchema,
 };
 
 type Schemas = typeof schemas;

@@ -20,6 +20,7 @@ AfeySync Platform ──┬── Owner Portal (owner.afeysync.com)       → af
 | Two-step verification (passkeys, authenticator app, email, SMS, recovery codes) with facility/platform policies; Sign in with Google (explicit linking) | ✅ |
 | RBAC: permission catalog, 30 default roles, custom roles, branch scoping, privilege-escalation guards | ✅ |
 | Append-only audit trail (tenant + platform) | ✅ |
+| Facility self-registration at `/get-started` (email-verified, owner review or automatic approval) | ✅ |
 | Owner portal: dashboard, facilities, provisioning wizard, domains, subscriptions, health, jobs, backups, support access | ✅ |
 | Integration credential manager (AES-256-GCM, platform → tenant priority, masked in UI) | ✅ |
 | DHA HIE adapter: OAuth token caching and renewal, contract-driven operations, retries, integration logs | ✅ |
@@ -81,7 +82,7 @@ In development, set `PLATFORM_DOMAIN=localhost` and `OWNER_HOSTS=owner.localhost
 cd backend && npm test      # needs MongoDB on 127.0.0.1:27017 (or TEST_MONGO_URI)
 ```
 
-The suite (168 tests) covers authentication, two-step verification (TOTP vectors, replay, lockout, policy enforcement, WebAuthn passkeys with origin binding and counter checks), Google OIDC (PKCE, token verification, no auto-linking), password reset, refresh-token reuse detection, RBAC
+The suite (174 tests) covers authentication, two-step verification (TOTP vectors, replay, lockout, policy enforcement, WebAuthn passkeys with origin binding and counter checks), Google OIDC (PKCE, token verification, no auto-linking), password reset, refresh-token reuse detection, RBAC
 and escalation, **tenant isolation** (Tenant A user vs. Tenant B patient, claim, DHA record, SHA
 record, credentials and branch), **branch isolation**, support access, the DHA/SHA adapter (token
 caching, 401 renewal, retries, headers, error mapping, not-configured operations), callbacks (HMAC,
@@ -95,6 +96,6 @@ and backup monitoring.
 ## Documentation
 
 [Architecture](docs/ARCHITECTURE.md) · [Multitenancy](docs/MULTITENANCY.md) · [RBAC](docs/RBAC.md) ·
-[Database](docs/DATABASE.md) · [Security](docs/SECURITY.md) · [SHA](docs/SHA.md) · [DHA](docs/DHA.md) · [Insurance](docs/INSURANCE.md) ·
+[Database](docs/DATABASE.md) · [Security](docs/SECURITY.md) · [SHA](docs/SHA.md) · [DHA](docs/DHA.md) · [Insurance](docs/INSURANCE.md) · [Onboarding](docs/ONBOARDING.md) ·
 [FHIR](docs/FHIR.md) · [M-Pesa](docs/M-PESA.md) · [SMS](docs/SMS.md) · [Email](docs/EMAIL.md) ·
 [Authentication](docs/AUTHENTICATION.md) · [Deployment](docs/DEPLOYMENT.md) · [Owner portal](docs/OWNER-PORTAL.md) · [Branches](docs/BRANCHES.md) · [API](docs/API.md)

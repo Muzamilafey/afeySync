@@ -96,7 +96,8 @@ export async function seedTenantRbac(m: TenantModels) {
  * administrator, domains, subscription and default configuration. Rolls back everything it created
  * if any step fails.
  */
-export async function provisionFacility(input: CreateFacilityInput, actorId?: string) {
+/** `adminPasswordHash`: a password the administrator already chose (self-service onboarding); they are not forced to change it. */
+export async function provisionFacility(input: CreateFacilityInput, actorId?: string, opts: { adminPasswordHash?: string } = {}) {
   const { Tenant, TenantDatabase, TenantDomain, TenantSubscription } = meta();
   const slug = input.facility.slug;
   if (await Tenant.exists({ slug })) throw conflict('A facility with this slug already exists', undefined, 'TENANT_EXISTS');
@@ -150,17 +151,17 @@ export async function provisionFacility(input: CreateFacilityInput, actorId?: st
 
     const adminRole = await m.Role.findOne({ key: 'facility_admin' }).lean();
     const ownerRole = await m.Role.findOne({ key: 'facility_owner' }).lean();
-    const generated = input.administrator.password ? undefined : `Afs-${randomToken(9)}9a`;
+    const generated = input.administrator.password || opts.adminPasswordHash ? undefined : `Afs-${randomToken(9)}9a`;
     const admin = await m.User.create({
       name: input.administrator.name,
       email: input.administrator.email.toLowerCase(),
       phone: input.administrator.phone,
-      passwordHash: await hashPassword(input.administrator.password ?? generated!),
+      passwordHash: opts.adminPasswordHash ?? (await hashPassword(input.administrator.password ?? generated!)),
       roleIds: [adminRole!._id, ownerRole!._id],
       branchAccess: 'all',
       branchIds: branches.map((b) => b._id),
       defaultBranchId: branches[0]._id,
-      mustChangePassword: true,
+      mustChangePassword: !opts.adminPasswordHash,
       status: 'active',
     });
     steps.push('admin');
