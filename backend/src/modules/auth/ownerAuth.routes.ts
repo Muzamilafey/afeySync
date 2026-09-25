@@ -48,7 +48,7 @@ router.post(
 
 
 type PlatformUserDoc = NonNullable<Awaited<ReturnType<ReturnType<typeof meta>['PlatformUser']['findOne']>>>;
-const OWNER_METHODS: MfaMethod[] = ['totp', 'email'];
+const OWNER_METHODS: MfaMethod[] = ['totp', 'email', 'passkey'];
 
 export async function platformMfaPolicy(): Promise<MfaPolicy> {
   const s = await meta().PlatformSettings.findOne({ key: 'security.mfa' }).lean();

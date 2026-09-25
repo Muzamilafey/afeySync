@@ -23,13 +23,18 @@ Google    ─┘                                   └─ otherwise ────
 | Authenticator app (TOTP) | RFC 6238, SHA-1, 6 digits, 30 s, ±1 step | Google Authenticator, Microsoft Authenticator, Authy… The secret is AES-256-GCM encrypted and `select: false`. Replay is blocked because a step can never be reused. |
 | Email code | 6 digits via the `EMAIL` job queue | Uses the platform/facility SMTP. |
 | SMS code | 6 digits via the `SMS` job queue | Uses Africa's Talking. Kenyan mobile numbers only. Facility portal only. |
+| Passkey (WebAuthn) | Fingerprint, face, device PIN, phone or security key | Up to 10 per user, each named. The relying party is the exact host (facility subdomain, custom domain or owner portal), so a passkey only works where it was created. User verification is required. Only the public key and signature counter are stored; a counter that goes backwards (a cloned key) is refused. Both portals. |
 | Recovery codes | 10 single-use codes, hashed | Issued when the first method is enabled. They can be regenerated with the password. |
 
 * **Challenges** (`MfaChallenge`, meta DB) are single use and expire after 10 minutes. After 5
   wrong codes the challenge is locked. Codes can be resent at most 5 times, with a 30 s cooldown.
-  An email or SMS code is bound to its method and challenge, and only its hash is stored. Login
+  An email or SMS code is bound to its method and challenge, and only its hash is stored. A passkey
+  sign-in uses a fresh WebAuthn challenge that is cleared after one attempt, and the browser origin
+  must be the same host over HTTPS (plain HTTP only on `localhost` in development). Login
   challenges are bound to the facility host (or the owner host) that created them.
-* **Enrollment** always verifies a code first. Removing a method needs the password, and the last
+* **Enrollment** always verifies a code (or, for a passkey, a signed WebAuthn registration) first.
+  Facilities and the platform that had saved a policy before passkeys existed have passkeys added
+  to their allowed methods once, by migration; admins can untick it in Security. Removing a method needs the password, and the last
   method cannot be removed while policy requires MFA. Every change sends a security email and is
   audited.
 * **Policy**:

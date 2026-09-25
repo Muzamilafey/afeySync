@@ -154,7 +154,7 @@ usersRouter.post(
     const user = await User.findById(id);
     if (!user) throw notFound('User not found');
     await assertCanManageUser(req, user);
-    user.set('mfa', { totp: { lastStep: -1 }, recoveryCodes: [] });
+    user.set('mfa', { totp: { lastStep: -1 }, passkeys: [], recoveryCodes: [] });
     await user.save();
     await revokeAllForSubject(id, 'mfa_reset');
     await audit(req, { action: 'user.mfa_reset', resource: 'user', resourceId: id, newValue: { reason } });

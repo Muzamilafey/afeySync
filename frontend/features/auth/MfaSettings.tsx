@@ -3,20 +3,24 @@
 import { useEffect, useRef, useState } from 'react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import QRCode from 'qrcode';
-import { CheckCircle2, Download, Mail, MessageSquare, ShieldCheck, Smartphone } from 'lucide-react';
+import { CheckCircle2, Download, Fingerprint, Mail, MessageSquare, ShieldCheck, Smartphone, Trash2 } from 'lucide-react';
+import { browserSupportsWebAuthn, startRegistration, type PublicKeyCredentialCreationOptionsJSON } from '@simplewebauthn/browser';
 import { api } from '@/services/api';
 import { useSessionStore, type Realm } from '@/stores/session';
 import { Alert, Badge, Button, Card, ErrorText, Field, Input, Loading, Modal } from '@/components/ui';
+import { fmtDateTime } from '@/lib/utils';
 import { authBase, METHOD_LABEL, type MfaMethod } from './types';
 
-interface Status { enabled: MfaMethod[]; available: MfaMethod[]; required: boolean; policy: { mode: string; methods: MfaMethod[] }; preferred: MfaMethod | null; email: string; smsPhone?: string; phoneOnFile?: string; recoveryCodesRemaining: number }
+interface Status { enabled: MfaMethod[]; available: MfaMethod[]; required: boolean; policy: { mode: string; methods: MfaMethod[] }; preferred: MfaMethod | null; email: string; smsPhone?: string; phoneOnFile?: string; recoveryCodesRemaining: number; passkeys?: Passkey[] }
+interface Passkey { id: string; name?: string; createdAt?: string; lastUsedAt?: string; backedUp?: boolean }
 type Enrolled = { recoveryCodes?: string[]; accessToken?: string };
 
-const ICON = { totp: Smartphone, email: Mail, sms: MessageSquare } as const;
+const ICON = { totp: Smartphone, email: Mail, sms: MessageSquare, passkey: Fingerprint } as const;
 const DESC: Record<MfaMethod, string> = {
   totp: 'Google Authenticator, Microsoft Authenticator, Authy or any TOTP app. Works offline.',
   email: 'A 6-digit code is emailed to you at sign-in.',
   sms: 'A 6-digit code is sent by SMS to your phone at sign-in.',
+  passkey: 'Sign in with your fingerprint, face or device PIN. Phishing-resistant and nothing to type.',
 };
 
 function RecoveryCodes({ codes, onDone }: { codes: string[]; onDone: () => void }) {
@@ -112,6 +116,35 @@ function CodeSetup({ realm, method, phoneOnFile, onEnrolled }: { realm: Realm; m
   );
 }
 
+function PasskeySetup({ realm, onEnrolled }: { realm: Realm; onEnrolled: (e: Enrolled) => void }) {
+  const base = authBase(realm);
+  const [name, setName] = useState('');
+  const add = useMutation({
+    mutationFn: async () => {
+      const o = await api<{ challengeToken: string; options: PublicKeyCredentialCreationOptionsJSON }>(`${base}/mfa/passkey/options`, { method: 'POST', realm });
+      let response;
+      try {
+        response = await startRegistration({ optionsJSON: o.data.options });
+      } catch (err) {
+        if (err instanceof Error && err.name === 'InvalidStateError') throw new Error('This device already has a passkey for your account.');
+        if (err instanceof Error && err.name === 'NotAllowedError') throw new Error('The passkey prompt was cancelled or timed out. Try again.');
+        throw err;
+      }
+      return (await api<Enrolled>(`${base}/mfa/passkey/confirm`, { method: 'POST', body: { challengeToken: o.data.challengeToken, name: name.trim() || 'Passkey', response }, realm })).data;
+    },
+    onSuccess: onEnrolled,
+  });
+  if (!browserSupportsWebAuthn()) return <Alert tone="amber">This browser does not support passkeys. Use a current version of Chrome, Edge, Safari or Firefox.</Alert>;
+  return (
+    <div className="space-y-3">
+      <p className="text-sm">Your browser will ask you to create a passkey with this device (fingerprint, face or PIN), a phone, or a security key. The private key never leaves your device.</p>
+      <Field label="Name" hint="Helps you recognise it later, e.g. “Ward laptop” or “My phone”"><Input value={name} onChange={(e) => setName(e.target.value)} maxLength={60} /></Field>
+      <ErrorText error={add.error} />
+      <Button onClick={() => add.mutate()} loading={add.isPending}><Fingerprint className="h-4 w-4" /> Create passkey</Button>
+    </div>
+  );
+}
+
 /** Two-step verification settings for the signed-in user (facility or owner portal). */
 export function MfaSettings({ realm, onEnrollmentComplete }: { realm: Realm; onEnrollmentComplete?: () => void }) {
   const base = authBase(realm);
@@ -119,7 +152,7 @@ export function MfaSettings({ realm, onEnrollmentComplete }: { realm: Realm; onE
   const setToken = useSessionStore((s) => s.setToken);
   const [adding, setAdding] = useState<MfaMethod | null>(null);
   const [codes, setCodes] = useState<string[] | null>(null);
-  const [pw, setPw] = useState<{ action: 'disable' | 'regen'; method?: MfaMethod } | null>(null);
+  const [pw, setPw] = useState<{ action: 'disable' | 'regen' | 'passkey'; method?: MfaMethod; passkey?: Passkey } | null>(null);
   const [password, setPassword] = useState('');
   const status = useQuery({ queryKey: ['mfa-status', realm], queryFn: async () => (await api<Status>(`${base}/mfa`, { realm })).data });
   const refresh = () => qc.invalidateQueries({ queryKey: ['mfa-status', realm] });
@@ -131,7 +164,7 @@ export function MfaSettings({ realm, onEnrollmentComplete }: { realm: Realm; onE
     refresh();
   };
   const withPw = useMutation({
-    mutationFn: async () => (pw!.action === 'disable' ? api(`${base}/mfa/${pw!.method}/disable`, { method: 'POST', body: { password }, realm }) : api<{ recoveryCodes: string[] }>(`${base}/mfa/recovery-codes`, { method: 'POST', body: { password }, realm })),
+    mutationFn: async () => (pw!.action === 'disable' ? api(`${base}/mfa/${pw!.method}/disable`, { method: 'POST', body: { password }, realm }) : pw!.action === 'passkey' ? api(`${base}/mfa/passkey/remove`, { method: 'POST', body: { id: pw!.passkey!.id, password }, realm }) : api<{ recoveryCodes: string[] }>(`${base}/mfa/recovery-codes`, { method: 'POST', body: { password }, realm })),
     onSuccess: (r) => {
       const rc = (r.data as { recoveryCodes?: string[] })?.recoveryCodes;
       if (rc) setCodes(rc);
@@ -161,11 +194,24 @@ export function MfaSettings({ realm, onEnrollmentComplete }: { realm: Realm; onE
                 <p className="font-medium">{METHOD_LABEL[m]} {on && <CheckCircle2 className="inline h-4 w-4 text-emerald-600" />} {s.preferred === m && on && <Badge tone="blue">Default</Badge>}</p>
                 <p className="muted text-xs">{on && m === 'email' ? s.email : on && m === 'sms' ? s.smsPhone : DESC[m]}</p>
                 {!allowed && !on && <p className="text-xs text-amber-600">Not permitted by policy</p>}
+                {m === 'passkey' && on && (
+                  <ul className="mt-2 space-y-1">
+                    {(s.passkeys ?? []).map((k) => (
+                      <li key={k.id} className="flex items-center gap-2 text-sm">
+                        <span className="font-medium">{k.name ?? 'Passkey'}</span>
+                        {k.backedUp && <Badge tone="gray">synced</Badge>}
+                        <span className="muted text-xs">added {fmtDateTime(k.createdAt)}{k.lastUsedAt ? ` · last used ${fmtDateTime(k.lastUsedAt)}` : ''}</span>
+                        <button type="button" aria-label={`Remove passkey ${k.name ?? ''}`} className="muted ml-auto hover:text-red-600" onClick={() => { withPw.reset(); setPw({ action: 'passkey', passkey: k }); }}><Trash2 className="h-4 w-4" /></button>
+                      </li>
+                    ))}
+                  </ul>
+                )}
               </div>
               {on ? (
                 <div className="flex gap-1">
+                  {m === 'passkey' && allowed && (s.passkeys?.length ?? 0) < 10 && <Button size="sm" variant="ghost" onClick={() => setAdding('passkey')}>Add another</Button>}
                   {s.preferred !== m && <Button size="sm" variant="ghost" onClick={() => preferred.mutate(m)}>Make default</Button>}
-                  <Button size="sm" variant="ghost" onClick={() => { withPw.reset(); setPw({ action: 'disable', method: m }); }}>Remove</Button>
+                  <Button size="sm" variant="ghost" onClick={() => { withPw.reset(); setPw({ action: 'disable', method: m }); }}>{m === 'passkey' ? 'Remove all' : 'Remove'}</Button>
                 </div>
               ) : allowed && <Button size="sm" variant="secondary" onClick={() => setAdding(m)}>Set up</Button>}
             </li>
@@ -180,17 +226,18 @@ export function MfaSettings({ realm, onEnrollmentComplete }: { realm: Realm; onE
       )}
       <Modal open={!!adding} onClose={() => setAdding(null)} title={adding ? `Set up ${METHOD_LABEL[adding].toLowerCase()}` : ''}>
         {adding === 'totp' && <TotpSetup realm={realm} onEnrolled={onEnrolled} />}
+        {adding === 'passkey' && <PasskeySetup realm={realm} onEnrolled={onEnrolled} />}
         {(adding === 'email' || adding === 'sms') && <CodeSetup realm={realm} method={adding} phoneOnFile={s.phoneOnFile} onEnrolled={onEnrolled} />}
       </Modal>
       <Modal open={!!codes} onClose={() => undefined} title="Recovery codes">
         {codes && <RecoveryCodes codes={codes} onDone={() => { setCodes(null); onEnrollmentComplete?.(); }} />}
       </Modal>
-      <Modal open={!!pw} onClose={() => setPw(null)} title={pw?.action === 'disable' ? `Remove ${pw.method ? METHOD_LABEL[pw.method].toLowerCase() : ''}` : 'Generate new recovery codes'}>
+      <Modal open={!!pw} onClose={() => setPw(null)} title={pw?.action === 'disable' ? `Remove ${pw.method === 'passkey' ? 'all passkeys' : pw.method ? METHOD_LABEL[pw.method].toLowerCase() : ''}` : pw?.action === 'passkey' ? `Remove passkey “${pw.passkey?.name ?? 'Passkey'}”` : 'Generate new recovery codes'}>
         <div className="space-y-3">
           {pw?.action === 'regen' && <p className="muted text-sm">Your existing recovery codes will stop working.</p>}
           <Field label="Confirm your password"><Input type="password" value={password} onChange={(e) => setPassword(e.target.value)} autoComplete="current-password" /></Field>
           <ErrorText error={withPw.error} />
-          <Button variant={pw?.action === 'disable' ? 'danger' : 'primary'} onClick={() => withPw.mutate()} loading={withPw.isPending} disabled={!password}>Confirm</Button>
+          <Button variant={pw?.action === 'regen' ? 'primary' : 'danger'} onClick={() => withPw.mutate()} loading={withPw.isPending} disabled={!password}>Confirm</Button>
         </div>
       </Modal>
     </Card>

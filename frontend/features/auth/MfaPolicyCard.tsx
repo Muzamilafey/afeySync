@@ -12,7 +12,7 @@ interface Policy { mode: 'optional' | 'admins' | 'all'; methods: MfaMethod[] }
 /** Organisation-wide two-step verification policy (facility admin or platform owner). */
 export function MfaPolicyCard({ realm }: { realm: Realm }) {
   const path = realm === 'owner' ? '/owner/security/mfa-policy' : '/admin/security/mfa-policy';
-  const supported: MfaMethod[] = realm === 'owner' ? ['totp', 'email'] : ['totp', 'email', 'sms'];
+  const supported: MfaMethod[] = realm === 'owner' ? ['totp', 'email', 'passkey'] : ['totp', 'email', 'sms', 'passkey'];
   const qc = useQueryClient();
   const q = useQuery({ queryKey: ['mfa-policy', realm], queryFn: async () => (await api<Policy>(path, { realm })).data });
   const [p, setP] = useState<Policy | null>(null);
@@ -39,7 +39,7 @@ export function MfaPolicyCard({ realm }: { realm: Realm }) {
           </div>
         </div>
         {p.mode !== 'optional' && <Alert tone="blue">Users without a method will be asked to set one up at their next sign-in and cannot use anything else until they do.</Alert>}
-        {p.methods.includes('sms') && <p className="muted text-xs">SMS codes use the SMS provider configured for your facility and incur SMS charges. The authenticator app is the most secure option.</p>}
+        {p.methods.includes('sms') && <p className="muted text-xs">SMS codes use the SMS provider configured for your facility and incur SMS charges. Passkeys (fingerprint, face or device PIN) and the authenticator app are the most secure options.</p>}
         <ErrorText error={save.error} />
         {save.isSuccess && <Alert tone="green">Policy saved.</Alert>}
         <Button onClick={() => save.mutate()} loading={save.isPending} disabled={!p.methods.length}>Save policy</Button>

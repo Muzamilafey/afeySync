@@ -11,7 +11,7 @@ import { PERMISSION_GROUPS } from '../rbac/catalog';
  * upgraded on API start. Migrations are additive and idempotent: they never overwrite a facility's
  * customisations of system roles, only add permissions introduced by newer versions.
  */
-export const TENANT_SCHEMA_VERSION = 3;
+export const TENANT_SCHEMA_VERSION = 4;
 
 export async function migrateTenant(dbName: string, fromVersion: number) {
   const conn = getTenantConnection(dbName);
@@ -27,11 +27,19 @@ export async function migrateTenant(dbName: string, fromVersion: number) {
       if (grant.length) await m.Role.updateOne({ key: role.key, system: true }, { $addToSet: { permissions: { $each: grant } } });
     }
     if (v === 2) await seedTenantCatalogs(m);
+    // v4: passkeys are a new two-factor method; allow them in a facility's saved MFA policy.
+    if (v === 4) await m.FacilitySetting.updateOne({ key: 'security.mfa', 'value.methods': { $exists: true } }, { $addToSet: { 'value.methods': 'passkey' } });
   }
 }
 
 export async function runTenantMigrations() {
-  const { TenantDatabase } = meta();
+  const { TenantDatabase, PlatformSettings } = meta();
+  // Platform policy: allow passkeys once (the marker keeps an owner's later choice from being undone).
+  const marker = await PlatformSettings.findOne({ key: 'migrations.passkeyPolicy' }).lean();
+  if (!marker) {
+    await PlatformSettings.updateOne({ key: 'security.mfa', 'value.methods': { $exists: true } }, { $addToSet: { 'value.methods': 'passkey' } });
+    await PlatformSettings.updateOne({ key: 'migrations.passkeyPolicy' }, { $set: { key: 'migrations.passkeyPolicy', value: { at: new Date() } } }, { upsert: true });
+  }
   const pending = await TenantDatabase.find({ status: 'ready', schemaVersion: { $lt: TENANT_SCHEMA_VERSION } }).lean();
   for (const db of pending) {
     try {

@@ -17,7 +17,7 @@ AfeySync Platform ──┬── Owner Portal (owner.afeysync.com)       → af
 |---|---|
 | Multi-tenancy: meta DB + one database per facility, hostname/custom-domain resolver, tenant schema migrations | ✅ |
 | Authentication: JWT access tokens, rotating refresh sessions with reuse detection, lockout, idle timeout, email password reset | ✅ |
-| Two-step verification (authenticator app, email, SMS, recovery codes) with facility/platform policies; Sign in with Google (explicit linking) | ✅ |
+| Two-step verification (passkeys, authenticator app, email, SMS, recovery codes) with facility/platform policies; Sign in with Google (explicit linking) | ✅ |
 | RBAC: permission catalog, 30 default roles, custom roles, branch scoping, privilege-escalation guards | ✅ |
 | Append-only audit trail (tenant + platform) | ✅ |
 | Owner portal: dashboard, facilities, provisioning wizard, domains, subscriptions, health, jobs, backups, support access | ✅ |
@@ -81,7 +81,7 @@ In development, set `PLATFORM_DOMAIN=localhost` and `OWNER_HOSTS=owner.localhost
 cd backend && npm test      # needs MongoDB on 127.0.0.1:27017 (or TEST_MONGO_URI)
 ```
 
-The suite (164 tests) covers authentication, two-step verification (TOTP vectors, replay, lockout, policy enforcement), Google OIDC (PKCE, token verification, no auto-linking), password reset, refresh-token reuse detection, RBAC
+The suite (168 tests) covers authentication, two-step verification (TOTP vectors, replay, lockout, policy enforcement, WebAuthn passkeys with origin binding and counter checks), Google OIDC (PKCE, token verification, no auto-linking), password reset, refresh-token reuse detection, RBAC
 and escalation, **tenant isolation** (Tenant A user vs. Tenant B patient, claim, DHA record, SHA
 record, credentials and branch), **branch isolation**, support access, the DHA/SHA adapter (token
 caching, 401 renewal, retries, headers, error mapping, not-configured operations), callbacks (HMAC,

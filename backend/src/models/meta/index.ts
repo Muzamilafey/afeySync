@@ -29,8 +29,10 @@ const platformUserSchema = new Schema(
       },
       email: { enabledAt: Date },
       sms: { enabledAt: Date, phone: String },
+      /** WebAuthn passkeys. Only the public key is stored; the private key never leaves the user's device. */
+      passkeys: [{ _id: false, credentialId: String, publicKey: String, counter: { type: Number, default: 0 }, transports: [String], deviceType: String, backedUp: Boolean, name: String, createdAt: Date, lastUsedAt: Date }],
       recoveryCodes: { type: [{ _id: false, hash: String, usedAt: Date }], select: false },
-      preferred: { type: String, enum: ['totp', 'email', 'sms'] },
+      preferred: { type: String, enum: ['totp', 'email', 'sms', 'passkey'] },
     },
     /** Linked Google account (OpenID Connect subject). Sign-in with Google works only for linked accounts. */
     google: { sub: String, email: String, linkedAt: Date },
@@ -69,10 +71,12 @@ const mfaChallengeSchema = new Schema(
     subjectType: { type: String, enum: ['tenant', 'platform'], required: true },
     subjectId: { type: Schema.Types.ObjectId, required: true, index: true },
     tenantId: Schema.Types.ObjectId,
-    purpose: { type: String, enum: ['login', 'enroll_email', 'enroll_sms'], required: true },
+    purpose: { type: String, enum: ['login', 'enroll_email', 'enroll_sms', 'enroll_passkey'], required: true },
     tokenHash: { type: String, required: true, unique: true },
     methods: [String],
     otp: { method: String, hash: String, sentAt: Date, sends: { type: Number, default: 0 }, target: String },
+    /** Single-use WebAuthn challenge (base64url) for passkey registration or sign-in. */
+    webauthnChallenge: String,
     attempts: { type: Number, default: 0 },
     consumedAt: Date,
     ip: String,

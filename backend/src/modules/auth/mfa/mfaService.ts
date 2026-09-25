@@ -12,12 +12,13 @@ import { notifyEmail } from '../../notifications/notify';
 import { normalizePhone } from '../../patients/patientService';
 import { verifyPassword } from '../password';
 import { generateTotpSecret, otpauthUri, verifyTotp } from './totp';
+import { MAX_PASSKEYS, plainPasskey, authenticationOptions, registrationOptions, verifyAuthentication, verifyRegistration, type StoredPasskey } from './passkey';
 
-export type MfaMethod = 'totp' | 'email' | 'sms';
-export const ALL_METHODS: MfaMethod[] = ['totp', 'email', 'sms'];
+export type MfaMethod = 'totp' | 'email' | 'sms' | 'passkey';
+export const ALL_METHODS: MfaMethod[] = ['totp', 'email', 'sms', 'passkey'];
 export interface MfaPolicy { mode: 'optional' | 'admins' | 'all'; methods: MfaMethod[] }
 export const DEFAULT_POLICY: MfaPolicy = { mode: 'optional', methods: ALL_METHODS };
-export const policySchema = z.object({ mode: z.enum(['optional', 'admins', 'all']), methods: z.array(z.enum(['totp', 'email', 'sms'])).min(1) });
+export const policySchema = z.object({ mode: z.enum(['optional', 'admins', 'all']), methods: z.array(z.enum(['totp', 'email', 'sms', 'passkey'])).min(1) });
 
 /** Fields hidden by default that MFA code paths need. */
 export const MFA_SELECT = '+passwordHash +mfa.recoveryCodes +mfa.totp.secret +mfa.totp.pendingSecret';
@@ -40,6 +41,7 @@ export interface MfaDoc {
     totp?: { secret?: Enc; pendingSecret?: Enc; confirmedAt?: Date | null; lastStep?: number | null } | null;
     email?: { enabledAt?: Date | null } | null;
     sms?: { enabledAt?: Date | null; phone?: string | null } | null;
+    passkeys?: StoredPasskey[] | null;
     recoveryCodes?: Array<{ hash?: string | null; usedAt?: Date | null }>;
     preferred?: string | null;
   } | null;
@@ -53,6 +55,7 @@ export function enabledMethods(doc: MfaDoc): MfaMethod[] {
   if (m.totp?.confirmedAt && m.totp.secret?.ciphertext) out.push('totp');
   if (m.email?.enabledAt) out.push('email');
   if (m.sms?.enabledAt && m.sms.phone) out.push('sms');
+  if ((m.passkeys ?? []).length) out.push('passkey');
   return out;
 }
 
@@ -69,7 +72,7 @@ export function newRecoveryCodes() {
 }
 
 /* ------------------------------------------------------------------ Challenges */
-export async function createChallenge(input: { subjectType: 'tenant' | 'platform'; subjectId: string; tenantId?: string | null; purpose: 'login' | 'enroll_email' | 'enroll_sms'; methods: string[]; ip?: string; userAgent?: string; via?: string }) {
+export async function createChallenge(input: { subjectType: 'tenant' | 'platform'; subjectId: string; tenantId?: string | null; purpose: 'login' | 'enroll_email' | 'enroll_sms' | 'enroll_passkey'; methods: string[]; ip?: string; userAgent?: string; via?: string }) {
   const token = randomToken(32);
   const challenge = await meta().MfaChallenge.create({ ...input, tenantId: input.tenantId ?? undefined, tokenHash: sha256(`mfa:${token}`), expiresAt: new Date(Date.now() + CHALLENGE_TTL_MS) });
   return { token, challenge };
@@ -109,8 +112,19 @@ export async function deliverOtp(ch: Challenge, method: 'email' | 'sms', to: str
 }
 
 /** Verifies one factor for a user. Throws on failure (and counts the attempt against the challenge). */
-export async function verifyFactor(doc: MfaDoc, ch: Challenge, method: MfaMethod | 'recovery', code: string) {
+export async function verifyFactor(req: Request, doc: MfaDoc, ch: Challenge, method: MfaMethod | 'recovery', code: string, assertion?: unknown) {
   const c = code.trim();
+  if (method === 'passkey') {
+    const challenge = ch.webauthnChallenge;
+    // The WebAuthn challenge is single-use: clear it whatever the outcome.
+    ch.webauthnChallenge = undefined;
+    const passkeys = doc.mfa?.passkeys ?? [];
+    const hit = challenge && assertion ? await verifyAuthentication(req, assertion as never, challenge, passkeys) : null;
+    if (!hit) return registerFailure(ch);
+    doc.set('mfa.passkeys', passkeys.map((p) => (p.credentialId === hit.credentialId ? hit : plainPasskey(p))));
+    await doc.save();
+    return;
+  }
   if (method === 'totp') {
     const t = doc.mfa?.totp;
     if (!t?.confirmedAt || !t.secret?.ciphertext) return registerFailure(ch);
@@ -180,14 +194,30 @@ export function buildMfaRouter(a: MfaAdapter) {
     res.json({ success: true, data: await deliverOtp(ch, body.method, to, a.brand(req), a.tenantId(req)) });
   }));
 
+  r.post('/mfa/challenge/passkey-options', h(async (req, res) => {
+    const body = parse(z.object({ challengeToken: z.string().min(20).max(200) }), req.body);
+    const ch = await findChallenge(body.challengeToken, 'login');
+    if (!ch.methods.includes('passkey')) throw badRequest('This method is not enabled for your account');
+    const doc = await a.loadChallengeUser(req, ch);
+    if (!doc) throw unauthorized('This verification has expired. Start again.', 'MFA_CHALLENGE_INVALID');
+    const options = await authenticationOptions(req, doc.mfa?.passkeys ?? []);
+    ch.webauthnChallenge = options.challenge;
+    await ch.save();
+    res.json({ success: true, data: options });
+  }));
+
   r.post('/mfa/challenge/verify', h(async (req, res) => {
-    const body = parse(z.object({ challengeToken: z.string().min(20).max(200), method: z.enum(['totp', 'email', 'sms', 'recovery']), code: z.string().min(4).max(20) }), req.body);
+    const body = parse(
+      z.object({ challengeToken: z.string().min(20).max(200), method: z.enum(['totp', 'email', 'sms', 'passkey', 'recovery']), code: z.string().max(20).default(''), assertion: z.record(z.string(), z.unknown()).optional() })
+        .refine((b) => (b.method === 'passkey' ? !!b.assertion : b.code.trim().length >= 4), { message: 'Enter the code', path: ['code'] }),
+      req.body,
+    );
     const ch = await findChallenge(body.challengeToken, 'login');
     if (body.method !== 'recovery' && !ch.methods.includes(body.method)) throw badRequest('This method is not enabled for your account');
     const doc = await a.loadChallengeUser(req, ch);
     if (!doc) throw unauthorized('This verification has expired. Start again.', 'MFA_CHALLENGE_INVALID');
     try {
-      await verifyFactor(doc, ch, body.method, body.code);
+      await verifyFactor(req, doc, ch, body.method, body.code, body.assertion);
     } catch (err) {
       await a.audit(req, 'auth.mfa_failed', String(doc._id), { method: body.method }, true);
       throw err;
@@ -236,6 +266,7 @@ export function buildMfaRouter(a: MfaAdapter) {
         email: maskEmail(doc.email),
         smsPhone: maskPhone(doc.mfa?.sms?.phone),
         phoneOnFile: maskPhone(normalizePhone(doc.phone)),
+        passkeys: (doc.mfa?.passkeys ?? []).map((p) => ({ id: p.credentialId, name: p.name, createdAt: p.createdAt, lastUsedAt: p.lastUsedAt, backedUp: p.backedUp ?? false })),
         recoveryCodesRemaining: (doc.mfa?.recoveryCodes ?? []).filter((c) => !c.usedAt).length,
       },
     });
@@ -267,6 +298,54 @@ export function buildMfaRouter(a: MfaAdapter) {
     res.json({ success: true, data: await afterEnable(req, doc, 'totp') });
   }));
 
+  r.post('/mfa/passkey/options', a.authenticate, h(async (req, res) => {
+    await assertAllowed(req, 'passkey');
+    const doc = await me(req);
+    const existing = doc.mfa?.passkeys ?? [];
+    if (existing.length >= MAX_PASSKEYS) throw conflict(`You can register up to ${MAX_PASSKEYS} passkeys. Remove one first.`, undefined, 'PASSKEY_LIMIT');
+    const options = await registrationOptions(req, { brand: a.brand(req), userId: a.userId(req), email: doc.email, name: doc.name, existing });
+    const { token, challenge } = await createChallenge({ subjectType: a.kind, subjectId: a.userId(req), tenantId: a.tenantId(req), purpose: 'enroll_passkey', methods: ['passkey'], ip: req.ip, userAgent: req.get('user-agent') });
+    await meta().MfaChallenge.updateOne({ _id: challenge._id }, { webauthnChallenge: options.challenge });
+    res.json({ success: true, data: { challengeToken: token, options } });
+  }));
+
+  r.post('/mfa/passkey/confirm', a.authenticate, h(async (req, res) => {
+    const body = parse(z.object({ challengeToken: z.string().min(20).max(200), name: z.string().trim().min(1).max(60).default('Passkey'), response: z.record(z.string(), z.unknown()) }), req.body);
+    await assertAllowed(req, 'passkey');
+    const ch = await findChallenge(body.challengeToken, 'enroll_passkey');
+    if (String(ch.subjectId) !== a.userId(req) || !ch.webauthnChallenge) throw unauthorized('This verification has expired. Start again.', 'MFA_CHALLENGE_INVALID');
+    ch.consumedAt = new Date();
+    await ch.save();
+    const doc = await me(req);
+    const pk = await verifyRegistration(req, body.response as never, ch.webauthnChallenge, body.name);
+    const existing = doc.mfa?.passkeys ?? [];
+    if (existing.some((p) => p.credentialId === pk.credentialId)) throw conflict('This passkey is already registered', undefined, 'PASSKEY_EXISTS');
+    doc.set('mfa.passkeys', [...existing.map(plainPasskey), pk]);
+    res.json({ success: true, data: await afterEnable(req, doc, 'passkey') });
+  }));
+
+  r.post('/mfa/passkey/remove', a.authenticate, h(async (req, res) => {
+    const { id, password } = parse(z.object({ id: z.string().min(1).max(1400), password: z.string().min(1).max(200) }), req.body);
+    const doc = await a.loadUser(req, a.userId(req));
+    if (!doc || !doc.passwordHash || !(await verifyPassword(password, doc.passwordHash))) throw unauthorized('Password is incorrect', 'INVALID_CREDENTIALS');
+    const passkeys = doc.mfa?.passkeys ?? [];
+    const target = passkeys.find((p) => p.credentialId === id);
+    if (!target) throw badRequest('Passkey not found');
+    const enabled = enabledMethods(doc);
+    const policy = await a.policy(req);
+    if (passkeys.length === 1 && enabled.length === 1 && (await a.isRequired(req, doc, policy))) throw conflict('Two-factor authentication is required by your organisation. Add another method before removing this one.', undefined, 'MFA_REQUIRED_BY_POLICY');
+    doc.set('mfa.passkeys', passkeys.filter((p) => p.credentialId !== id).map(plainPasskey));
+    if (passkeys.length === 1) {
+      const remaining = enabled.filter((m) => m !== 'passkey');
+      if (doc.mfa?.preferred === 'passkey') doc.set('mfa.preferred', remaining[0]);
+      if (!remaining.length) doc.set('mfa.recoveryCodes', []);
+    }
+    await doc.save();
+    await a.audit(req, 'auth.passkey_removed', String(doc._id), { name: target.name });
+    await notifyEmail(a.tenantId(req), `passkey-off:${doc._id}:${Date.now()}`, doc.email, `${a.brand(req)}: passkey removed`, `The passkey "${target.name ?? 'Passkey'}" was removed from your account. If this was not you, contact your administrator immediately.`);
+    res.json({ success: true, data: { enabled: enabledMethods(doc) } });
+  }));
+
   r.post('/mfa/:method/setup', a.authenticate, h(async (req, res) => {
     const method = z.enum(['email', 'sms']).parse(req.params.method);
     await assertAllowed(req, method);
@@ -291,7 +370,7 @@ export function buildMfaRouter(a: MfaAdapter) {
     const ch = await findChallenge(body.challengeToken, `enroll_${method}`);
     if (String(ch.subjectId) !== a.userId(req)) throw unauthorized('This verification has expired. Start again.', 'MFA_CHALLENGE_INVALID');
     const doc = await me(req);
-    await verifyFactor(doc, ch, method, body.code);
+    await verifyFactor(req, doc, ch, method, body.code);
     ch.consumedAt = new Date();
     await ch.save();
     if (method === 'email') doc.set('mfa.email', { enabledAt: new Date() });
@@ -300,7 +379,7 @@ export function buildMfaRouter(a: MfaAdapter) {
   }));
 
   r.post('/mfa/:method/disable', a.authenticate, h(async (req, res) => {
-    const method = z.enum(['totp', 'email', 'sms']).parse(req.params.method);
+    const method = z.enum(['totp', 'email', 'sms', 'passkey']).parse(req.params.method);
     const { password } = parse(z.object({ password: z.string().min(1).max(200) }), req.body);
     const doc = await a.loadUser(req, a.userId(req));
     if (!doc || !doc.passwordHash || !(await verifyPassword(password, doc.passwordHash))) throw unauthorized('Password is incorrect', 'INVALID_CREDENTIALS');
@@ -309,6 +388,7 @@ export function buildMfaRouter(a: MfaAdapter) {
     const policy = await a.policy(req);
     if (enabled.length === 1 && (await a.isRequired(req, doc, policy))) throw conflict('Two-factor authentication is required by your organisation. Add another method before removing this one.', undefined, 'MFA_REQUIRED_BY_POLICY');
     if (method === 'totp') doc.set('mfa.totp', { lastStep: -1 });
+    else if (method === 'passkey') doc.set('mfa.passkeys', []);
     else doc.set(`mfa.${method}`, {});
     const remaining = enabled.filter((m) => m !== method);
     if (doc.mfa?.preferred === method) doc.set('mfa.preferred', remaining[0]);
@@ -332,7 +412,7 @@ export function buildMfaRouter(a: MfaAdapter) {
   }));
 
   r.post('/mfa/preferred', a.authenticate, h(async (req, res) => {
-    const { method } = parse(z.object({ method: z.enum(['totp', 'email', 'sms']) }), req.body);
+    const { method } = parse(z.object({ method: z.enum(['totp', 'email', 'sms', 'passkey']) }), req.body);
     const doc = await me(req);
     if (!enabledMethods(doc).includes(method)) throw badRequest('This method is not enabled');
     doc.set('mfa.preferred', method);

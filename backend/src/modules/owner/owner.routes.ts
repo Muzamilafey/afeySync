@@ -214,7 +214,7 @@ router.post(
     user.failedLogins = 0;
     user.status = 'active';
     // An administrator locked out by a lost second factor is recovered by the same reset.
-    user.set('mfa', { totp: { lastStep: -1 }, recoveryCodes: [] });
+    user.set('mfa', { totp: { lastStep: -1 }, passkeys: [], recoveryCodes: [] });
     await user.save();
     await revokeAllForSubject(String(user._id), 'admin_reset');
     await m.AuditLog.create({ actorType: 'system', action: 'user.admin_reset_by_platform', resource: 'user', resourceId: String(user._id), newValue: { by: req.platformUser!.email } });
@@ -528,7 +528,7 @@ router.post(
     if (String(id) === req.platformUser!.id) throw forbidden('Ask another platform administrator to reset your two-factor authentication');
     const u = await meta().PlatformUser.findById(id);
     if (!u) throw notFound('User not found');
-    u.set('mfa', { totp: { lastStep: -1 }, recoveryCodes: [] });
+    u.set('mfa', { totp: { lastStep: -1 }, passkeys: [], recoveryCodes: [] });
     await u.save();
     await revokeAllForSubject(String(u._id), 'mfa_reset');
     await platformAudit(req, { action: 'platform_user.mfa_reset', resource: 'platform_user', resourceId: String(u._id) });
