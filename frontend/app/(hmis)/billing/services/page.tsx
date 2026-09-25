@@ -2,7 +2,8 @@
 
 import { useState } from 'react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
-import { Plus, Trash2 } from 'lucide-react';
+import { Plus, Trash2, FileSpreadsheet } from 'lucide-react';
+import { ExcelImport } from '@/features/imports/ExcelImport';
 import { api } from '@/services/api';
 import { useCan } from '@/hooks/useMe';
 import { Badge, Button, Card, ErrorText, Field, Input, Loading, Modal, PageHeader, Select, Table, Td } from '@/components/ui';
@@ -47,13 +48,16 @@ function ServiceForm({ item, onDone }: { item?: ServiceItem; onDone: () => void 
 
 export default function ServicesPage() {
   const can = useCan();
+  const qc = useQueryClient();
+  const [importing, setImporting] = useState(false);
   const [q, setQ] = useState('');
   const [category, setCategory] = useState('');
   const [edit, setEdit] = useState<ServiceItem | 'new' | null>(null);
   const list = useQuery({ queryKey: ['services-admin', q, category], queryFn: async () => (await api<ServiceItem[]>('/billing/services', { query: { q, category, active: 'all', limit: 500 } })).data });
   return (
     <>
-      <PageHeader title="Services & Prices" crumbs={['Billing', 'Service catalog']} actions={can('billing.prices') && <Button onClick={() => setEdit('new')}><Plus className="h-4 w-4" /> Add service</Button>} />
+      <PageHeader title="Services & Prices" crumbs={['Billing', 'Service catalog']} actions={can('billing.prices') && <><Button variant="outline" onClick={() => setImporting(true)}><FileSpreadsheet className="h-4 w-4" /> Import from Excel</Button><Button onClick={() => setEdit('new')}><Plus className="h-4 w-4" /> Add service</Button></>} />
+      <ExcelImport open={importing} onClose={() => setImporting(false)} onDone={() => qc.invalidateQueries({ queryKey: ['services-admin'] })} title="Import services & prices from Excel" noun="services" templatePath="/billing/services/import-template" templateName="services-and-prices-template.xlsx" importPath="/billing/services/import" />
       <Card>
         <div className="mb-3 flex gap-2">
           <Input className="max-w-60" placeholder="Search" value={q} onChange={(e) => setQ(e.target.value)} />

@@ -1,3 +1,5 @@
+import { importUpload, sendXlsx } from '../imports/excel';
+import { importServices, serviceTemplate } from '../imports/serviceImport';
 import { Router } from 'express';
 import { z } from 'zod';
 import { Types } from 'mongoose';
@@ -18,7 +20,7 @@ router.use(authenticateTenant);
 
 /* ------------------------------------------------------------ Service catalog & price lists */
 const serviceSchema = z.object({
-  code: z.string().trim().min(2).max(30).regex(/^[A-Za-z0-9-_.]+$/),
+  code: z.string().trim().min(1).max(30).regex(/^[A-Za-z0-9-_.]+$/, 'can only contain letters, numbers and - _ .'),
   name: z.string().trim().min(2).max(160),
   category: z.enum(SERVICE_CATEGORIES),
   department: z.string().max(80).optional(),
@@ -51,6 +53,25 @@ router.post(
     const s = await ServiceItem.create({ ...body, code: body.code.toUpperCase() });
     await audit(req, { action: 'billing.service_create', resource: 'service_item', resourceId: String(s._id), newValue: body });
     res.status(201).json({ success: true, data: s });
+  }),
+);
+
+/* Bulk import of services and prices from Excel (template → preview → import) */
+router.get(
+  '/services/import-template',
+  requirePermission('billing.prices'),
+  h(async (req, res) => {
+    sendXlsx(res, `services-and-prices-template.xlsx`, await serviceTemplate(req));
+  }),
+);
+
+router.post(
+  '/services/import',
+  requirePermission('billing.prices'),
+  importUpload,
+  h(async (req, res) => {
+    const commit = String(req.body?.commit ?? req.query.commit ?? '') === 'true';
+    res.json({ success: true, data: await importServices(req, commit) });
   }),
 );
 

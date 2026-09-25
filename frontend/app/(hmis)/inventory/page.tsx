@@ -2,7 +2,8 @@
 
 import { useState } from 'react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
-import { Plus, Trash2 } from 'lucide-react';
+import { Plus, Trash2, FileSpreadsheet } from 'lucide-react';
+import { ExcelImport } from '@/features/imports/ExcelImport';
 import { api } from '@/services/api';
 import { useCan } from '@/hooks/useMe';
 import { Badge, Button, Card, ErrorText, Field, Input, Loading, Modal, PageHeader, Select, Stat, Table, Tabs, Td } from '@/components/ui';
@@ -68,6 +69,7 @@ export default function InventoryPage() {
   const [loc, setLoc] = useState('');
   const [modal, setModal] = useState<'receive' | 'transfer' | 'adjust' | 'item' | null>(null);
   const [editItem, setEditItem] = useState<Item | undefined>();
+  const [importing, setImporting] = useState(false);
   const [adj, setAdj] = useState<{ batch?: Batch; delta: string; reason: string; type: string }>({ delta: '', reason: '', type: 'adjustment' });
   const [trf, setTrf] = useState<{ item?: Item; to: string; qty: string }>({ to: '', qty: '' });
   const locs = useQuery({ queryKey: ['locations'], queryFn: async () => (await api<Location[]>('/pharmacy/locations')).data });
@@ -119,13 +121,19 @@ export default function InventoryPage() {
         )}
         {tab === 'items' && (
           <>
-            {write && <Button size="sm" className="mb-3" onClick={() => { setEditItem(undefined); setModal('item'); }}><Plus className="h-3 w-3" /> New item</Button>}
+            {write && (
+              <div className="mb-3 flex flex-wrap gap-2">
+                <Button size="sm" onClick={() => { setEditItem(undefined); setModal('item'); }}><Plus className="h-3 w-3" /> New item</Button>
+                <Button size="sm" variant="outline" onClick={() => setImporting(true)}><FileSpreadsheet className="h-3 w-3" /> Import from Excel</Button>
+              </div>
+            )}
             <Table head={['Code', 'Item', 'Form / strength', 'Category', 'Reorder', 'Status', '']}>
               {items.data?.map((i) => <tr key={i._id}><Td className="font-mono text-xs">{i.code}</Td><Td>{i.name}<span className="muted block text-xs">{i.genericName}</span></Td><Td>{i.form} {i.strength}</Td><Td className="capitalize">{i.category}{i.controlled && <Badge tone="red" className="ml-1">controlled</Badge>}</Td><Td>{i.reorderLevel}</Td><Td><Badge tone={i.active ? 'green' : 'gray'}>{i.active ? 'active' : 'inactive'}</Badge></Td><Td>{write && <Button size="sm" variant="ghost" onClick={() => { setEditItem(i); setModal('item'); }}>Edit</Button>}</Td></tr>)}
             </Table>
           </>
         )}
       </Card>
+      <ExcelImport open={importing} onClose={() => setImporting(false)} onDone={() => qc.invalidateQueries({ queryKey: ['items-admin'] })} title="Import inventory items from Excel" noun="items" templatePath="/inventory/items/import-template" templateName="inventory-items-template.xlsx" importPath="/inventory/items/import" />
       <Modal open={modal === 'receive'} onClose={() => setModal(null)} title="Receive stock" wide>{locs.data && <ReceiveForm locations={locs.data} onDone={refresh} />}</Modal>
       <Modal open={modal === 'item'} onClose={() => setModal(null)} title={editItem ? 'Edit item' : 'New item'} wide><ItemForm item={editItem} onDone={refresh} /></Modal>
       <Modal open={modal === 'adjust'} onClose={() => setModal(null)} title={`${adj.type === 'expiry_writeoff' ? 'Write off' : 'Adjust'} batch ${adj.batch?.batchNumber}`}>

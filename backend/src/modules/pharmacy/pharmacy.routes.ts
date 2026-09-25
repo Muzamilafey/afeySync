@@ -1,3 +1,5 @@
+import { importUpload, sendXlsx } from '../imports/excel';
+import { importItems, itemTemplate } from '../imports/itemImport';
 import { Router, type Request } from 'express';
 import { z } from 'zod';
 import { Types } from 'mongoose';
@@ -25,7 +27,7 @@ async function location(req: Request, id: unknown) {
 
 /* ------------------------------------------------------------ Items */
 const itemSchema = z.object({
-  code: z.string().min(2).max(30).regex(/^[A-Za-z0-9-_.]+$/),
+  code: z.string().trim().min(1).max(30).regex(/^[A-Za-z0-9-_.]+$/, 'can only contain letters, numbers and - _ .'),
   name: z.string().min(2).max(160),
   genericName: z.string().max(160).optional(),
   form: z.string().max(60).optional(),
@@ -64,6 +66,25 @@ router.post(
     const i = await m.Item.create({ ...body, code: body.code.toUpperCase(), isDrug: body.category === 'drug' });
     await audit(req, { action: 'inventory.item_create', resource: 'item', resourceId: String(i._id), newValue: body });
     res.status(201).json({ success: true, data: i });
+  }),
+);
+
+/* Bulk import of inventory items from Excel (template → preview → import) */
+router.get(
+  '/items/import-template',
+  requireAnyPermission(...STOCK_WRITE),
+  h(async (req, res) => {
+    sendXlsx(res, 'inventory-items-template.xlsx', await itemTemplate(req));
+  }),
+);
+
+router.post(
+  '/items/import',
+  requireAnyPermission(...STOCK_WRITE),
+  importUpload,
+  h(async (req, res) => {
+    const commit = String(req.body?.commit ?? req.query.commit ?? '') === 'true';
+    res.json({ success: true, data: await importItems(req, commit) });
   }),
 );
 

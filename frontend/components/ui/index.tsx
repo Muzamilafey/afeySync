@@ -254,7 +254,7 @@ const ERROR_TITLES: Record<string, string> = {
   INVALID_CREDENTIALS: 'Email or password is incorrect',
   ACCOUNT_LOCKED: 'Account temporarily locked',
   HANDOFF_INVALID: 'Sign-in link expired',
-  VALIDATION_ERROR: 'Please check the form',
+  VALIDATION_ERROR: 'Some details need fixing',
   RATE_LIMITED: 'Too many attempts',
   MODULE_NOT_IN_PLAN: 'Not included in your plan',
 };

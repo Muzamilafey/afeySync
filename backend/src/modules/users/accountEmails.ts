@@ -18,7 +18,7 @@ export interface AccountEmailInput {
   tenantId: string;
   PasswordReset: Model<any>; // eslint-disable-line @typescript-eslint/no-explicit-any
   user: { _id: unknown; name: string; email: string };
-  /** The facility's own address, e.g. https://famzahra.afeysync.com */
+  /** The facility's own address, e.g. https://yourfacility.afeysync.com */
   origin: string;
   kind: 'welcome' | 'admin_reset';
   roleNames?: string[];

@@ -77,7 +77,7 @@ npm install && npm run dev             # http://owner.localhost:3000 and http://
 
 In development, set `PLATFORM_DOMAIN=localhost` and `OWNER_HOSTS=owner.localhost`. Browsers resolve
 `*.localhost` to 127.0.0.1, so each facility gets its own subdomain (for example
-`famzahra.localhost:3000`) and no hosts-file edits are needed.
+`yourfacility.localhost:3000`) and no hosts-file edits are needed.
 
 ## Tests
 
