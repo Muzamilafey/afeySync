@@ -1,6 +1,6 @@
 import { Router, type Request, type Response } from 'express';
 import { env } from '../../config/env';
-import { explainUnknownHost, platformSubdomain } from '../../middleware/tenantResolver';
+import { explainUnknownHost, isLoopbackHost, platformSubdomain } from '../../middleware/tenantResolver';
 import { tenantsForEmail } from './directory';
 import { tenantEntitlements } from '../plans/planService';
 import { z } from 'zod';
@@ -27,8 +27,9 @@ const router = Router();
 /* ------------------------------------------------------------------ Main-domain sign-in (facility discovery) */
 const HANDOFF_TTL_MS = 2 * 60_000;
 /**
- * The main sign-in address: PLATFORM_DOMAIN (or www.), the host of FRONTEND_URL, and in development plain
- * localhost / 127.0.0.1 — so the main page works even when PLATFORM_DOMAIN is set to the production domain.
+ * The main sign-in address: PLATFORM_DOMAIN (or www.), the host of FRONTEND_URL, and this computer's own
+ * addresses (localhost, 127.0.0.1) in any mode — so the main page works locally even with NODE_ENV=production or a
+ * production PLATFORM_DOMAIN.
  * Returns the base domain facility addresses are built on, or null when this is not the main address.
  */
 function platformBase(req: Request): string | null {
@@ -36,14 +37,14 @@ function platformBase(req: Request): string | null {
   const host = (req.hostname || '').toLowerCase();
   const apex = env.PLATFORM_DOMAIN.toLowerCase();
   if (host === apex || host === `www.${apex}`) return apex;
-  if (env.NODE_ENV !== 'production' && (host === 'localhost' || host === '127.0.0.1')) return 'localhost';
+  if (isLoopbackHost(host)) return 'localhost';
   let frontHost = '';
   try {
     frontHost = new URL(env.FRONTEND_URL).hostname.toLowerCase();
   } catch {
     /* invalid FRONTEND_URL */
   }
-  if (frontHost && host === frontHost) return host === 'localhost' || host === '127.0.0.1' ? 'localhost' : host.replace(/^www\./, '');
+  if (frontHost && host === frontHost) return host.replace(/^www\./, '');
   return null;
 }
 const platformHost = (req: Request) => platformBase(req) !== null;

@@ -15,6 +15,9 @@ export function clearDomainCache() {
   cache.clear();
 }
 
+/** Addresses of this computer: always the main sign-in page, whatever NODE_ENV or PLATFORM_DOMAIN say. */
+export const isLoopbackHost = (host: string) => ['localhost', '127.0.0.1', '::1', '[::1]'].includes((host || '').toLowerCase());
+
 export async function lookupHostTenant(hostname: string): Promise<string | null> {
   const host = hostname.toLowerCase();
   const hit = cache.get(host);
@@ -36,8 +39,8 @@ export async function lookupHostTenant(hostname: string): Promise<string | null>
 }
 
 export function slugFromHost(host: string): string | null {
-  const suffixes = [env.PLATFORM_DOMAIN.toLowerCase()];
-  if (env.NODE_ENV !== 'production') suffixes.push('localhost');
+  // <slug>.localhost only ever reaches the API from the same computer, so it is safe in every mode.
+  const suffixes = [env.PLATFORM_DOMAIN.toLowerCase(), 'localhost'];
   for (const apex of suffixes) {
     if (!host.endsWith(`.${apex}`)) continue;
     const sub = host.slice(0, -(apex.length + 1));

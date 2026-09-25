@@ -20,7 +20,7 @@ Google    ─┘                                   └─ otherwise ────
 
 Staff can sign in at the platform's main address (`afeysync.com`, or `localhost:3000` in
 development) as well as their facility's own address. The main address is `PLATFORM_DOMAIN` (and
-`www.`), the host of `FRONTEND_URL`, and — outside production — plain `localhost`/`127.0.0.1`, so the
+`www.`), the host of `FRONTEND_URL`, and this computer's own `localhost`/`127.0.0.1` (in any `NODE_ENV`), so the
 main page works locally even when `PLATFORM_DOMAIN` is set to the production domain. Facility links
 are built on the same base the user is browsing (`localhost` → `<facility>.localhost`).
 

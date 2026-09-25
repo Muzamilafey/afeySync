@@ -63,6 +63,7 @@ describe('sign-in on the main domain', () => {
 
   it('treats plain localhost as the main sign-in page in development and sends people to <slug>.localhost', async () => {
     expect((await api().get('/api/v1/auth/context').set('Host', 'localhost:3000')).body.data).toEqual({ kind: 'platform' });
+    expect((await api().get('/api/v1/auth/context').set('Host', '127.0.0.1:3000')).body.data).toEqual({ kind: 'platform' });
     const r = await find({ email: EMAIL, password: PASSWORD }, 'localhost');
     expect(r.status).toBe(200);
     const a = r.body.data.facilities.find((f: { slug: string }) => f.slug === A);
