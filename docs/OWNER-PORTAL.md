@@ -5,7 +5,7 @@
 * **Facilities**: search and filter; 8-step wizard; details tabs (Overview, Branches, Users,
   Domains, Subscription, Integrations, Health, Audit); suspend and activate; reset the facility
   admin; create a branch; add and verify domains.
-* **Integrations**: SHA, DHA HIE, M-Pesa, Africa's Talking, SMTP and storage. Actions: enable or
+* **Integrations**: SHA, DHA HIE, M-Pesa (including optional B2C payouts), Africa's Talking, SMTP, Google Sign-In and storage. Actions: enable or
   disable globally, set the environment, rotate credentials, allow facility credentials, and run
   tests (auth / registry / eligibility / terminology / email).
 * **API Config**: edit the HIE contract (operation paths from the official catalog) and record the
@@ -15,4 +15,6 @@
 * **System Health**: API, MongoDB, queue, integrations, CPU/RAM/storage.
 * **Support Access**: request time-limited access that a facility must approve. Every use is
   audited.
-* **Platform Audit** and **Platform Users**.
+* **Backups**: last successful backup per facility, stale or failed flags, and recent runs.
+* **Security**: your own two-step verification and Google link, plus the platform-wide MFA policy.
+* **Platform Audit** and **Platform Users** (MFA status and reset).

@@ -17,6 +17,7 @@ AfeySync Platform ──┬── Owner Portal (owner.afeysync.com)       → af
 |---|---|
 | Multi-tenancy: meta DB + one database per facility, hostname/custom-domain resolver, tenant schema migrations | ✅ |
 | Authentication: JWT access tokens, rotating refresh sessions with reuse detection, lockout, idle timeout, email password reset | ✅ |
+| Two-step verification (authenticator app, email, SMS, recovery codes) with facility/platform policies; Sign in with Google (explicit linking) | ✅ |
 | RBAC: permission catalog, 30 default roles, custom roles, branch scoping, privilege-escalation guards | ✅ |
 | Append-only audit trail (tenant + platform) | ✅ |
 | Owner portal: dashboard, facilities, provisioning wizard, domains, subscriptions, health, jobs, backups, support access | ✅ |
@@ -29,13 +30,13 @@ AfeySync Platform ──┬── Owner Portal (owner.afeysync.com)       → af
 | Laboratory (catalog, reference ranges, accession, verification by a second person) and radiology (MWL worklist, reports) | ✅ |
 | Pharmacy (FEFO dispensing, allergy check), inventory, procurement (PO approval, GRN) | ✅ |
 | Inpatient/nursing, maternity (ANC, partograph, delivery), MCH (KEPI), family planning, dental, mortuary | ✅ |
-| Billing & cashier (price lists, invoices, payments, refunds, credit notes), M-Pesa STK/C2B | ✅ |
+| Billing & cashier (price lists, invoices, payments, refunds, credit notes), M-Pesa STK/C2B, B2C refund payouts | ✅ |
 | Finance (expenses with second approver, cash summary, receivables aging), HR (staff, leave, roster, licences) | ✅ |
 | Reports (clinical, finance, supply, productivity) with audited CSV export | ✅ |
 | Documents (content-sniffed uploads, audited downloads, soft delete) | ✅ |
 | FHIR R4 mappers, validator, idempotent outbox to DHA SHR | ✅ (SHR write needs its operation path) |
 | Encrypted per-database backups with run tracking | ✅ |
-| DHA terminology UI, ePrescription, emergency claim protocols | Operations declared in the contract. No dedicated UI yet |
+| DHA terminology browser, ePrescription (MedicationRequest/Dispense), emergency-claim protocols and doctors | ✅ (need their HIE operation paths) |
 
 **External API rule:** the HIE operations whose paths come from the DHA documentation are
 configured by default: token, Client Registry `GET /patients`, eligibility, benefits,
@@ -78,18 +79,18 @@ In development, set `PLATFORM_DOMAIN=localhost` and `OWNER_HOSTS=owner.localhost
 cd backend && npm test      # needs MongoDB on 127.0.0.1:27017 (or TEST_MONGO_URI)
 ```
 
-The suite (114 tests) covers authentication, password reset, refresh-token reuse detection, RBAC
+The suite (140 tests) covers authentication, two-step verification (TOTP vectors, replay, lockout, policy enforcement), Google OIDC (PKCE, token verification, no auto-linking), password reset, refresh-token reuse detection, RBAC
 and escalation, **tenant isolation** (Tenant A user vs. Tenant B patient, claim, DHA record, SHA
 record, credentials and branch), **branch isolation**, support access, the DHA/SHA adapter (token
 caching, 401 renewal, retries, headers, error mapping, not-configured operations), callbacks (HMAC,
 dedupe, matching), secret encryption, billing and M-Pesa idempotency, clinical workflows (queues,
 immutable consultations, lab verification, FEFO dispensing, wards, maternity), documents, finance
 and HR segregation of duties, reports and CSV safety, FHIR mapping and outbox, the SHA claim
-lifecycle and backup monitoring.
+lifecycle, ePrescription, emergency claims, M-Pesa B2C payouts and backup monitoring.
 
 ## Documentation
 
 [Architecture](docs/ARCHITECTURE.md) · [Multitenancy](docs/MULTITENANCY.md) · [RBAC](docs/RBAC.md) ·
 [Database](docs/DATABASE.md) · [Security](docs/SECURITY.md) · [SHA](docs/SHA.md) · [DHA](docs/DHA.md) ·
 [FHIR](docs/FHIR.md) · [M-Pesa](docs/M-PESA.md) · [SMS](docs/SMS.md) · [Email](docs/EMAIL.md) ·
-[Deployment](docs/DEPLOYMENT.md) · [Owner portal](docs/OWNER-PORTAL.md) · [Branches](docs/BRANCHES.md) · [API](docs/API.md)
+[Authentication](docs/AUTHENTICATION.md) · [Deployment](docs/DEPLOYMENT.md) · [Owner portal](docs/OWNER-PORTAL.md) · [Branches](docs/BRANCHES.md) · [API](docs/API.md)

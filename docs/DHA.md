@@ -63,3 +63,23 @@ version changes.
 Only idempotent operations are retried: up to 3 attempts on network errors, 429 and 502/503/504,
 with exponential backoff that respects `Retry-After`. Validation errors, authentication errors and
 business rejections are never retried.
+
+## ePrescription
+
+* Prescriptions map to a FHIR transaction Bundle: the Patient plus one `MedicationRequest` per
+  item, carrying the dosage text, quantity and supply duration. Dispensing maps to
+  `MedicationDispense` resources that reference their MedicationRequest.
+* Endpoints (`/api/v1/pharmacy/prescriptions/:id/eprescription`):
+  * `GET …/bundle`: local preview and validation
+  * `POST …/preview`: HIE preview
+  * `POST …` (send): needs `prescription.create` and the patient's CR ID
+  * `POST …/dispense`: report the dispense; needs `pharmacy.dispense`
+* The contract operations are `eprescription.preview`, `eprescription.create` and
+  `eprescription.dispense`. Until they are configured, calls return 501 and nothing is recorded as
+  sent. Failures are recorded on the prescription (`ePrescription.status/lastError`).
+
+## Terminology
+
+Interoperability → Terminology calls `terminology.search|lookup|validate|translate` with
+key/value parameters. The parameter names come from the HIE terminology contract, so AfeySync does
+not hard-code them.

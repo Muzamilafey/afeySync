@@ -51,6 +51,15 @@ full `statusHistory`.
 * **Reconciliation** posts a `Payment` with method `sha` to the claim's invoice. It is idempotent
   per remittance reference and cannot exceed the approved amount or the invoice balance. The claim
   becomes `paid` once the approved amount is received.
+* **Emergency claims:**
+  * Once submitted, SHA's emergency protocols can be listed and added
+    (`sha.emergency.protocols.list` / `sha.emergency.protocol.add`).
+  * Attending doctors can be added or removed (`sha.emergency.doctor.add` / `.remove`). Each is
+    identified by the licence or registry number on their user profile.
+  * Endpoints: `GET /sha/emergency/protocols`, `GET /sha/emergency/doctors`, and
+    `POST|DELETE /sha/transactions/:id/emergency/...`.
+  * The payload field names (`claim_reference`, `protocol_code`, `registration_number`) must be
+    checked against the HIE catalog when the owner configures these operations.
 * **Attachments:** documents uploaded against the transaction (`relatedResource: sha_transaction`)
   are linked to it.
 

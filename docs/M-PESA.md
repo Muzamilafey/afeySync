@@ -22,5 +22,17 @@ Adapter: `backend/src/integrations/mpesa/mpesaService.ts`. Routes: `backend/src/
 * Owner configuration covers consumer key and secret, passkey, shortcode, till, paybill,
   environment (sandbox/production) and callback base URL. Owner → Integrations → M-Pesa can test
   the connection.
-* B2C (refunds to phone) is **not** implemented. Refunds are recorded as credit notes and paid out
-  by an approved method.
+* **B2C refund payouts:**
+  * Uses `POST /mpesa/b2c/v3/paymentrequest` with CommandID `BusinessPayment`.
+  * Off by default. The owner sets these on the M-Pesa integration: `b2cEnabled=true`, the B2C
+    shortcode, the initiator username and password, and the Safaricom public certificate (PEM) for
+    the environment.
+  * The `SecurityCredential` is the initiator password encrypted with that certificate
+    (RSA PKCS#1 v1.5), base64-encoded.
+  * Only an approved refund credit note with method `mpesa` can be paid out, with
+    `POST /api/v1/payments/mpesa/refunds/:creditNoteId/payout`. It needs `billing.refund`, and the
+    person starting it must not be the refund approver.
+  * Results arrive at `/payments/mpesa/b2c/:token/result`. On success the credit note records the
+    TransactionID and receiver name.
+  * A queue timeout (`/b2c/:token/timeout`) marks the payout `timeout`. Confirm its status with
+    Safaricom before any retry, so a customer is never paid twice. A failed payout can be retried.

@@ -38,4 +38,5 @@
   that start with `= + - @` to block spreadsheet formula injection.
 * **Clinical records**: finalized consultations cannot be edited; corrections are addenda with a
   reason. FHIR outbox entries are versioned per addendum.
-* **MFA**: not implemented yet. Session and user models are ready for a second factor.
+* **MFA and Google sign-in**: authenticator app (TOTP), email and SMS codes, recovery codes, facility and platform policies with server-enforced enrollment, and explicitly linked Google accounts (OIDC + PKCE, verified ID tokens). See AUTHENTICATION.md.
+* **M-Pesa B2C payouts**: only for approved M-Pesa refunds, and started by someone other than the refund approver. The security credential is encrypted with the Safaricom certificate the owner supplies. Results arrive at secret-token URLs and are applied idempotently. A timed-out payout is flagged for manual confirmation and never retried automatically. Session and user models are ready for a second factor.
