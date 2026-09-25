@@ -1,4 +1,6 @@
 import ExcelJS from 'exceljs';
+import fs from 'node:fs';
+import path from 'node:path';
 import JSZip from 'jszip';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import { createFacility, createUser, ownerToken, setupApp, t, teardown, tenantLogin } from './helpers';
@@ -154,6 +156,42 @@ describe('inventory items import', () => {
     expect(items.find((i: { code: string }) => i.code === 'MORPH10')).toMatchObject({ controlled: true, reorderLevel: 20, unit: 'unit', isDrug: true });
     const one = (await t(S, admin).get('/api/v1/inventory/items?q=1')).body.data.find((i: { code: string }) => i.code === '1');
     expect(one).toMatchObject({ name: 'test', reorderLevel: 50, controlled: true });
+  });
+
+  it('imports selling prices per list (cash required, billing.prices only)', async () => {
+    const rows = [
+      { Code: 'ORS', Name: 'ORS sachets', Unit: 'sachet', 'Price: Cash': 20, 'Price: SHA': 15, 'Price: Foreigner': 50 },
+      { Code: 'ZINC', Name: 'Zinc 20mg', 'Price: SHA': 5 },
+    ];
+    const p = await upload('/api/v1/inventory/items/import', await fill(await download('/api/v1/inventory/items/import-template'), rows));
+    expect(p.body.data.rows[1].errors).toEqual(['Price: Cash is required when setting prices (it is the fallback for blank lists)']);
+    const pharmMgr = await createUser(S, admin, { email: 'pm@imp.test', roleKey: 'pharmacy_manager', branchAccess: 'all', branchIds: [] });
+    const denied = await upload('/api/v1/inventory/items/import', await fill(await download('/api/v1/inventory/items/import-template'), rows.slice(0, 1)), false, pharmMgr);
+    expect(denied.body.data.rows[0].errors).toContain('You cannot set prices (needs billing.prices). Leave the price columns blank.');
+    const done = await upload('/api/v1/inventory/items/import', await fill(await download('/api/v1/inventory/items/import-template'), rows.slice(0, 1)), true);
+    expect(done.body.data.summary).toMatchObject({ create: 1, errors: 0 });
+    const ors = (await t(S, admin).get('/api/v1/inventory/items?q=ORS')).body.data.find((i: { code: string }) => i.code === 'ORS');
+    expect(ors.prices).toEqual({ cash: 20, sha: 15, foreigner: 50 });
+    const again = await upload('/api/v1/inventory/items/import', await fill(await download('/api/v1/inventory/items/import-template'), [{ Code: 'ORS', 'Price: Cash': 25 }]));
+    expect(again.body.data.rows[0]).toMatchObject({ action: 'update', changes: ['cash price → 25'] });
+  });
+});
+
+describe('files saved by other programs', () => {
+  it('reads a template that a script (openpyxl) filled with 2,000 rows, which ExcelJS alone rejects', async () => {
+    const buf = fs.readFileSync(path.join(__dirname, 'fixtures', 'items-2000-saved-by-openpyxl.xlsx'));
+    await expect(new ExcelJS.Workbook().xlsx.load(buf as unknown as ArrayBuffer)).rejects.toThrow(); // the original failure
+    const p = await upload('/api/v1/inventory/items/import', buf);
+    expect(p.status).toBe(200);
+    expect(p.body.data.summary).toMatchObject({ total: 2000, create: 2000, errors: 0 });
+    expect(p.body.data.rows[1999]).toMatchObject({ row: 2003, key: 'KEML1999', name: 'KEML drug 1999' });
+  }, 60_000);
+
+  it('says what a non-.xlsx file really is', async () => {
+    const csv = await upload('/api/v1/inventory/items/import', Buffer.from('Code,Name\nPCM,Paracetamol\n'));
+    expect(csv.body.error).toMatchObject({ code: 'INVALID_FILE', message: expect.stringContaining('a CSV/text file') });
+    const xls = await upload('/api/v1/inventory/items/import', Buffer.concat([Buffer.from([0xd0, 0xcf, 0x11, 0xe0, 0xa1, 0xb1, 0x1a, 0xe1]), Buffer.alloc(512)]));
+    expect(xls.body.error.message).toContain('old-format Excel file (.xls) or a password-protected workbook');
   });
 });
 

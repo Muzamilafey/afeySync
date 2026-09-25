@@ -6,7 +6,7 @@ import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { BedDouble, Plus } from 'lucide-react';
 import { api } from '@/services/api';
 import { useCan } from '@/hooks/useMe';
-import { Button, Card, ErrorText, Field, Input, Loading, Modal, PageHeader, Select, Stat, Table, Td } from '@/components/ui';
+import { Alert, Button, Card, ErrorText, Field, Input, Loading, Modal, PageHeader, Select, Stat, Table, Td } from '@/components/ui';
 import { age, fmtDateTime } from '@/lib/utils';
 import { PatientPicker } from '@/features/patients/PatientPicker';
 import type { Patient } from '@/types/api';
@@ -36,6 +36,9 @@ export default function InpatientPage() {
   const freeBeds = useQuery({ queryKey: ['free-beds', adm.wardId], queryFn: async () => (await api<Bed[]>('/inpatient/beds', { query: { wardId: adm.wardId, status: 'available' } })).data, enabled: !!adm.wardId });
   const refresh = () => { qc.invalidateQueries({ queryKey: ['wards'] }); qc.invalidateQueries({ queryKey: ['beds'] }); qc.invalidateQueries({ queryKey: ['admissions'] }); setModal(null); };
   const admit = useMutation({ mutationFn: () => api('/inpatient/admissions', { method: 'POST', body: { patientId: patient!._id, bedId: adm.bedId, admissionDiagnosis: adm.admissionDiagnosis, admissionType: adm.admissionType, payer: { type: adm.payer }, phoneVerification: phoneCheck ? ('token' in phoneCheck ? { token: phoneCheck.token } : phoneCheck) : undefined } }), onSuccess: () => { setPatient(null); setPhoneCheck(null); setAdm({ wardId: '', bedId: '', admissionDiagnosis: '', admissionType: 'emergency', payer: 'cash' }); refresh(); } });
+  // A patient holds one admission at a time: show the open one as soon as the patient is picked.
+  const current = useQuery({ queryKey: ['admission-phone', patient?._id], enabled: !!patient, queryFn: async () => (await api<{ currentAdmission: { _id: string; admissionNumber: string; admittedAt: string; ward: string | null; bed: string | null } | null }>('/inpatient/admissions/phone-verification', { query: { patientId: patient!._id } })).data });
+  const openAdmission = patient ? current.data?.currentAdmission ?? null : null;
   const createWard = useMutation({ mutationFn: () => api('/inpatient/wards', { method: 'POST', body: { ...ward, bedChargeServiceCode: ward.bedChargeServiceCode || undefined } }), onSuccess: refresh });
   const addBeds = useMutation({ mutationFn: () => api(`/inpatient/wards/${bedsForm.wardId}/beds`, { method: 'POST', body: { numbers: bedsForm.numbers.split(',').map((s) => s.trim()).filter(Boolean), category: bedsForm.category } }), onSuccess: refresh });
   const bedStatus = useMutation({ mutationFn: ({ id, status }: { id: string; status: string }) => api(`/inpatient/beds/${id}/status`, { method: 'POST', body: { status } }), onSuccess: refresh });
@@ -93,8 +96,16 @@ export default function InpatientPage() {
           <Field label="Admission type"><Select value={adm.admissionType} onChange={(e) => setAdm({ ...adm, admissionType: e.target.value })}><option value="emergency">Emergency</option><option value="elective">Elective</option><option value="maternity">Maternity</option><option value="transfer_in">Transfer in</option></Select></Field>
           <Field label="Payer"><Select value={adm.payer} onChange={(e) => setAdm({ ...adm, payer: e.target.value })}><option value="cash">Cash</option><option value="sha">SHA</option><option value="insurance">Insurance</option></Select></Field>
           <Field label="Admission diagnosis" className="col-span-full" hint={can('admin.settings') ? 'Manage the list in Admin → Diagnoses.' : undefined}><DiagnosisInput value={adm.admissionDiagnosis} onChange={(v) => setAdm({ ...adm, admissionDiagnosis: v })} /></Field>
-          {patient && <div className="col-span-full"><PhoneVerification patientId={patient._id} value={phoneCheck} onChange={setPhoneCheck} onPolicy={setPhonePolicy} /></div>}
-          <div className="col-span-full space-y-2"><ErrorText error={admit.error} /><Button onClick={() => admit.mutate()} loading={admit.isPending} disabled={!patient || !adm.bedId || adm.admissionDiagnosis.length < 2 || !phoneVerificationReady(phonePolicy, phoneCheck)}>Admit</Button></div>
+          {openAdmission && (
+            <div className="col-span-full">
+              <Alert tone="amber" title="Already admitted">
+                {patient?.firstName} is already admitted ({openAdmission.admissionNumber}{openAdmission.ward ? `, ${openAdmission.ward}` : ''}{openAdmission.bed ? ` bed ${openAdmission.bed}` : ''}, since {fmtDateTime(openAdmission.admittedAt)}). Discharge them from that admission before admitting again, or transfer them to another bed from the admission page.{' '}
+                <Link href={`/inpatient/${openAdmission._id}`} className="font-medium underline">Open the current admission</Link>
+              </Alert>
+            </div>
+          )}
+          {patient && !openAdmission && current.isSuccess && <div className="col-span-full"><PhoneVerification patientId={patient._id} value={phoneCheck} onChange={setPhoneCheck} onPolicy={setPhonePolicy} /></div>}
+          <div className="col-span-full space-y-2"><ErrorText error={admit.error} /><Button onClick={() => admit.mutate()} loading={admit.isPending} disabled={!patient || !!openAdmission || !current.isSuccess || !adm.bedId || adm.admissionDiagnosis.length < 2 || !phoneVerificationReady(phonePolicy, phoneCheck)}>Admit</Button></div>
         </div>
       </Modal>
       <Modal open={modal === 'ward'} onClose={() => setModal(null)} title="New ward">

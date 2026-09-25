@@ -383,6 +383,12 @@ export async function ensureTenantIndexes(conn: Connection) {
 }
 
 export async function nextSequence(m: TenantModels, key: string): Promise<number> {
-  const doc = await m.Counter.findOneAndUpdate({ _id: key }, { $inc: { seq: 1 } }, { upsert: true, returnDocument: 'after' }).lean();
-  return doc!.seq;
+  const bump = () => m.Counter.findOneAndUpdate({ _id: key }, { $inc: { seq: 1 } }, { upsert: true, returnDocument: 'after' }).lean();
+  try {
+    return (await bump())!.seq;
+  } catch (err) {
+    // Two first-ever increments race to insert the counter; the loser retries against the now-existing one.
+    if ((err as { code?: number }).code === 11000) return (await bump())!.seq;
+    throw err;
+  }
 }

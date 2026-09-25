@@ -30,3 +30,13 @@ export interface CreditNote {
   createdAt: string;
   payout?: { status?: 'submitted' | 'completed' | 'failed' | 'timeout'; phone?: string; transactionId?: string; resultDesc?: string; receiverName?: string; requestedByName?: string };
 }
+
+/** The standard price lists. A list left blank bills at the cash price. */
+export const STANDARD_LISTS: Array<[string, string, string]> = [
+  ['cash', 'Cash', 'Kenyan cash patients. Also the fallback for any list left blank.'],
+  ['sha', 'SHA', 'Patients billed to SHA'],
+  ['insurance', 'Insurance / corporate', 'Private insurance and corporate schemes'],
+  ['foreigner', 'Foreigner', 'Cash-paying non-Kenyan patients'],
+];
+export const isStandardList = (l: string) => STANDARD_LISTS.some(([k]) => k === l);
+

@@ -133,3 +133,41 @@ describe('procurement', () => {
     expect(store.body.data.reduce((s: number, b: { quantity: number }) => s + b.quantity, 0)).toBe(105);
   });
 });
+
+describe('item selling prices (cash / SHA / insurance / foreigner)', () => {
+  let pcm: string;
+  it('sets prices from the item (billing.prices only), shows stock and prices in the item list', async () => {
+    const body = { code: 'PCM500', name: 'Paracetamol', strength: '500mg', unit: 'tablet', prices: { cash: 5, sha: 4, insurance: 6, foreigner: 10 } };
+    const denied = await t(S, pharmMgr).post('/api/v1/pharmacy/items').send(body);
+    expect(denied.status).toBe(403);
+    expect((await t(S, admin).get('/api/v1/pharmacy/items').query({ q: 'PCM500', all: 'true' })).body.data).toHaveLength(0); // nothing half-created
+    expect((await t(S, admin).post('/api/v1/pharmacy/items').send({ ...body, code: 'NOCASH', prices: { sha: 4 } })).status).toBe(400);
+    const ok = await t(S, admin).post('/api/v1/pharmacy/items').send(body);
+    expect(ok.status).toBe(201);
+    pcm = ok.body.data._id;
+    await t(S, pharmMgr).post('/api/v1/pharmacy/stock/receive').send({ locationId: pharmacyLoc, lines: [{ itemId: pcm, batchNumber: 'P1', expiryDate: new Date(Date.now() + 400 * 86400_000), quantity: 100, unitCost: 1 }] });
+    const list = await t(S, pharmacist).get('/api/v1/pharmacy/items').query({ q: 'PCM500' });
+    expect(list.body.data[0]).toMatchObject({ billingCode: 'RX-PCM500', prices: { cash: 5, sha: 4, insurance: 6, foreigner: 10 }, stock: { usable: 100 } });
+    // Clearing one list removes it (it then bills at cash); the service catalogue is the same record.
+    await t(S, admin).patch(`/api/v1/pharmacy/items/${pcm}`).send({ prices: { insurance: null } });
+    const svc = await t(S, admin).get('/api/v1/billing/services').query({ q: 'RX-PCM500', active: 'all' });
+    expect(Object.fromEntries(svc.body.data[0].prices.map((p: { priceList: string; amount: number }) => [p.priceList, p.amount]))).toEqual({ cash: 5, sha: 4, foreigner: 10 });
+  });
+
+  it('bills a cash-paying non-Kenyan at the foreigner price and a Kenyan at the cash price', async () => {
+    const charge = async (nationality: string) => {
+      const p = await t(S, admin).post('/api/v1/patients').send({ firstName: 'Price', lastName: nationality, gender: 'female', nationality });
+      const v = await t(S, admin).post('/api/v1/visits').send({ patientId: p.body.data._id, firstStage: 'consultation' });
+      const vid = v.body.data.visit._id;
+      const rx = await t(S, doctor).post('/api/v1/pharmacy/prescriptions').send({ visitId: vid, items: [{ itemId: pcm, drugName: 'Paracetamol 500mg', dose: '1g', frequency: 'TDS', quantity: 3 }] });
+      expect(rx.status).toBe(201);
+      const d = await t(S, pharmacist).post(`/api/v1/pharmacy/prescriptions/${rx.body.data._id}/dispense`).send({ locationId: pharmacyLoc, lines: [{ rxItemId: rx.body.data.items[0]._id, itemId: pcm, quantity: 3 }] });
+      expect(d.body.error).toBeUndefined();
+      const invs = await t(S, admin).get(`/api/v1/billing/invoices?visitId=${vid}`);
+      const inv = invs.body.data[0];
+      return { list: inv.payer.priceList, amount: inv.totals.gross };
+    };
+    expect(await charge('Somali')).toEqual({ list: 'foreigner', amount: 30 });
+    expect(await charge('Kenyan')).toEqual({ list: 'cash', amount: 15 });
+  });
+});

@@ -146,6 +146,26 @@ async function occupyBed(req: Request, bedId: string, admissionId: Types.ObjectI
 }
 
 /* ------------------------------------------------------------ Admission phone verification */
+/** The patient's open admission, if any: a patient can only hold one admission until discharged. */
+async function openAdmission(req: Request, patientId: unknown) {
+  const m = req.tenant!.models;
+  const a = await m.Admission.findOne({ patientId: patientId as never, status: 'admitted' }).select('admissionNumber admittedAt wardId bedId branchId').sort({ _id: 1 }).lean();
+  if (!a) return null;
+  const [ward, bed] = await Promise.all([m.Ward.findById(a.wardId).select('name').lean(), m.Bed.findById(a.bedId).select('number').lean()]);
+  return { _id: String(a._id), admissionNumber: a.admissionNumber, admittedAt: a.admittedAt, ward: ward?.name ?? null, bed: bed?.number ?? null };
+}
+
+async function assertNotAdmitted(req: Request, patientId: unknown) {
+  const open = await openAdmission(req, patientId);
+  if (open) {
+    throw conflict(
+      `This patient is already admitted (${open.admissionNumber}${open.ward ? `, ${open.ward}` : ''}${open.bed ? ` bed ${open.bed}` : ''}). Discharge them from that admission before admitting again.`,
+      { admission: open },
+      'ALREADY_ADMITTED',
+    );
+  }
+}
+
 router.get(
   '/admissions/phone-verification',
   requirePermission('inpatient.admit'),
@@ -153,7 +173,7 @@ router.get(
     const m = req.tenant!.models;
     const patient = await m.Patient.findById(oid(String(req.query.patientId ?? ''), 'Patient')).select('phone nextOfKin branchIds').lean();
     if (!patient || !canAccessAnyBranch(req, patient.branchIds ?? [])) throw notFound('Patient not found');
-    res.json({ success: true, data: { policy: await admissionPolicy(req), options: phoneOptions(patient), skipReasons: Object.entries(SKIP_REASONS).map(([key, label]) => ({ key, label })) } });
+    res.json({ success: true, data: { currentAdmission: await openAdmission(req, patient._id), policy: await admissionPolicy(req), options: phoneOptions(patient), skipReasons: Object.entries(SKIP_REASONS).map(([key, label]) => ({ key, label })) } });
   }),
 );
 
@@ -165,6 +185,7 @@ router.post(
     const m = req.tenant!.models;
     const patient = await m.Patient.findById(oid(body.patientId, 'Patient')).select('phone nextOfKin branchIds').lean();
     if (!patient || !canAccessAnyBranch(req, patient.branchIds ?? [])) throw notFound('Patient not found');
+    await assertNotAdmitted(req, patient._id); // no SMS for an admission that cannot happen
     res.status(201).json({ success: true, data: await sendAdmissionCode(req, patient, body) });
   }),
 );
@@ -198,11 +219,12 @@ router.post(
     const m = req.tenant!.models;
     const patient = await m.Patient.findById(oid(body.patientId, 'Patient')).lean();
     if (!patient || !canAccessAnyBranch(req, patient.branchIds ?? [])) throw notFound('Patient not found');
-    if (await m.Admission.exists({ patientId: patient._id, status: 'admitted' })) throw conflict('Patient is already admitted', undefined, 'ALREADY_ADMITTED');
+    await assertNotAdmitted(req, patient._id);
     if (!(await m.Bed.exists({ _id: oid(body.bedId, 'Bed') }))) throw notFound('Bed not found');
     // Checked before anything is created, so a failed verification leaves no stray visit behind.
     const phoneVerification = await consumeVerification(req, String(patient._id), body.phoneVerification);
     let visit = body.visitId ? await loadScoped(req, m.Visit, body.visitId, 'Visit') : null;
+    const createdVisit = !visit;
     if (!visit) {
       visit = await m.Visit.create({ visitNumber: await nextNumber(m, 'visit', 'V'), patientId: patient._id, branchId: req.branch!.id, type: 'inpatient', status: 'admitted', payer: body.payer ?? { type: 'cash' }, createdBy: req.user!.id });
     }
@@ -227,6 +249,15 @@ router.post(
     } catch (err) {
       await m.Bed.updateOne({ _id: bedDoc._id }, { status: 'available', admissionId: null });
       throw err;
+    }
+    // Two admissions submitted at the same moment can both pass the check above: the first one saved wins
+    // (save time, then id as a tie-break, so both requests agree), and this one is undone.
+    const first = await m.Admission.findOne({ patientId: patient._id, status: 'admitted' }).sort({ createdAt: 1, _id: 1 }).select('_id').lean();
+    if (first && String(first._id) !== String(admission._id)) {
+      await m.Admission.deleteOne({ _id: admission._id });
+      await m.Bed.updateOne({ _id: bedDoc._id, admissionId: admission._id }, { status: 'available', admissionId: null });
+      if (createdVisit) await m.Visit.deleteOne({ _id: visit._id });
+      await assertNotAdmitted(req, patient._id);
     }
     await m.Visit.updateOne({ _id: visit._id }, { status: 'admitted' });
     await m.QueueEntry.updateMany({ visitId: visit._id, status: { $in: ['waiting', 'called'] } }, { status: 'cancelled' });

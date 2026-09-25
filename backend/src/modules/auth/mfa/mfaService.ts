@@ -107,7 +107,17 @@ export async function deliverOtp(ch: Challenge, method: 'email' | 'sms', to: str
   const key = `${tenantId ?? 'platform'}:mfa:${ch._id}:${sends + 1}`;
   const text = `${brand} verification code: ${code}. It expires in 10 minutes. Never share this code.`;
   // The code is never stored in plain text: queued messages are encrypted and wiped after sending.
-  if (method === 'email') await notifyEmail(tenantId, key, to, `${brand} verification code`, `${text}\n\nIf you did not try to sign in, change your password and contact your administrator.`, undefined, { sensitive: true });
+  if (method === 'email') {
+    await notifyEmail(
+      tenantId,
+      key,
+      to,
+      `Your ${brand} sign-in code`, // never the code itself: subjects are queued unencrypted
+      `Use the code below to complete your sign-in.\n\n${text}\n\nIf you did not try to sign in, change your password and contact your administrator.`,
+      undefined,
+      { sensitive: true, code: { value: code, expires: '10 minutes' }, title: `Your ${brand} sign-in code`, intro: 'Use the code below to complete your sign-in.', notice: "Didn't request this? Someone may know your password: change it now and tell your administrator." },
+    );
+  }
   else await enqueueSms(tenantId, key, to, text, { critical: true, sensitive: true, maxAttempts: 3 });
   return { sentTo: ch.otp!.target };
 }

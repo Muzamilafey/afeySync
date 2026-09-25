@@ -6,7 +6,7 @@ import { audit } from '../audit/auditService';
 import { AppError } from '../../utils/errors';
 import { buildTemplate, parseNumber, readImport, summarize, yesNo, type ImportColumn, type RowResult } from './excel';
 
-const DEFAULT_PRICE_LISTS = ['cash', 'sha', 'insurance'];
+const DEFAULT_PRICE_LISTS = ['cash', 'sha', 'insurance', 'foreigner'];
 const CODE_RE = /^[A-Za-z0-9-_.]+$/;
 const LIST_RE = /^[a-z0-9_-]{2,40}$/;
 const priceHeader = (list: string) => `Price: ${list} (KES)`;
@@ -39,7 +39,7 @@ export async function serviceTemplate(req: Request) {
     sheetName: 'Services',
     columns: columns(lists),
     examples: [
-      { code: 'CONS-GP', name: 'General consultation', category: 'consultation', department: 'OPD', active: 'Yes', 'price:cash': 1000, 'price:sha': 1000, 'price:insurance': 1500 },
+      { code: 'CONS-GP', name: 'General consultation', category: 'consultation', department: 'OPD', active: 'Yes', 'price:cash': 1000, 'price:sha': 1000, 'price:insurance': 1500, 'price:foreigner': 2500 },
       { code: 'LAB-FBC', name: 'Full blood count', category: 'laboratory', department: 'Laboratory', active: 'Yes', 'price:cash': 800, 'price:insurance': 1200 },
       { code: 'RAD-CXR', name: 'Chest X-ray', category: 'radiology', department: 'Radiology', active: 'Yes', 'price:cash': 2500, 'price:sha': 2000 },
       { code: 'BED-GEN', name: 'General ward bed (per day)', category: 'bed', department: 'Inpatient', active: 'Yes', 'price:cash': 3000 },

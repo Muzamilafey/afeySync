@@ -69,6 +69,11 @@ const schema = z.object({
   SMTP_PASSWORD: z.string().optional(),
   SMTP_ENCRYPTION: z.string().optional(),
   SMTP_FROM: z.string().optional(),
+  /** Shown in emails ("Didn't request this? Please contact …"). Optional; nothing is shown when unset. */
+  SUPPORT_EMAIL: z.string().email().optional(),
+  SUPPORT_PHONE: z.string().max(30).optional(),
+  /** Footer links in emails: "Website|https://…,LinkedIn|https://…" (https only). */
+  EMAIL_FOOTER_LINKS: z.string().max(1000).optional(),
 });
 
 const parsed = schema.safeParse(process.env);

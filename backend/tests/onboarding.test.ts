@@ -1,6 +1,7 @@
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import { api, createFacility, hostOf, OWNER_HOST, ownerToken, setupApp, teardown } from './helpers';
 import { meta } from '../src/models/meta';
+import { IntegrationSecretService } from '../src/modules/integrations/secretService';
 import { seedPlans } from '../src/modules/plans/planService';
 
 const PW = 'Welcome2Afey!';
@@ -10,8 +11,10 @@ const pub = () => ({ get: (u: string) => api().get(`/api/v1${u}`).set('Host', 'a
 const own = (method: 'get' | 'post' | 'put', u: string) => api()[method](`/api/v1/owner/onboarding${u}`).set('Host', OWNER_HOST).set('Authorization', `Bearer ${owner}`);
 
 async function lastCode(to: string) {
-  const job = await meta().Job.findOne({ type: 'EMAIL', 'payload.to': to, 'payload.subject': /Confirm your AfeySync/ }).sort({ createdAt: -1, _id: -1 }).lean();
-  return /code is (\d{6})/.exec((job!.payload as { text: string }).text)![1];
+  const job = await meta().Job.findOne({ type: 'EMAIL', 'payload.to': to, 'payload.subject': /AfeySync verification code/ }).sort({ createdAt: -1, _id: -1 }).lean();
+  // The queued copy is encrypted (the code is never stored in plain text); only the mailer can read it.
+  expect(JSON.stringify(job!.payload)).not.toMatch(/code is \d{6}/);
+  return /code is (\d{6})/.exec(IntegrationSecretService.decrypt((job!.payload as { textEnc: string }).textEnc))![1];
 }
 
 const application = (slug: string, email: string, extra: Record<string, unknown> = {}) => ({

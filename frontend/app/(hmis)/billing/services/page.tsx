@@ -8,15 +8,16 @@ import { api } from '@/services/api';
 import { useCan } from '@/hooks/useMe';
 import { Badge, Button, Card, ErrorText, Field, Input, Loading, Modal, PageHeader, Select, Table, Td } from '@/components/ui';
 import { money } from '@/lib/utils';
-import { CATEGORIES, type ServiceItem } from '@/features/billing/types';
+import { CATEGORIES, isStandardList as isStandard, STANDARD_LISTS, type ServiceItem } from '@/features/billing/types';
 
 function ServiceForm({ item, onDone }: { item?: ServiceItem; onDone: () => void }) {
   const qc = useQueryClient();
   const [f, setF] = useState({ code: item?.code ?? '', name: item?.name ?? '', category: item?.category ?? 'consultation', department: item?.department ?? '', shaInterventionCode: item?.shaInterventionCode ?? '', active: item?.active ?? true });
-  const [prices, setPrices] = useState(item?.prices ?? [{ priceList: 'cash', amount: 0 }, { priceList: 'sha', amount: 0 }]);
+  const [std, setStd] = useState<Record<string, string>>(() => Object.fromEntries(STANDARD_LISTS.map(([k]) => [k, String(item?.prices.find((p) => p.priceList === k)?.amount ?? '')])));
+  const [prices, setPrices] = useState((item?.prices ?? []).filter((p) => !isStandard(p.priceList)));
   const m = useMutation({
     mutationFn: () => {
-      const body = { ...f, department: f.department || undefined, shaInterventionCode: f.shaInterventionCode || undefined, prices: prices.filter((p) => p.priceList) };
+      const body = { ...f, department: f.department || undefined, shaInterventionCode: f.shaInterventionCode || undefined, prices: [...STANDARD_LISTS.filter(([k]) => std[k] !== '').map(([k]) => ({ priceList: k, amount: Number(std[k]) })), ...prices.filter((p) => p.priceList)] };
       return item ? api(`/billing/services/${item._id}`, { method: 'PATCH', body: { ...body, code: undefined } }) : api('/billing/services', { method: 'POST', body });
     },
     onSuccess: () => { qc.invalidateQueries({ queryKey: ['services-admin'] }); onDone(); },
@@ -31,17 +32,23 @@ function ServiceForm({ item, onDone }: { item?: ServiceItem; onDone: () => void 
         <Field label="SHA intervention code"><Input value={f.shaInterventionCode} onChange={(e) => setF({ ...f, shaInterventionCode: e.target.value })} /></Field>
         <label className="flex items-center gap-2 pt-6 text-sm"><input type="checkbox" checked={f.active} onChange={(e) => setF({ ...f, active: e.target.checked })} /> Active</label>
       </div>
-      <p className="label">Price lists</p>
+      <p className="label">Prices (KES)</p>
+      <div className="grid gap-3 sm:grid-cols-2">
+        {STANDARD_LISTS.map(([k, label, hint]) => (
+          <Field key={k} label={label} hint={hint}><Input type="number" min={0} value={std[k]} placeholder={k === 'cash' ? 'Required' : 'Blank = cash price'} onChange={(e) => setStd({ ...std, [k]: e.target.value })} /></Field>
+        ))}
+      </div>
+      {prices.length > 0 && <p className="label">Scheme-specific prices</p>}
       {prices.map((p, i) => (
         <div key={i} className="grid grid-cols-[1fr_140px_auto] gap-2">
-          <Input value={p.priceList} placeholder="cash / sha / insurance / scheme key" onChange={(e) => setPrices(prices.map((x, j) => (j === i ? { ...x, priceList: e.target.value.toLowerCase() } : x)))} />
+          <Input value={p.priceList} placeholder="scheme key, e.g. aar_gold" onChange={(e) => setPrices(prices.map((x, j) => (j === i ? { ...x, priceList: e.target.value.toLowerCase() } : x)))} />
           <Input type="number" min={0} value={p.amount} onChange={(e) => setPrices(prices.map((x, j) => (j === i ? { ...x, amount: Number(e.target.value) } : x)))} />
           <Button variant="ghost" onClick={() => setPrices(prices.filter((_, j) => j !== i))} aria-label="Remove price"><Trash2 className="h-4 w-4" /></Button>
         </div>
       ))}
-      <Button size="sm" variant="outline" onClick={() => setPrices([...prices, { priceList: 'insurance', amount: 0 }])}><Plus className="h-3 w-3" /> Add price list</Button>
+      <Button size="sm" variant="outline" onClick={() => setPrices([...prices, { priceList: '', amount: 0 }])}><Plus className="h-3 w-3" /> Add scheme-specific price</Button>
       <ErrorText error={m.error} />
-      <Button onClick={() => m.mutate()} loading={m.isPending}>Save</Button>
+      <Button onClick={() => m.mutate()} loading={m.isPending} disabled={std.cash === ''}>Save</Button>
     </div>
   );
 }
@@ -72,7 +79,7 @@ export default function ServicesPage() {
                 <Td className="font-mono text-xs">{s.code}</Td>
                 <Td className="font-medium">{s.name}</Td>
                 <Td className="capitalize">{s.category}</Td>
-                <Td className="text-xs">{s.prices.map((p) => `${p.priceList}: ${money(p.amount)}`).join(' · ')}</Td>
+                <Td className="text-xs">{[...s.prices].sort((a, b) => (STANDARD_LISTS.findIndex(([k]) => k === a.priceList) + 99) % 99 - (STANDARD_LISTS.findIndex(([k]) => k === b.priceList) + 99) % 99).map((p) => <span key={p.priceList} className="block whitespace-nowrap"><span className="muted">{STANDARD_LISTS.find(([k]) => k === p.priceList)?.[1] ?? p.priceList}:</span> {money(p.amount)}</span>)}</Td>
                 <Td className="font-mono text-xs">{s.shaInterventionCode ?? '—'}</Td>
                 <Td><Badge tone={s.active ? 'green' : 'gray'}>{s.active ? 'active' : 'inactive'}</Badge></Td>
                 <Td>{can('billing.prices') && <Button size="sm" variant="ghost" onClick={() => setEdit(s)}>Edit</Button>}</Td>

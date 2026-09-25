@@ -11,10 +11,11 @@ import { authenticateTenant, requireAnyPermission, requireBranch, requirePermiss
 import { branchFilter, canAccessBranch } from '../../middleware/branchScope';
 import { audit } from '../audit/auditService';
 import { dayRange, loadScoped, nextNumber, oid, round2 } from '../common/helpers';
-import { postCharge, recalcInvoice } from '../billing/billingService';
+import { postCharge, recalcInvoice, STANDARD_PRICE_LISTS } from '../billing/billingService';
 import { enqueue } from '../frontdesk/queueService';
 import { allocateFefo, stockOnHand } from './stockService';
 import { allergyConflicts } from './allergyCheck';
+import { billingCodeOf, syncItemPrices } from './itemPrices';
 
 const router = Router();
 router.use(authenticateTenant);
@@ -41,6 +42,8 @@ const itemSchema = z.object({
   reorderLevel: z.number().int().min(0).default(0),
   serviceCode: z.string().max(40).optional(),
   active: z.boolean().optional(),
+  /** Selling price per unit on each list; null removes that list's price. Needs billing.prices. */
+  prices: z.object(Object.fromEntries(STANDARD_PRICE_LISTS.map((l) => [l, z.number().min(0).max(10_000_000).nullable().optional()])) as Record<(typeof STANDARD_PRICE_LISTS)[number], z.ZodOptional<z.ZodNullable<z.ZodNumber>>>).optional(),
 });
 
 router.get(
@@ -55,7 +58,9 @@ router.get(
     const items = await m.Item.find(filter).sort({ name: 1 }).limit(Math.min(500, Number(req.query.limit) || 100)).lean();
     const locs = await m.StockLocation.find(req.branch ? { branchId: req.branch.id } : branchFilter(req)).select('_id').lean();
     const soh = await stockOnHand(m, { locationIds: locs.map((l) => l._id), itemIds: items.map((i) => i._id) });
-    res.json({ success: true, data: items.map((i) => ({ ...i, stock: soh.get(String(i._id)) ?? { onHand: 0, usable: 0, expired: 0, value: 0 } })) });
+    const services = await m.ServiceItem.find({ code: { $in: items.map(billingCodeOf) } }).select('code prices active').lean();
+    const priceOf = new Map(services.map((sv) => [sv.code, Object.fromEntries(sv.prices.map((p) => [p.priceList, p.amount]))]));
+    res.json({ success: true, data: items.map((i) => ({ ...i, billingCode: billingCodeOf(i), prices: priceOf.get(billingCodeOf(i)) ?? {}, stock: soh.get(String(i._id)) ?? { onHand: 0, usable: 0, expired: 0, value: 0 } })) });
   }),
 );
 
@@ -66,8 +71,11 @@ router.post(
     const body = parse(itemSchema, req.body);
     const m = req.tenant!.models;
     if (await m.Item.exists({ code: body.code.toUpperCase() })) throw conflict('Item code exists');
-    const i = await m.Item.create({ ...body, code: body.code.toUpperCase(), isDrug: body.category === 'drug' });
-    await audit(req, { action: 'inventory.item_create', resource: 'item', resourceId: String(i._id), newValue: body });
+    const { prices, ...fields } = body;
+    if (prices && !req.user!.permissions.has('billing.prices')) throw forbidden('Only users who manage prices (billing.prices) can set selling prices.');
+    const i = await m.Item.create({ ...fields, code: body.code.toUpperCase(), isDrug: body.category === 'drug' });
+    await syncItemPrices(req, i, prices);
+    await audit(req, { action: 'inventory.item_create', resource: 'item', resourceId: String(i._id), newValue: fields });
     res.status(201).json({ success: true, data: i });
   }),
 );
@@ -95,10 +103,12 @@ router.patch(
   '/items/:id',
   requireAnyPermission(...STOCK_WRITE),
   h(async (req, res) => {
-    const body = parsePatch(itemSchema.omit({ code: true }).partial(), req.body);
-    const i = await req.tenant!.models.Item.findByIdAndUpdate(oid(req.params.id, 'Item'), { $set: body }, { returnDocument: 'after' });
+    const { prices, ...body } = parsePatch(itemSchema.omit({ code: true }).partial(), req.body);
+    if (prices && !req.user!.permissions.has('billing.prices')) throw forbidden('Only users who manage prices (billing.prices) can set selling prices.');
+    const i = Object.keys(body).length ? await req.tenant!.models.Item.findByIdAndUpdate(oid(req.params.id, 'Item'), { $set: body }, { returnDocument: 'after' }) : await req.tenant!.models.Item.findById(oid(req.params.id, 'Item'));
     if (!i) throw notFound('Item not found');
-    await audit(req, { action: 'inventory.item_update', resource: 'item', resourceId: String(i._id), newValue: body });
+    await syncItemPrices(req, i, prices);
+    if (Object.keys(body).length) await audit(req, { action: 'inventory.item_update', resource: 'item', resourceId: String(i._id), newValue: body });
     res.json({ success: true, data: i });
   }),
 );

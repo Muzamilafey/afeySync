@@ -57,9 +57,29 @@ describe('inpatient', () => {
     admissionId = a.body.data._id;
     const clash = await t(S, doctor).post('/api/v1/inpatient/admissions').send({ patientId: p2, bedId: beds[0]._id, admissionDiagnosis: 'Malaria', phoneVerification: { skipReason: 'patient_unable' } });
     expect(clash.body.error.code).toBe('BED_UNAVAILABLE');
-    expect((await t(S, doctor).post('/api/v1/inpatient/admissions').send({ patientId: p1, bedId: beds[1]._id, admissionDiagnosis: 'x y', phoneVerification: { skipReason: 'patient_unable' } })).body.error.code).toBe('ALREADY_ADMITTED');
+    const again = await t(S, doctor).post('/api/v1/inpatient/admissions').send({ patientId: p1, bedId: beds[1]._id, admissionDiagnosis: 'x y', phoneVerification: { skipReason: 'patient_unable' } });
+    expect(again.status).toBe(409);
+    expect(again.body.error.code).toBe('ALREADY_ADMITTED');
+    expect(again.body.error.message).toMatch(/already admitted \(IP-\d+, Male Medical bed 1\)/);
+    // The form learns this as soon as the patient is picked, and no admission code is texted.
+    expect((await t(S, doctor).get('/api/v1/inpatient/admissions/phone-verification').query({ patientId: p1 })).body.data.currentAdmission).toMatchObject({ _id: admissionId, ward: 'Male Medical', bed: '1' });
+    expect((await t(S, doctor).get('/api/v1/inpatient/admissions/phone-verification').query({ patientId: p2 })).body.data.currentAdmission).toBeNull();
+    expect((await t(S, doctor).post('/api/v1/inpatient/admissions/phone-otp').send({ patientId: p1, target: 'other', phone: '0712345678' })).body.error.code).toBe('ALREADY_ADMITTED');
+    // Two admissions submitted at the same moment: exactly one wins, and no bed is left occupied by the loser.
+    const p3 = await mk({ firstName: 'Race', lastName: 'Patient', gender: 'male' });
+    const raceBeds = (await t(S, admin).post(`/api/v1/inpatient/wards/${wardId}/beds`).send({ numbers: ['R1', 'R2'] })).body.data as Array<{ _id: string }>;
+    const both = await Promise.all(raceBeds.map((bed) => t(S, doctor).post('/api/v1/inpatient/admissions').send({ patientId: p3, bedId: bed._id, admissionDiagnosis: 'Malaria', phoneVerification: { skipReason: 'patient_unable' } })));
+    expect(both.map((r) => r.status).sort()).toEqual([201, 409]);
+    // (The loser is normally ALREADY_ADMITTED; the FerretDB test database can instead collide on the visit
+    // number because its $inc is not atomic under concurrency. Either way the invariant below must hold.)
+    expect((await t(S, nurse).get('/api/v1/inpatient/admissions').query({ limit: 200 })).body.data.filter((x: { patientId: { _id: string } }) => x.patientId._id === p3)).toHaveLength(1);
+    const winner = both.find((r) => r.status === 201)!.body.data;
+    const freeBed = raceBeds.find((bd) => bd._id !== winner.bedId)!;
+    expect((await t(S, nurse).get('/api/v1/inpatient/beds').query({ wardId })).body.data.find((bd: { _id: string }) => bd._id === freeBed._id).status).toBe('available');
+    const dz = await t(S, doctor).post(`/api/v1/inpatient/admissions/${winner._id}/discharge`).send({ outcome: 'recovered', summary: 'Admitted in error, same day.', finalDiagnosis: 'Malaria' });
+    expect(dz.status).toBe(200);
     const occ = await t(S, nurse).get('/api/v1/inpatient/occupancy');
-    expect(occ.body.data).toEqual(expect.objectContaining({ total: 3, occupied: 1, occupancyRate: 33.3 }));
+    expect(occ.body.data).toEqual(expect.objectContaining({ total: 5, occupied: 1, occupancyRate: 20 }));
   });
 
   it('records nursing notes, MAR, fluids and vitals with role separation', async () => {

@@ -24,7 +24,7 @@ Two catalogs can be loaded or updated in bulk from Excel:
 
 ## Services & prices
 
-* One `Price: <list> (KES)` column for each price list in use (`cash`, `sha` and `insurance` are
+* One `Price: <list> (KES)` column for each price list in use (`cash`, `sha`, `insurance` and `foreigner` are
   always included). To add a price list, add a column titled `Price: <name> (KES)`.
 * A blank price leaves that price list unchanged. Prices on lists that are not in the file are kept.
 * A new service needs at least one price.
@@ -38,6 +38,9 @@ Two catalogs can be loaded or updated in bulk from Excel:
 * Sets up the item list only (code, names, form, strength, unit, category, reorder level,
   controlled flag, billing service code, active). Stock quantities, batches and expiry dates are
   received through Inventory → Receive, so they stay traceable to a delivery.
+* Optional **Price: Cash / SHA / Insurance / Foreigner** columns set the selling price per unit
+  (the item's billing service, `RX-<code>` by default). Cash is required when any price is set, and
+  only users with `billing.prices` may import prices. A blank column leaves that price unchanged.
 
 ## Lab test catalog
 
@@ -67,3 +70,10 @@ Rules:
 
 `.xlsx` only (not `.xls` or CSV), up to 5 MB and 5,000 rows per file. Header matching ignores case,
 `*` and column order, and extra columns are ignored.
+
+Files saved by other programs are accepted. Google Sheets, LibreOffice, WPS, and scripts such as
+Python's openpyxl filling in the template can write workbooks that ExcelJS cannot open (for example
+`Cannot read properties of undefined (reading 'comments')` after openpyxl re-saves the template's
+header notes). For those, a values-only reader (`imports/xlsxValues.ts`) reads the cells directly.
+Files that are not really `.xlsx` get a message saying what they are: an old `.xls` or
+password-protected workbook, a CSV, or an HTML page renamed to `.xlsx`.

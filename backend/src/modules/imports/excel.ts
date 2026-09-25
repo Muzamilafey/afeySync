@@ -1,6 +1,8 @@
 import ExcelJS from 'exceljs';
 import multer from 'multer';
 import { AppError } from '../../utils/errors';
+import { logger } from '../../utils/logger';
+import { readXlsxValues, type ValueSheet } from './xlsxValues';
 
 /**
  * Excel (.xlsx) templates and bulk import shared by the catalog imports (services & prices, inventory
@@ -185,27 +187,63 @@ const norm = (s: string) => s.replace(/\*/g, '').replace(/\s+/g, ' ').trim().toL
 
 export interface ReadRow { row: number; values: Record<string, string> }
 
+const BAD_FILE = 'This file could not be read as an Excel workbook. Open it in Excel (or Google Sheets), choose File → Save as / Download → Microsoft Excel (.xlsx), and upload that copy.';
+
+/**
+ * Cell values of every sheet. ExcelJS first; if it rejects the workbook (common with files saved by
+ * other programs), a values-only reader. Files that are not .xlsx at all get a message saying what they are.
+ */
+async function loadSheets(buf: Buffer): Promise<ValueSheet[]> {
+  if (buf.subarray(0, 4).equals(Buffer.from([0xd0, 0xcf, 0x11, 0xe0]))) {
+    throw new AppError(400, 'INVALID_FILE', 'This is an old-format Excel file (.xls) or a password-protected workbook. Remove any password, then save it as "Excel Workbook (.xlsx)" and upload again.');
+  }
+  if (!buf.subarray(0, 2).equals(Buffer.from('PK'))) {
+    const head = buf.subarray(0, 200).toString('utf8').trimStart().toLowerCase();
+    const kind = head.startsWith('<') ? 'a web page (HTML/XML)' : /[,;\t]/.test(head.split('\n')[0] ?? '') ? 'a CSV/text file' : 'not an Excel workbook';
+    throw new AppError(400, 'INVALID_FILE', `This file only has an .xlsx name; it is ${kind}. Open it in Excel and save it as "Excel Workbook (.xlsx)", or copy the rows into the downloaded template.`);
+  }
+  const wb = new ExcelJS.Workbook();
+  try {
+    await wb.xlsx.load(buf as unknown as ArrayBuffer);
+    return wb.worksheets.map((ws) => {
+      const rows = new Map<number, Map<number, string>>();
+      ws.eachRow({ includeEmpty: false }, (row, r) => {
+        const cells = new Map<number, string>();
+        row.eachCell({ includeEmpty: false }, (cell, c) => {
+          const t = cellText(cell.value);
+          if (t !== '') cells.set(c, t);
+        });
+        if (cells.size) rows.set(r, cells);
+      });
+      return { name: ws.name, rows, rowCount: ws.rowCount };
+    });
+  } catch (err) {
+    logger.info({ err: (err as Error).message }, 'ExcelJS could not open an import; trying the values-only reader');
+  }
+  try {
+    return await readXlsxValues(buf);
+  } catch (err) {
+    logger.warn({ err: (err as Error).message }, 'import file unreadable');
+    throw new AppError(400, 'INVALID_FILE', BAD_FILE);
+  }
+}
+
 /** Reads the first sheet whose row 1–10 contains the template headers. Header matching ignores case and "*". */
 export async function readImport(file: Express.Multer.File | undefined, columns: ImportColumn[], extraHeader?: (header: string) => string | null, opts: { sheet?: string; allowEmpty?: boolean } = {}): Promise<ReadRow[]> {
   if (!file) throw new AppError(400, 'FILE_REQUIRED', 'Choose the filled-in Excel file (.xlsx) to import.');
   if (!/\.xlsx$/i.test(file.originalname) && file.mimetype !== XLSX_MIME) throw new AppError(415, 'UNSUPPORTED_FILE_TYPE', 'Upload an Excel .xlsx file (use the template). Older .xls and CSV files are not supported.');
-  const wb = new ExcelJS.Workbook();
-  try {
-    await wb.xlsx.load(file.buffer as unknown as ArrayBuffer);
-  } catch {
-    throw new AppError(400, 'INVALID_FILE', 'This file could not be read as an Excel workbook. Save it as .xlsx and try again.');
-  }
+  const sheets = await loadSheets(file.buffer);
   const wanted = new Map(columns.map((c) => [norm(c.header), c.key]));
-  for (const ws of wb.worksheets) {
+  for (const ws of sheets) {
     if (/^(instructions|examples|lists)/i.test(ws.name)) continue;
     if (opts.sheet && ws.name.trim().toLowerCase() !== opts.sheet.toLowerCase()) continue;
     for (let hr = 1; hr <= Math.min(10, ws.rowCount); hr++) {
       const map = new Map<number, string>();
-      ws.getRow(hr).eachCell((cell, col) => {
-        const text = norm(cellText(cell.value));
+      for (const [col, raw] of ws.rows.get(hr) ?? []) {
+        const text = norm(raw);
         const key = wanted.get(text) ?? extraHeader?.(text) ?? undefined;
         if (key) map.set(col, key);
-      });
+      }
       const missing = columns.filter((c) => c.required && ![...map.values()].includes(c.key));
       if (map.size < Math.min(2, columns.length) || missing.length) {
         if (map.size >= 2 && missing.length) throw new AppError(400, 'TEMPLATE_COLUMNS_MISSING', `The file is missing required column(s): ${missing.map((c) => c.header).join(', ')}. Download a fresh template.`);
@@ -213,11 +251,12 @@ export async function readImport(file: Express.Multer.File | undefined, columns:
       }
       const rows: ReadRow[] = [];
       for (let r = hr + 1; r <= ws.rowCount; r++) {
-        const row = ws.getRow(r);
+        const row = ws.rows.get(r);
+        if (!row) continue;
         const values: Record<string, string> = {};
         let any = false;
         for (const [col, key] of map) {
-          const t = cellText(row.getCell(col).value).trim();
+          const t = (row.get(col) ?? '').trim();
           values[key] = t;
           if (t) any = true;
         }

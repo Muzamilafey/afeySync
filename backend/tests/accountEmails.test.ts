@@ -86,3 +86,31 @@ describe('new user onboarding', () => {
     void tenantId;
   });
 });
+
+describe('AfeySync email design', () => {
+  it('wraps every email, including plain-text ones, in the AfeySync layout', async () => {
+    const { notifyEmail } = await import('../src/modules/notifications/notify');
+    await notifyEmail(tenantId, `design:${Date.now()}`, 'design@welcomefac.test', `${S} Hospital: your password was changed`, 'Hello Amina,\n\nYour AfeySync password was just changed.\n\nIf this was not you, contact your administrator.\n\n— Security team');
+    const mail = (await emailsTo('design@welcomefac.test')).at(-1)!;
+    expect(mail.html).toContain('>Afey</span>');
+    expect(mail.html).toContain(`${S} Hospital`); // facility under the wordmark
+    expect(mail.html).toContain('>Your password was changed</h1>'); // facility prefix moved out of the title
+    expect(mail.html).toContain('Hello Amina,');
+    expect(mail.html).toContain('Warm regards,');
+    expect(mail.html).toContain('Security team');
+    expect(mail.html).toMatch(/&copy; \d{4} AfeySync HMIS\. All Rights Reserved\./);
+    expect(mail.html).not.toContain('<script');
+  });
+
+  it('shows sign-in codes large and keeps them only in the encrypted parts of the queued email', async () => {
+    const { notifyEmail } = await import('../src/modules/notifications/notify');
+    const { IntegrationSecretService } = await import('../src/modules/integrations/secretService');
+    await notifyEmail(tenantId, `code:${Date.now()}`, 'code@welcomefac.test', 'Your sign-in code', 'Your code is 985703.', undefined, { sensitive: true, code: { value: '985703', expires: '10 minutes' }, title: 'Your sign-in code' });
+    const job = await meta().Job.findOne({ type: 'EMAIL', 'payload.to': 'code@welcomefac.test' }).lean();
+    const raw = JSON.stringify(job!.payload);
+    expect(raw).not.toContain('985703');
+    const html = IntegrationSecretService.decrypt((job!.payload as { htmlEnc: string }).htmlEnc);
+    expect(html).toMatch(/letter-spacing:12px[^>]*>985703</);
+    expect(html).toContain('<strong>10 minutes</strong> and can only be used once');
+  });
+});

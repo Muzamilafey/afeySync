@@ -7,7 +7,12 @@ import { nextNumber, round2 } from '../common/helpers';
 type InvoiceDoc = NonNullable<Awaited<ReturnType<TenantModels['Invoice']['findOne']>>>;
 type Id = string | Types.ObjectId;
 
-export const priceListFor = (payerType?: string | null) => (payerType === 'sha' ? 'sha' : payerType === 'insurance' || payerType === 'corporate' ? 'insurance' : 'cash');
+/** Standard price lists. A service without a price on a list falls back to its cash price. */
+export const STANDARD_PRICE_LISTS = ['cash', 'sha', 'insurance', 'foreigner'] as const;
+export const isForeigner = (nationality?: string | null) => !!nationality && !/^\s*kenya/i.test(nationality);
+/** SHA and insurance payers use their own lists; a cash-paying non-Kenyan pays the foreigner rate. */
+export const priceListFor = (payerType?: string | null, nationality?: string | null) =>
+  payerType === 'sha' ? 'sha' : payerType === 'insurance' || payerType === 'corporate' ? 'insurance' : isForeigner(nationality) ? 'foreigner' : 'cash';
 
 export async function resolvePrice(m: TenantModels, serviceCode: string, priceList: string) {
   const item = await m.ServiceItem.findOne({ code: serviceCode.toUpperCase(), active: true }).lean();
@@ -45,18 +50,20 @@ export async function openInvoiceFor(m: TenantModels, input: { patientId: Id; vi
     if (existing) return existing;
     const visit = await m.Visit.findById(input.visitId).lean();
     const payerType = visit?.payer?.type ?? 'cash';
+    const patient = await m.Patient.findById(input.patientId).select('nationality').lean();
     const inv = await m.Invoice.create({
       invoiceNumber: await nextNumber(m, 'invoice', 'INV'),
       patientId: input.patientId,
       visitId: input.visitId,
       branchId: input.branchId,
-      payer: { type: payerType, priceList: priceListFor(payerType), scheme: visit?.payer?.scheme, memberNumber: visit?.payer?.memberNumber },
+      payer: { type: payerType, priceList: priceListFor(payerType, patient?.nationality), scheme: visit?.payer?.scheme, memberNumber: visit?.payer?.memberNumber },
       createdBy: input.createdBy,
     });
     await m.Visit.updateOne({ _id: input.visitId }, { invoiceId: inv._id });
     return inv;
   }
-  return m.Invoice.create({ invoiceNumber: await nextNumber(m, 'invoice', 'INV'), patientId: input.patientId, branchId: input.branchId, createdBy: input.createdBy });
+  const walkIn = await m.Patient.findById(input.patientId).select('nationality').lean();
+  return m.Invoice.create({ invoiceNumber: await nextNumber(m, 'invoice', 'INV'), patientId: input.patientId, branchId: input.branchId, payer: { type: 'cash', priceList: priceListFor('cash', walkIn?.nationality) }, createdBy: input.createdBy });
 }
 
 export interface ChargeInput {

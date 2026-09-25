@@ -10,6 +10,7 @@ import { useCan } from '@/hooks/useMe';
 import { Badge, Button, Card, ErrorText, Field, Input, Loading, Modal, PageHeader, Select, Stat, Table, Tabs, Td } from '@/components/ui';
 import { fmtDate, fmtDateTime, money } from '@/lib/utils';
 import { ItemPicker } from '@/features/pharmacy/ItemPicker';
+import { STANDARD_LISTS } from '@/features/billing/types';
 import type { Batch, Item, Location } from '@/features/pharmacy/types';
 
 type Tab = 'summary' | 'batches' | 'expiring' | 'movements' | 'items';
@@ -44,9 +45,21 @@ function ReceiveForm({ locations, onDone }: { locations: Location[]; onDone: () 
 }
 
 function ItemForm({ item, onDone }: { item?: Item; onDone: () => void }) {
+  const can = useCan();
+  const canPrice = can('billing.prices');
+  const [prices, setPrices] = useState<Record<string, string>>(() => Object.fromEntries(STANDARD_LISTS.map(([k]) => [k, item?.prices?.[k] != null ? String(item.prices[k]) : ''])));
+  // Only lists that were changed are sent; clearing a price removes it (that list then bills at the cash price).
+  const priceBody = () => {
+    const out: Record<string, number | null> = {};
+    for (const [k] of STANDARD_LISTS) {
+      const before = item?.prices?.[k] != null ? String(item.prices[k]) : '';
+      if (prices[k] !== before) out[k] = prices[k] === '' ? null : Number(prices[k]);
+    }
+    return canPrice && Object.keys(out).length ? out : undefined;
+  };
   const [f, setF] = useState({ code: item?.code ?? '', name: item?.name ?? '', genericName: item?.genericName ?? '', form: item?.form ?? '', strength: item?.strength ?? '', unit: item?.unit ?? 'unit', category: item?.category ?? 'drug', reorderLevel: item?.reorderLevel ?? 0, serviceCode: item?.serviceCode ?? '', controlled: item?.controlled ?? false });
   const formIsListed = DOSAGE_FORMS.some((d) => d.form === f.form);
-  const m = useMutation({ mutationFn: () => { const body = { ...f, genericName: f.genericName || undefined, form: f.form.trim() || undefined, unit: f.unit.trim() || 'unit', strength: f.strength || undefined, serviceCode: f.serviceCode || undefined }; return item ? api(`/pharmacy/items/${item._id}`, { method: 'PATCH', body: { ...body, code: undefined } }) : api('/pharmacy/items', { method: 'POST', body }); }, onSuccess: onDone });
+  const m = useMutation({ mutationFn: () => { const body = { ...f, prices: priceBody(), genericName: f.genericName || undefined, form: f.form.trim() || undefined, unit: f.unit.trim() || 'unit', strength: f.strength || undefined, serviceCode: f.serviceCode || undefined }; return item ? api(`/pharmacy/items/${item._id}`, { method: 'PATCH', body: { ...body, code: undefined } }) : api('/pharmacy/items', { method: 'POST', body }); }, onSuccess: onDone });
   return (
     <div className="grid gap-3 sm:grid-cols-3">
       <Field label="Code"><Input value={f.code} disabled={!!item} onChange={(e) => setF({ ...f, code: e.target.value.toUpperCase() })} /></Field>
@@ -81,7 +94,20 @@ function ItemForm({ item, onDone }: { item?: Item; onDone: () => void }) {
       <Field label="Reorder level"><Input type="number" value={f.reorderLevel} onChange={(e) => setF({ ...f, reorderLevel: Number(e.target.value) })} /></Field>
       <Field label="Billing service code" hint="Defaults to RX-<code>"><Input value={f.serviceCode} onChange={(e) => setF({ ...f, serviceCode: e.target.value.toUpperCase() })} /></Field>
       <label className="flex items-center gap-2 pt-6 text-sm"><input type="checkbox" checked={f.controlled} onChange={(e) => setF({ ...f, controlled: e.target.checked })} /> Controlled drug</label>
-      <div className="col-span-full space-y-2"><ErrorText error={m.error} /><Button onClick={() => m.mutate()} loading={m.isPending}>Save</Button></div>
+      {canPrice ? (
+        <div className="col-span-full space-y-2 rounded-lg border border-[var(--border)] p-3">
+          <p className="label">Selling price per {f.unit || 'unit'} (KES)</p>
+          <div className="grid gap-3 sm:grid-cols-4">
+            {STANDARD_LISTS.map(([k, label, hint]) => (
+              <Field key={k} label={label} hint={hint}><Input type="number" min={0} step="0.01" value={prices[k]} placeholder={k === 'cash' ? 'Required' : 'Blank = cash'} onChange={(e) => setPrices({ ...prices, [k]: e.target.value })} /></Field>
+            ))}
+          </div>
+          <p className="muted text-xs">Charged when the item is dispensed. Kept in Services &amp; Prices under {(f.serviceCode || `RX-${f.code || '<code>'}`).toUpperCase()}. Stock comes from receiving batches (Receive), not from this form.</p>
+        </div>
+      ) : (
+        <p className="muted col-span-full text-xs">Selling prices are set by staff who manage prices (Services &amp; Prices).</p>
+      )}
+      <div className="col-span-full space-y-2"><ErrorText error={m.error} /><Button onClick={() => m.mutate()} loading={m.isPending} disabled={canPrice && prices.cash === '' && Object.values(prices).some((v) => v !== '')}>Save</Button></div>
     </div>
   );
 }
@@ -151,8 +177,8 @@ export default function InventoryPage() {
                 <Button size="sm" variant="outline" onClick={() => setImporting(true)}><FileSpreadsheet className="h-3 w-3" /> Import from Excel</Button>
               </div>
             )}
-            <Table head={['Code', 'Item', 'Form / strength', 'Category', 'Reorder', 'Status', '']}>
-              {items.data?.map((i) => <tr key={i._id}><Td className="font-mono text-xs">{i.code}</Td><Td>{i.name}<span className="muted block text-xs">{i.genericName}</span></Td><Td>{i.form} {i.strength}</Td><Td className="capitalize">{i.category}{i.controlled && <Badge tone="red" className="ml-1">controlled</Badge>}</Td><Td>{i.reorderLevel}</Td><Td><Badge tone={i.active ? 'green' : 'gray'}>{i.active ? 'active' : 'inactive'}</Badge></Td><Td>{write && <Button size="sm" variant="ghost" onClick={() => { setEditItem(i); setModal('item'); }}>Edit</Button>}</Td></tr>)}
+            <Table head={['Code', 'Item', 'Form / strength', 'Category', 'Stock (usable)', 'Price', 'Reorder', 'Status', '']}>
+              {items.data?.map((i) => <tr key={i._id}><Td className="font-mono text-xs">{i.code}</Td><Td>{i.name}<span className="muted block text-xs">{i.genericName}</span></Td><Td>{i.form} {i.strength}</Td><Td className="capitalize">{i.category}{i.controlled && <Badge tone="red" className="ml-1">controlled</Badge>}</Td><Td><span className={(i.stock?.usable ?? 0) === 0 ? 'font-semibold text-red-600' : (i.stock?.usable ?? 0) <= i.reorderLevel ? 'font-semibold text-amber-600' : ''}>{i.stock?.usable ?? 0} {i.unit}</span>{(i.stock?.expired ?? 0) > 0 && <span className="block text-xs text-red-600">{i.stock!.expired} expired</span>}</Td><Td className="text-xs">{i.prices?.cash != null ? STANDARD_LISTS.filter(([k]) => i.prices?.[k] != null).map(([k, label]) => <span key={k} className="block whitespace-nowrap"><span className="muted">{label.split(' ')[0]}:</span> {money(i.prices![k]!)}</span>) : <Badge tone="amber">no price</Badge>}</Td><Td>{i.reorderLevel}</Td><Td><Badge tone={i.active ? 'green' : 'gray'}>{i.active ? 'active' : 'inactive'}</Badge></Td><Td>{write && <Button size="sm" variant="ghost" onClick={() => { setEditItem(i); setModal('item'); }}>Edit</Button>}</Td></tr>)}
             </Table>
           </>
         )}

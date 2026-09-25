@@ -36,3 +36,15 @@ back to a prescriber's order and a pharmacy dispense.
   another admission are rejected.
 
 All checks run on the server. The UI only hides buttons the user cannot use.
+
+## One admission at a time
+
+A patient cannot be admitted again until the current admission is discharged, or ends as deceased,
+referred or absconded. Transfers between beds use **Transfer** on the admission page.
+
+* The admit form shows "Already admitted" (admission number, ward and bed, with a link) as soon as the
+  patient is picked. The form is locked and no phone verification code is sent.
+* The server refuses both the verification code and the admission (`ALREADY_ADMITTED`), naming the
+  current admission.
+* If two admissions for the same patient are submitted at the same moment, the first one saved is
+  kept. The other is undone, its bed is freed, and it is refused.

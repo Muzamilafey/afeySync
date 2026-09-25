@@ -92,7 +92,14 @@ async function sendCode(app: InstanceType<ReturnType<typeof meta>['FacilityAppli
   const code = String(crypto.randomInt(0, 1_000_000)).padStart(6, '0');
   app.set('verification', { codeHash: sha256(`${app._id}:${code}`), sentAt: new Date(), sends: (v.sends ?? 0) + 1, attempts: 0 });
   await app.save();
-  await notifyEmail(null, `onboarding:${app._id}:${(v.sends ?? 0) + 1}`, app.admin!.email!, 'Confirm your AfeySync registration', `Your AfeySync verification code is ${code}. It expires in 15 minutes.\n\nYou are registering ${app.facility?.name} (${app.reference}). If you did not start this registration, ignore this email.`);
+  // Sensitive: the queued copy is encrypted and wiped after sending, so the code is never stored in plain text.
+  await notifyEmail(null, `onboarding:${app._id}:${(v.sends ?? 0) + 1}`, app.admin!.email!, 'Your AfeySync verification code', `Your AfeySync verification code is ${code}. It expires in 15 minutes.\n\nYou are registering ${app.facility?.name} (${app.reference}). If you did not start this registration, ignore this email.`, undefined, {
+    sensitive: true,
+    code: { value: code, expires: '15 minutes' },
+    title: 'Confirm your AfeySync registration',
+    intro: `Enter this code to confirm the registration of ${app.facility?.name ?? 'your facility'} (${app.reference}).`,
+    notice: "Didn't start this registration? You can ignore this email.",
+  });
   return maskEmail(app.admin!.email!);
 }
 
