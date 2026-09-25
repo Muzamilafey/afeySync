@@ -10,6 +10,7 @@ import { Alert, Badge, Button, Card, ErrorText, Field, Input, KV, Loading, Modal
 import { fmtDateTime, money } from '@/lib/utils';
 import { ServicePicker } from '@/features/billing/ServicePicker';
 import { CreateClaimButton } from '@/features/sha/CreateClaimButton';
+import { MpesaPayout } from '@/features/billing/MpesaPayout';
 import type { Invoice, Payment } from '@/features/billing/types';
 
 const key = () => (typeof crypto !== 'undefined' && 'randomUUID' in crypto ? crypto.randomUUID() : `${Date.now()}-${Math.random()}`);
@@ -166,7 +167,7 @@ export default function InvoicePage({ params }: { params: Promise<{ id: string }
                 </tr>
               ))}
             </Table>
-            {(inv.creditNotes ?? []).length > 0 && <ul className="mt-3 text-sm">{inv.creditNotes!.map((c) => <li key={c._id}>{c.creditNoteNumber} · {c.type} · {money(c.amount)} · {c.reason} <span className="muted">({c.approvedByName})</span></li>)}</ul>}
+            {(inv.creditNotes ?? []).length > 0 && <ul className="mt-3 text-sm">{inv.creditNotes!.map((c) => <li key={c._id} className="py-1">{c.creditNoteNumber} · {c.type}{c.method ? ` (${c.method})` : ''} · {money(c.amount)} · {c.reason} <span className="muted">({c.approvedByName})</span><MpesaPayout cn={c} defaultPhone={inv.patient?.phone} canPay={can('billing.refund')} /></li>)}</ul>}
           </Card>
         </div>
         <div className="space-y-5">

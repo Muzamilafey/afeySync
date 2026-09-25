@@ -9,6 +9,7 @@ import { useCan } from '@/hooks/useMe';
 import { Alert, Badge, Button, Card, ErrorText, Field, Input, KV, Loading, Modal, PageHeader, Select, statusTone, Table, Td, Textarea } from '@/components/ui';
 import { fmtDateTime, money } from '@/lib/utils';
 import { DocumentsPanel } from '@/features/documents/DocumentsPanel';
+import { EmergencyPanel } from '@/features/sha/EmergencyPanel';
 
 interface Line { serviceCode: string; description: string; quantity: number; unitPrice: number; amount?: number }
 interface Dx { code: string; display: string; system?: string }
@@ -20,6 +21,7 @@ interface Tx {
   statusHistory: Array<{ status: string; at: string; source: string; note?: string }>;
   submissions?: number; submittedAt?: string; decisionNote?: string; lastResponse?: unknown;
   remittances?: Array<{ amount: number; reference: string; at: string }>;
+  emergency?: { protocols?: Array<{ code: string; name?: string; notes?: string; addedAt: string }>; doctors?: Array<{ name: string; registrationNumber: string; addedAt: string }> };
 }
 
 const KIND_LABEL: Record<string, string> = { claim: 'Claim', emergency_claim: 'Emergency claim', preauthorization: 'Preauthorization', authorization: 'Authorization', visit_consent: 'Visit consent' };
@@ -140,6 +142,7 @@ export default function ShaTransactionPage({ params }: { params: Promise<{ id: s
             )}
             {tx.clinicalJustification && <p className="mt-3 whitespace-pre-wrap text-sm"><span className="label">Justification</span>{tx.clinicalJustification}</p>}
           </Card>
+          {tx.kind === 'emergency_claim' && <EmergencyPanel txId={tx._id} emergency={tx.emergency} editable={perm && !!tx.externalReference && !['cancelled', 'paid'].includes(tx.status)} />}
           <DocumentsPanel title="Supporting documents" patientId={tx.patientId._id} relatedTo={{ resource: 'sha_transaction', id: tx._id }} category="sha" />
           {tx.lastResponse != null && <Card title="Last SHA response"><pre className="max-h-72 overflow-auto rounded bg-[var(--surface-2)] p-3 text-xs">{JSON.stringify(tx.lastResponse, null, 2)}</pre></Card>}
         </div>

@@ -1787,6 +1787,13 @@ export const generatedRoutes: Record<string, Record<string, RouteDoc>> = {
       "permission": "sha.view"
     }
   },
+  "/api/v1/sha/emergency/doctors": {
+    "get": {
+      "summary": "Get sha emergency doctors",
+      "tag": "SHA",
+      "permission": "sha.claim"
+    }
+  },
   "/api/v1/sha/emergency/protocols": {
     "get": {
       "summary": "Get sha emergency protocols",

@@ -8,6 +8,7 @@ import { useCan } from '@/hooks/useMe';
 import { Alert, Badge, Button, Card, ErrorText, Input, statusTone, Table, Td } from '@/components/ui';
 import { fmtDateTime } from '@/lib/utils';
 import { ItemPicker } from './ItemPicker';
+import { EPrescriptionControls } from './EPrescriptionControls';
 import type { Prescription } from './types';
 
 interface Line { itemId?: string; drugName: string; dose: string; frequency: string; route: string; durationDays: string; quantity: string; instructions: string; stock?: number }
@@ -60,6 +61,7 @@ export function PrescriptionPanel({ visitId, admissionId, patientId, open }: { v
           <Table head={['Drug', 'Dose', 'Freq', 'Days', 'Qty', 'Dispensed']}>
             {rx.items.map((i) => <tr key={i._id} className={i.status === 'cancelled' ? 'line-through opacity-50' : ''}><Td>{i.drugName}<span className="muted block text-xs">{i.instructions}</span></Td><Td>{i.dose}</Td><Td>{i.frequency}</Td><Td>{i.durationDays}</Td><Td>{i.quantity}</Td><Td>{i.dispensedQuantity}</Td></tr>)}
           </Table>
+          <EPrescriptionControls rx={rx} />
         </div>
       ))}
     </Card>

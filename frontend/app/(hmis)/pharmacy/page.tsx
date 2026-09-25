@@ -1,5 +1,6 @@
 'use client';
 
+import { EPrescriptionControls } from '@/features/pharmacy/EPrescriptionControls';
 import { useState } from 'react';
 import Link from 'next/link';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
@@ -64,7 +65,7 @@ export default function PharmacyPage() {
                 <Td>{p?.firstName} {p?.lastName}<span className="muted block text-xs capitalize">{p?.gender} · {age(p?.dateOfBirth)} · {p?.patientNumber}</span>{!!p?.allergies?.length && <Badge tone="red">Allergies</Badge>}</Td>
                 <Td className="text-sm">{rx.items.map((i) => <span key={i._id} className={`block ${i.status === 'cancelled' ? 'line-through opacity-50' : ''}`}>{i.drugName} — {i.dose} {i.frequency} · {i.dispensedQuantity}/{i.quantity}</span>)}</Td>
                 <Td>{rx.prescriberName}</Td>
-                <Td><Badge tone={statusTone(rx.status === 'dispensed' ? 'completed' : 'pending')}>{rx.status.replace('_', ' ')}</Badge></Td>
+                <Td><Badge tone={statusTone(rx.status === 'dispensed' ? 'completed' : 'pending')}>{rx.status.replace('_', ' ')}</Badge>{rx.ePrescription?.status && <EPrescriptionControls rx={rx} />}</Td>
                 <Td className="whitespace-nowrap">
                   {can('pharmacy.dispense') && rx.status !== 'dispensed' && <Button size="sm" onClick={() => setSel(rx)}>Dispense</Button>}{' '}
                   {can('pharmacy.dispense') && rx.status === 'pending' && <Button size="sm" variant="ghost" onClick={() => { const reason = window.prompt('Reason for cancelling'); if (reason) cancel.mutate({ rx, reason }); }}>Cancel</Button>}

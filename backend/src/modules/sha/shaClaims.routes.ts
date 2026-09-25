@@ -321,6 +321,18 @@ router.get(
   }),
 );
 
+/** Clinicians who can be registered as attending doctors (must have a licence / registry number). */
+router.get(
+  '/emergency/doctors',
+  requirePermission('sha.claim'),
+  h(async (req, res) => {
+    const m = req.tenant!.models;
+    const roles = await m.Role.find({ permissions: 'consultation.create' }).select('_id').lean();
+    const users = await m.User.find({ status: 'active', roleIds: { $in: roles.map((r) => r._id) } }).select('name practitioner.cadre practitioner.licenseNumber practitioner.registryId').sort({ name: 1 }).lean();
+    res.json({ success: true, data: users.map((u) => ({ _id: u._id, name: u.name, cadre: u.practitioner?.cadre, registrationNumber: u.practitioner?.licenseNumber ?? u.practitioner?.registryId ?? null })) });
+  }),
+);
+
 async function loadEmergency(req: Request) {
   const tx = await loadTx(req, req.params.id, 'sha.claim');
   if (tx.kind !== 'emergency_claim') throw badRequest('Only emergency claims have protocols and attending doctors');

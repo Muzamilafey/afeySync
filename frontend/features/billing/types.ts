@@ -14,7 +14,19 @@ export interface Invoice {
   patientId: string | { _id: string; patientNumber: string; firstName: string; lastName: string; phone?: string };
   patient?: { _id: string; patientNumber: string; firstName: string; middleName?: string; lastName: string; phone?: string; clientRegistryId?: string };
   payments?: Payment[];
-  creditNotes?: Array<{ _id: string; creditNoteNumber: string; type: string; amount: number; reason: string; approvedByName?: string; createdAt: string }>;
+  creditNotes?: CreditNote[];
 }
 export interface ServiceItem { _id: string; code: string; name: string; category: string; department?: string; prices: Array<{ priceList: string; amount: number }>; shaInterventionCode?: string; active: boolean }
 export const CATEGORIES = ['consultation', 'laboratory', 'radiology', 'pharmacy', 'procedure', 'bed', 'nursing', 'maternity', 'dental', 'mortuary', 'registration', 'other'];
+
+export interface CreditNote {
+  _id: string;
+  creditNoteNumber: string;
+  type: string;
+  amount: number;
+  reason: string;
+  method?: string;
+  approvedByName?: string;
+  createdAt: string;
+  payout?: { status?: 'submitted' | 'completed' | 'failed' | 'timeout'; phone?: string; transactionId?: string; resultDesc?: string; receiverName?: string; requestedByName?: string };
+}

@@ -40,7 +40,7 @@ const NAV: Array<{ section: string; items: NavItem[] }> = [
   { section: 'SHA / DHA', items: [
     { href: '/sha', label: 'SHA', icon: ShieldCheck, any: ['sha.view', 'sha.eligibility'] },
     { href: '/sha/claims', label: 'SHA Claims', icon: ClipboardList, any: ['sha.view'] },
-    { href: '/interop', label: 'Interoperability', icon: Network, any: ['dha.view', 'sha.view'] },
+    { href: '/interop', label: 'Interoperability', icon: Network, any: ['dha.view', 'sha.view', 'dha.fhir', 'dha.terminology'] },
   ] },
   { section: 'Finance', items: [
     { href: '/billing', label: 'Billing & Cashier', icon: Banknote, any: ['billing.view'] },
