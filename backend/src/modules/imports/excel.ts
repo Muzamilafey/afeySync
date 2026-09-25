@@ -16,6 +16,8 @@ export interface ImportColumn {
   note?: string;
   /** Allowed values: shown as a drop-down in Excel and checked on import. */
   list?: readonly string[];
+  /** Suggested values: a drop-down in Excel that still accepts other text (not checked on import). */
+  suggest?: readonly string[];
   kind?: 'text' | 'number' | 'integer' | 'yesno';
 }
 
@@ -66,15 +68,28 @@ function headerRows(ws: ExcelJS.Worksheet, columns: ImportColumn[], title: strin
 /** exceljs supports range validations at runtime; its type definitions only describe per-cell ones. */
 type RangeValidations = { add(range: string, v: ExcelJS.DataValidation): void };
 
+/** Long drop-down lists live on a hidden "Lists" sheet (Excel's inline lists are limited to 255 characters). */
+function listFormula(ws: ExcelJS.Worksheet, values: readonly string[]) {
+  const inline = `"${values.join(',')}"`;
+  if (inline.length <= 250 && !values.some((v) => v.includes(','))) return inline;
+  const wb = ws.workbook;
+  const lists = wb.getWorksheet('Lists') ?? wb.addWorksheet('Lists', { state: 'hidden' });
+  const col = lists.columnCount + 1;
+  values.forEach((v, i) => (lists.getRow(i + 1).getCell(col).value = v));
+  const letter = lists.getColumn(col).letter;
+  return `Lists!$${letter}$1:$${letter}$${values.length}`;
+}
+
 function applyValidation(ws: ExcelJS.Worksheet, columns: ImportColumn[], rows: number) {
   const dv = (ws as unknown as { dataValidations: RangeValidations }).dataValidations;
   columns.forEach((c, i) => {
     const letter = ws.getColumn(i + 1).letter;
     const ref = `${letter}${FIRST_DATA_ROW}:${letter}${FIRST_DATA_ROW + rows - 1}`;
     const list = c.kind === 'yesno' ? ['Yes', 'No'] : c.list;
-    if (list?.length) {
-      // Excel accepts an inline list up to 255 characters.
-      dv.add(ref, { type: 'list', allowBlank: !c.required, formulae: [`"${list.join(',')}"`], showErrorMessage: true, errorTitle: c.header, error: `Choose one of: ${list.join(', ')}` });
+    if (c.suggest?.length) {
+      dv.add(ref, { type: 'list', allowBlank: true, formulae: [listFormula(ws, c.suggest)], showErrorMessage: true, errorStyle: 'warning', errorTitle: c.header, error: 'This is not one of the usual values. Keep it anyway?' });
+    } else if (list?.length) {
+      dv.add(ref, { type: 'list', allowBlank: !c.required, formulae: [listFormula(ws, list)], showErrorMessage: true, errorTitle: c.header, error: `Choose one of: ${list.join(', ')}` });
     } else if (c.kind === 'number' || c.kind === 'integer') {
       dv.add(ref, { type: c.kind === 'integer' ? 'whole' : 'decimal', operator: 'greaterThanOrEqual', allowBlank: true, formulae: [0], showErrorMessage: true, errorTitle: c.header, error: 'Enter a number of 0 or more' });
       ws.getColumn(i + 1).numFmt = c.kind === 'integer' ? '#,##0' : '#,##0.00';
@@ -128,7 +143,7 @@ export async function buildTemplate(opts: { facility: string; color?: string | n
     head.eachCell((c) => (c.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: argb(mix(color, 0.85)) } }));
     r++;
     for (const c of sh.columns) {
-      const allowed = c.kind === 'yesno' ? 'Yes or No' : c.list ? `One of: ${c.list.join(', ')}` : '';
+      const allowed = c.kind === 'yesno' ? 'Yes or No' : c.list ? `One of: ${c.list.join(', ')}` : c.suggest ? `Pick from the list (${c.suggest.length} options) or type your own.` : '';
       help.getRow(r).values = [`${c.header}${c.required ? ' (required)' : ''}`, [c.note, allowed].filter(Boolean).join(' ')];
       help.getCell(`B${r}`).alignment = { wrapText: true, vertical: 'top' };
       help.getCell(`A${r}`).font = { bold: !!c.required };
@@ -182,7 +197,7 @@ export async function readImport(file: Express.Multer.File | undefined, columns:
   }
   const wanted = new Map(columns.map((c) => [norm(c.header), c.key]));
   for (const ws of wb.worksheets) {
-    if (/^(instructions|examples)/i.test(ws.name)) continue;
+    if (/^(instructions|examples|lists)/i.test(ws.name)) continue;
     if (opts.sheet && ws.name.trim().toLowerCase() !== opts.sheet.toLowerCase()) continue;
     for (let hr = 1; hr <= Math.min(10, ws.rowCount); hr++) {
       const map = new Map<number, string>();

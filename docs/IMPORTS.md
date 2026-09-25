@@ -33,6 +33,8 @@ Two catalogs can be loaded or updated in bulk from Excel:
 
 ## Inventory items
 
+* Form and Unit offer drop-downs of the standard dosage forms and stock units (other text is still
+  accepted).
 * Sets up the item list only (code, names, form, strength, unit, category, reorder level,
   controlled flag, billing service code, active). Stock quantities, batches and expiry dates are
   received through Inventory → Receive, so they stay traceable to a delivery.

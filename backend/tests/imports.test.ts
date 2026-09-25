@@ -132,7 +132,10 @@ describe('services & prices import', () => {
 describe('inventory items import', () => {
   it('imports and updates items from the template', async () => {
     const wb = await download('/api/v1/inventory/items/import-template');
-    expect(wb.worksheets.map((w) => w.name)).toEqual(['Items', 'Instructions', 'Examples']);
+    expect(wb.worksheets.filter((w) => w.state !== 'hidden').map((w) => w.name)).toEqual(['Items', 'Instructions', 'Examples']);
+    // Form and Unit offer the standard lists (kept on a hidden sheet) but still accept other text
+    expect(wb.getWorksheet('Lists')?.state).toBe('hidden');
+    expect(wb.getWorksheet('Lists')!.getColumn(1).values).toEqual(expect.arrayContaining(['Tablet', 'Capsule', 'Syrup', 'Injection', 'Eye drops']));
     const buf = await fill(wb, [
       { Code: 'PCM500', Name: 'Paracetamol 500mg tablets', 'Generic name': 'Paracetamol', Form: 'tablet', Strength: '500mg', Unit: 'tablet', Category: 'drug', 'Reorder level': 500, 'Controlled drug': 'No' },
       { Code: 'MORPH10', Name: 'Morphine 10mg/ml injection', Category: 'drug', 'Controlled drug': 'Yes', 'Reorder level': 2.5 },

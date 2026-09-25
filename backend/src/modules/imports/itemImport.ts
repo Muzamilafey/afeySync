@@ -8,14 +8,17 @@ import { buildTemplate, parseNumber, readImport, summarize, yesNo, type ImportCo
 const CATEGORIES = ['drug', 'consumable', 'reagent', 'equipment', 'other'] as const;
 type Category = (typeof CATEGORIES)[number];
 const CODE_RE = /^[A-Za-z0-9-_.]+$/;
+/** Kept in step with the inventory form (frontend features/pharmacy/dosageForms.ts). */
+const DOSAGE_FORMS = ['Tablet', 'Capsule', 'Syrup', 'Suspension', 'Oral solution', 'Oral drops', 'Powder for oral suspension', 'Sachet / granules', 'Lozenge', 'Injection', 'Injection (ampoule)', 'IV infusion / fluid', 'Cream', 'Ointment', 'Gel', 'Lotion', 'Eye drops', 'Eye ointment', 'Ear drops', 'Nasal drops / spray', 'Inhaler', 'Nebuliser solution', 'Suppository', 'Pessary', 'Transdermal patch', 'Mouthwash', 'Implant', 'Vaccine'];
+const STOCK_UNITS = ['unit', 'tablet', 'capsule', 'bottle', 'vial', 'ampoule', 'bag', 'tube', 'sachet', 'inhaler', 'nebule', 'suppository', 'pessary', 'patch', 'lozenge', 'implant', 'box', 'pack', 'strip', 'piece', 'pair', 'roll', 'kit', 'litre', 'ml', 'g', 'kg'];
 
 const COLUMNS: ImportColumn[] = [
   { key: 'code', header: 'Code', required: true, width: 14, note: 'Unique item code, e.g. PCM500. Letters, numbers and - _ . only. An existing code updates that item.' },
   { key: 'name', header: 'Name', required: true, width: 32, note: 'Item name as it appears in stock and on prescriptions.' },
   { key: 'genericName', header: 'Generic name', width: 24 },
-  { key: 'form', header: 'Form', width: 14, note: 'e.g. tablet, capsule, syrup, injection.' },
+  { key: 'form', header: 'Form', width: 22, suggest: DOSAGE_FORMS, note: 'Dosage form, e.g. Tablet, Capsule, Syrup, Injection. Pick from the list or type your own.' },
   { key: 'strength', header: 'Strength', width: 12, note: 'e.g. 500mg, 125mg/5ml.' },
-  { key: 'unit', header: 'Unit', width: 10, note: 'Stock unit, e.g. tablet, bottle, vial. Defaults to "unit".' },
+  { key: 'unit', header: 'Unit', width: 12, suggest: STOCK_UNITS, note: 'How stock is counted, e.g. tablet, bottle, vial. Defaults to "unit".' },
   { key: 'category', header: 'Category', width: 14, list: CATEGORIES, note: 'Defaults to drug.' },
   { key: 'reorderLevel', header: 'Reorder level', width: 14, kind: 'integer', note: 'Alert when stock falls to this quantity. Defaults to 0.' },
   { key: 'controlled', header: 'Controlled drug', width: 16, kind: 'yesno', note: 'Yes for controlled/scheduled drugs (extra dispensing checks).' },

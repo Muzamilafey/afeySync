@@ -4,6 +4,7 @@ import { useState } from 'react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { Plus, Trash2, FileSpreadsheet } from 'lucide-react';
 import { ExcelImport } from '@/features/imports/ExcelImport';
+import { DOSAGE_FORMS, STOCK_UNITS } from '@/features/pharmacy/dosageForms';
 import { api } from '@/services/api';
 import { useCan } from '@/hooks/useMe';
 import { Badge, Button, Card, ErrorText, Field, Input, Loading, Modal, PageHeader, Select, Stat, Table, Tabs, Td } from '@/components/ui';
@@ -44,15 +45,38 @@ function ReceiveForm({ locations, onDone }: { locations: Location[]; onDone: () 
 
 function ItemForm({ item, onDone }: { item?: Item; onDone: () => void }) {
   const [f, setF] = useState({ code: item?.code ?? '', name: item?.name ?? '', genericName: item?.genericName ?? '', form: item?.form ?? '', strength: item?.strength ?? '', unit: item?.unit ?? 'unit', category: item?.category ?? 'drug', reorderLevel: item?.reorderLevel ?? 0, serviceCode: item?.serviceCode ?? '', controlled: item?.controlled ?? false });
-  const m = useMutation({ mutationFn: () => { const body = { ...f, genericName: f.genericName || undefined, form: f.form || undefined, strength: f.strength || undefined, serviceCode: f.serviceCode || undefined }; return item ? api(`/pharmacy/items/${item._id}`, { method: 'PATCH', body: { ...body, code: undefined } }) : api('/pharmacy/items', { method: 'POST', body }); }, onSuccess: onDone });
+  const formIsListed = DOSAGE_FORMS.some((d) => d.form === f.form);
+  const m = useMutation({ mutationFn: () => { const body = { ...f, genericName: f.genericName || undefined, form: f.form.trim() || undefined, unit: f.unit.trim() || 'unit', strength: f.strength || undefined, serviceCode: f.serviceCode || undefined }; return item ? api(`/pharmacy/items/${item._id}`, { method: 'PATCH', body: { ...body, code: undefined } }) : api('/pharmacy/items', { method: 'POST', body }); }, onSuccess: onDone });
   return (
     <div className="grid gap-3 sm:grid-cols-3">
       <Field label="Code"><Input value={f.code} disabled={!!item} onChange={(e) => setF({ ...f, code: e.target.value.toUpperCase() })} /></Field>
       <Field label="Name" className="sm:col-span-2"><Input value={f.name} onChange={(e) => setF({ ...f, name: e.target.value })} /></Field>
       <Field label="Generic name"><Input value={f.genericName} onChange={(e) => setF({ ...f, genericName: e.target.value })} /></Field>
-      <Field label="Form"><Input value={f.form} onChange={(e) => setF({ ...f, form: e.target.value })} /></Field>
+      <Field label="Form">
+        <Select
+          value={formIsListed ? f.form : f.form ? '__other' : ''}
+          onChange={(e) => {
+            const v = e.target.value;
+            if (v === '__other') return setF({ ...f, form: formIsListed || !f.form ? ' ' : f.form });
+            const hit = DOSAGE_FORMS.find((d) => d.form === v);
+            // Suggest the usual stock unit while the unit has not been chosen yet.
+            setF({ ...f, form: v, unit: hit && (f.unit === 'unit' || DOSAGE_FORMS.some((d) => d.unit === f.unit)) ? hit.unit : f.unit });
+          }}
+        >
+          <option value="">Select form…</option>
+          {DOSAGE_FORMS.map((d) => <option key={d.form} value={d.form}>{d.form}</option>)}
+          <option value="__other">Other…</option>
+        </Select>
+        {!formIsListed && !!f.form && <Input className="mt-2" autoFocus placeholder="Type the form" value={f.form.trim()} onChange={(e) => setF({ ...f, form: e.target.value || ' ' })} />}
+      </Field>
       <Field label="Strength"><Input value={f.strength} onChange={(e) => setF({ ...f, strength: e.target.value })} /></Field>
-      <Field label="Unit"><Input value={f.unit} onChange={(e) => setF({ ...f, unit: e.target.value })} /></Field>
+      <Field label="Unit" hint="How stock is counted.">
+        <Select value={STOCK_UNITS.includes(f.unit) ? f.unit : '__other'} onChange={(e) => setF({ ...f, unit: e.target.value === '__other' ? '' : e.target.value })}>
+          {STOCK_UNITS.map((u) => <option key={u} value={u}>{u}</option>)}
+          <option value="__other">Other…</option>
+        </Select>
+        {!STOCK_UNITS.includes(f.unit) && <Input className="mt-2" placeholder="Type the unit" value={f.unit} onChange={(e) => setF({ ...f, unit: e.target.value })} />}
+      </Field>
       <Field label="Category"><Select value={f.category} onChange={(e) => setF({ ...f, category: e.target.value })}>{['drug', 'consumable', 'reagent', 'equipment', 'other'].map((c) => <option key={c}>{c}</option>)}</Select></Field>
       <Field label="Reorder level"><Input type="number" value={f.reorderLevel} onChange={(e) => setF({ ...f, reorderLevel: Number(e.target.value) })} /></Field>
       <Field label="Billing service code" hint="Defaults to RX-<code>"><Input value={f.serviceCode} onChange={(e) => setF({ ...f, serviceCode: e.target.value.toUpperCase() })} /></Field>
