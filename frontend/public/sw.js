@@ -5,12 +5,16 @@
  * clinical is left on a shared device. Only static build assets (content-hashed, immutable), icons
  * and the offline page are cached. When the network is down, navigation shows the offline page.
  */
-const VERSION = 'afeysync-v1';
+// Bumping the version deletes every older cache when this worker activates.
+const VERSION = 'afeysync-v2';
 const STATIC = `${VERSION}-static`;
+const IMMUTABLE = /^\/_next\/static\/(?:chunks|css|media)\/(?:.*\/)?[^/]*[-.][0-9a-f]{8,}[^/]*\.(?:js|css|woff2?|ttf|png|jpg|svg|webp)$/;
 const PRECACHE = ['/offline.html', '/icons/icon-192.png', '/icons/icon-512.png', '/favicon.ico'];
 
 self.addEventListener('install', (event) => {
-  event.waitUntil(caches.open(STATIC).then((c) => c.addAll(PRECACHE)));
+  // Take over straight away: pages are always live, so there is nothing to keep an old worker for,
+  // and an old worker could keep serving outdated scripts.
+  event.waitUntil(caches.open(STATIC).then((c) => c.addAll(PRECACHE)).then(() => self.skipWaiting()));
 });
 
 self.addEventListener('activate', (event) => {
@@ -35,8 +39,9 @@ self.addEventListener('fetch', (event) => {
   // Never intercept the API or auth flows: always live, never stored.
   if (url.pathname.startsWith('/api/')) return;
 
-  // Immutable build assets and icons: cache first.
-  if (url.pathname.startsWith('/_next/static/') || url.pathname.startsWith('/icons/')) {
+  // Only files whose names change with their content (production build hashes) and icons are cached.
+  // Development builds reuse file names, so caching them would keep running old code.
+  if (IMMUTABLE.test(url.pathname) || url.pathname.startsWith('/icons/')) {
     event.respondWith(
       caches.open(STATIC).then(async (cache) => {
         const hit = await cache.match(req);

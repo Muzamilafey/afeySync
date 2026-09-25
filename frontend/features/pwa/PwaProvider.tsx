@@ -42,8 +42,13 @@ export function PwaProvider({ children }: { children: ReactNode }) {
     window.addEventListener('beforeinstallprompt', onPrompt);
     window.addEventListener('appinstalled', onInstalled);
 
-    // Service workers need a secure context (HTTPS, or localhost in development).
-    if ('serviceWorker' in navigator && window.isSecureContext) {
+    // Development (next dev): no offline worker, and remove any left over, so edits always load fresh.
+    if (process.env.NODE_ENV !== 'production' && 'serviceWorker' in navigator) {
+      navigator.serviceWorker.getRegistrations().then((regs) => regs.forEach((r) => r.unregister())).catch(() => undefined);
+      if ('caches' in window) caches.keys().then((keys) => keys.forEach((k) => caches.delete(k))).catch(() => undefined);
+    }
+    // Service workers need a secure context (HTTPS, or localhost).
+    else if ('serviceWorker' in navigator && window.isSecureContext) {
       navigator.serviceWorker.register('/sw.js', { scope: '/' }).then((reg) => {
         if (reg.waiting && navigator.serviceWorker.controller) setWaiting(reg.waiting);
         reg.addEventListener('updatefound', () => {

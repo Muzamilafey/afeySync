@@ -8,7 +8,7 @@ import { z } from 'zod';
 import { Building2, ChevronRight, Loader2 } from 'lucide-react';
 import { Alert, Button, ErrorText, Field, Input } from '@/components/ui';
 import { BrandMark, PoweredBy, useHostContext, type HostContext } from '@/features/branding/branding';
-import { api } from '@/services/api';
+import { api, ApiError } from '@/services/api';
 import { useSessionStore } from '@/stores/session';
 import { useQueryClient } from '@tanstack/react-query';
 import { MfaChallenge } from '@/features/auth/MfaChallenge';
@@ -27,7 +27,9 @@ function LoginForm({ ctx }: { ctx: HostContext | null }) {
   const setToken = useSessionStore((s) => s.setToken);
   const qc = useQueryClient();
   const [error, setError] = useState<unknown>(null);
-  const { register, handleSubmit, formState } = useForm<z.infer<typeof schema>>({ resolver: zodResolver(schema) });
+  const { register, handleSubmit, formState, setValue } = useForm<z.infer<typeof schema>>({ resolver: zodResolver(schema) });
+  const [notice, setNotice] = useState<string | null>(null);
+  const [handoffFailed, setHandoffFailed] = useState(false);
   const [challenge, setChallenge] = useState<MfaChallengeData | null>(null);
   const [choices, setChoices] = useState<FacilityMatch[] | null>(null);
   const [handingOff, setHandingOff] = useState(false);
@@ -39,17 +41,40 @@ function LoginForm({ ctx }: { ctx: HostContext | null }) {
   const next = params.get('next');
   const safeNext = next && next.startsWith('/') && !next.startsWith('//') && !next.includes('\\') ? next : null;
 
+  /** Sends the browser to the accounts sign-in, keeping the facility, the page to return to and (in the fragment, never sent to servers) the email. */
+  const toAccounts = (accountsUrl: string, extra: Record<string, string> = {}, email?: string) => {
+    const q = new URLSearchParams(extra);
+    if (ctx?.kind === 'facility' && ctx.facility?.slug) q.set('facility', ctx.facility.slug);
+    if (safeNext) q.set('next', safeNext);
+    setLeaving(true);
+    window.location.replace(`${accountsUrl}/login${q.toString() ? `?${q}` : ''}${email ? `#email=${encodeURIComponent(email)}` : ''}`);
+  };
+
+  // An expired or refused hand-over goes straight back to the accounts sign-in (once its address is known).
+  useEffect(() => {
+    if (handoffFailed && ctx?.accountsUrl) toAccounts(ctx.accountsUrl, { expired: '1' });
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [handoffFailed, ctx]);
+
+  // On the accounts page: pre-fill the email handed over in the fragment, and explain why the user is here again.
+  useEffect(() => {
+    if (!accounts) return;
+    const m = /email=([^&]+)/.exec(window.location.hash);
+    if (m) {
+      setValue('email', decodeURIComponent(m[1]));
+      window.history.replaceState(null, '', window.location.pathname + window.location.search);
+    }
+    if (params.get('expired')) setNotice('That sign-in link had expired or was opened in another browser. Please sign in again.');
+  }, [accounts, params, setValue]);
+
   // Central sign-in: every other address sends the user to accounts, unless a handoff arrived here
   // (remembered from the first render: the fragment is removed from the address straight away).
   const arrived = useRef<boolean | null>(null);
   if (arrived.current === null && typeof window !== 'undefined') arrived.current = /handoff=/.test(window.location.hash);
   useEffect(() => {
     if (!ctx || !central || accounts || !ctx.accountsUrl || arrived.current) return;
-    const q = new URLSearchParams();
-    if (ctx.kind === 'facility' && ctx.facility?.slug) q.set('facility', ctx.facility.slug);
-    if (safeNext) q.set('next', safeNext);
-    setLeaving(true);
-    window.location.replace(`${ctx.accountsUrl}/login${q.toString() ? `?${q}` : ''}`);
+    toAccounts(ctx.accountsUrl);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [ctx, central, accounts, safeNext]);
 
   // Arriving from the main-domain sign-in: exchange the one-time handoff (kept in the URL fragment, never sent to servers).
@@ -63,7 +88,11 @@ function LoginForm({ ctx }: { ctx: HostContext | null }) {
     setHandingOff(true);
     api<LoginResult & Partial<MfaChallengeData>>('/auth/handoff', { method: 'POST', body: { token: m[1] }, auth: false })
       .then((res) => (res.data.mfaRequired ? setChallenge(res.data as MfaChallengeData) : finish(res.data)))
-      .catch((e) => setError(e))
+      .catch((e) => {
+        // An expired or refused hand-over goes straight back to the accounts sign-in.
+        if (e instanceof ApiError && e.code === 'HANDOFF_INVALID') setHandoffFailed(true);
+        else setError(e);
+      })
       .finally(() => setHandingOff(false));
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
@@ -93,13 +122,16 @@ function LoginForm({ ctx }: { ctx: HostContext | null }) {
       if (res.data.mfaRequired) setChallenge(res.data as MfaChallengeData);
       else finish(res.data);
     } catch (e) {
+      // This address does not take passwords: continue on the accounts sign-in, email already filled in.
+      const url = e instanceof ApiError && e.code === 'USE_ACCOUNTS_LOGIN' ? (e.details as { accountsUrl?: string } | undefined)?.accountsUrl ?? ctx?.accountsUrl : undefined;
+      if (url && /^https?:\/\/accounts\.[a-z0-9.-]+(:\d{1,5})?$/.test(url)) return toAccounts(url, {}, values.email);
       setError(e);
     }
   });
 
   if (challenge) return <MfaChallenge realm="tenant" challenge={challenge} onSuccess={finish} onCancel={() => setChallenge(null)} />;
   if (leaving) return <p className="flex items-center justify-center gap-2 py-10 text-sm"><Loader2 className="h-4 w-4 animate-spin" /> {accounts ? 'Taking you to your facility…' : 'Opening secure sign-in…'}</p>;
-  if (handingOff) return <p className="flex items-center justify-center gap-2 py-10 text-sm"><Loader2 className="h-4 w-4 animate-spin" /> Signing you in…</p>;
+  if (handingOff || handoffFailed) return <p className="flex items-center justify-center gap-2 py-10 text-sm"><Loader2 className="h-4 w-4 animate-spin" /> Signing you in…</p>;
   if (choices)
     return (
       <div className="space-y-3">
@@ -123,6 +155,7 @@ function LoginForm({ ctx }: { ctx: HostContext | null }) {
           <a href={`${window.location.protocol}//${window.location.host.split('.').slice(1).join('.') || window.location.host}/login`} className="mt-2 block font-medium underline">Go to the main sign-in page</a>
         </Alert>
       )}
+      {notice && !error && <Alert tone="blue">{notice}</Alert>}
       <ErrorText error={error} />
       <Field label="Email" error={formState.errors.email?.message}>
         <Input type="email" autoComplete="username" autoFocus {...register('email')} />
