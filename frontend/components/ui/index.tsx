@@ -7,7 +7,7 @@ import { cn } from '@/lib/utils';
 type Variant = 'primary' | 'secondary' | 'ghost' | 'danger' | 'outline';
 const variants: Record<Variant, string> = {
   primary: 'bg-brand-600 text-white hover:bg-brand-700 shadow-sm',
-  secondary: 'bg-slate-800 text-white hover:bg-slate-900 dark:bg-slate-200 dark:text-slate-900',
+  secondary: 'bg-slate-800 text-white hover:bg-slate-900 dark:bg-slate-200 dark:text-slate-900 dark:hover:bg-white',
   outline: 'border border-[var(--border)] bg-[var(--surface)] hover:bg-[var(--surface-2)]',
   ghost: 'hover:bg-[var(--surface-2)]',
   danger: 'bg-red-600 text-white hover:bg-red-700',
