@@ -73,6 +73,7 @@ export interface ConfigUpdate {
 
 export async function upsertConfig(scope: 'platform' | 'tenant', provider: Provider, tenantId: string | null, update: ConfigUpdate, actorId?: string) {
   const def = PROVIDER_DEFINITIONS[provider];
+  if (scope === 'platform' && def.facilitySelfService) throw forbidden(`${def.label} is set up by each facility for its own account, not by the platform`, 'FACILITY_OWNED_INTEGRATION');
   const { IntegrationConfig } = meta();
   let doc = await IntegrationConfig.findOne({ scope, tenantId, provider });
   const before = doc ? toPublicConfig(doc, provider) : null;
@@ -92,6 +93,7 @@ export async function upsertConfig(scope: 'platform' | 'tenant', provider: Provi
       next[k] = v.trim();
     }
     if (provider === 'mpesa') validateMpesaSettings(next);
+    if (provider === 'payhero' || provider === 'payhero_billing') validatePayheroSettings(next);
     doc.settings = next;
     doc.markModified('settings');
   }
@@ -121,6 +123,8 @@ export async function upsertConfig(scope: 'platform' | 'tenant', provider: Provi
     doc.allowTenantCredentials = false;
   }
   if (scope === 'tenant' && update.useTenantConfig !== undefined) doc.useTenantConfig = update.useTenantConfig;
+  // A facility's own account has nothing to fall back to: it is in use exactly when it is switched on.
+  if (scope === 'tenant' && def.facilitySelfService) doc.useTenantConfig = true;
   if (update.enabled !== undefined) {
     if (update.enabled && !(scope === 'platform' && def.facilityCredentialsOnly)) {
       const settings = { ...defaultsFor(provider, doc.environment ?? def.environments[0]), ...(doc.settings ?? {}) };
@@ -144,6 +148,11 @@ function validateMpesaSettings(s: Record<string, string>) {
   if (!digits(s.shortcode)) throw badRequest(`${s.accountType === 'till' ? 'Store number' : 'Paybill number'} must be 5 to 8 digits`);
   if (!digits(s.till)) throw badRequest('Till number must be 5 to 8 digits');
   if (s.accountType === 'till' && !s.till && !s.shortcode) throw badRequest('Enter the till number');
+}
+
+function validatePayheroSettings(s: Record<string, string>) {
+  if (s.channelId && !/^\d{1,12}$/.test(s.channelId)) throw badRequest('Payment channel ID must be a number (see Pay Hero → Payment Channels)');
+  if (s.role && !['primary', 'backup'].includes(s.role)) throw badRequest('Choose when Pay Hero sends prompts');
 }
 
 function defaultsFor(provider: Provider, environment: string): Record<string, string> {
@@ -180,6 +189,12 @@ export const SMS_PROVIDERS: readonly Provider[] = ['africastalking', 'talksasa']
 
 export async function resolveIntegration(provider: Provider, tenantId: string | null): Promise<ResolvedIntegration> {
   const { IntegrationConfig, Tenant } = meta();
+  const def = PROVIDER_DEFINITIONS[provider];
+  if (def.facilitySelfService) {
+    const cfg = tenantId ? await IntegrationConfig.findOne({ scope: 'tenant', tenantId, provider }) : null;
+    if (!cfg?.enabled) throw new AppError(503, 'INTEGRATION_NOT_CONFIGURED', `${def.label} is not set up for this facility. An administrator can set it up under Administration → Integrations.`);
+    return materialize(cfg, provider, 'tenant');
+  }
   const platform = await IntegrationConfig.findOne({ scope: 'platform', tenantId: null, provider });
   if (!platform?.enabled) throw new AppError(503, 'INTEGRATION_DISABLED', DISABLED_MESSAGE);
   if (tenantId) {
@@ -206,10 +221,14 @@ export async function integrationStatusForTenant(tenantId: string) {
     IntegrationConfig.find({ scope: 'tenant', tenantId }).select('provider enabled useTenantConfig').lean(),
   ]);
   const flags = (tenant?.integrations ?? {}) as Record<string, boolean>;
-  const out: Record<string, { enabled: boolean; message?: string; tenantCredentialsAllowed: boolean; usingFacilityConfig: boolean; health?: string }> = {};
-  for (const provider of ['sha', 'dha', 'mpesa', 'africastalking', 'talksasa', 'smtp', 'slade360'] as const) {
+  const out: Record<string, { enabled: boolean; message?: string; tenantCredentialsAllowed: boolean; usingFacilityConfig: boolean; health?: string; selfService?: boolean }> = {};
+  for (const provider of ['sha', 'dha', 'mpesa', 'payhero', 'africastalking', 'talksasa', 'smtp', 'slade360'] as const) {
     const p = platformCfgs.find((c) => c.provider === provider);
     const t = tenantCfgs.find((c) => c.provider === provider);
+    if (PROVIDER_DEFINITIONS[provider].facilitySelfService) {
+      out[provider] = { enabled: Boolean(t?.enabled), message: t?.enabled ? undefined : 'Not set up yet. Add your own account details below.', tenantCredentialsAllowed: true, usingFacilityConfig: Boolean(t?.enabled), selfService: true };
+      continue;
+    }
     const facilityOn = SMS_PROVIDERS.includes(provider) || flags[provider];
     const enabled = Boolean(p?.enabled && facilityOn);
     out[provider] = {
@@ -225,6 +244,7 @@ export async function integrationStatusForTenant(tenantId: string) {
 
 export async function assertTenantCredentialsAllowed(provider: Provider) {
   if (PROVIDER_DEFINITIONS[provider].platformOnly) throw forbidden('This integration belongs to the platform owner', 'PLATFORM_ONLY_INTEGRATION');
+  if (PROVIDER_DEFINITIONS[provider].facilitySelfService) return;
   const platform = await meta().IntegrationConfig.findOne({ scope: 'platform', tenantId: null, provider }).lean();
   if (!platform?.allowTenantCredentials) throw forbidden('Facility-level credentials are not permitted for this integration', 'TENANT_CREDENTIALS_NOT_ALLOWED');
 }
@@ -250,7 +270,6 @@ export async function bootstrapPlatformConfigsFromEnv() {
   const candidates: Array<{ provider: Provider; settings: Record<string, string | undefined>; secrets: Record<string, string | undefined>; environment?: string }> = [
     { provider: 'dha', settings: { baseUrl: env.DHA_BASE_URL, facilityRegistryCode: env.DHA_FACILITY_ID, facilityIdType: env.DHA_FACILITY_ID_TYPE }, secrets: { clientId: env.DHA_CLIENT_ID, clientSecret: env.DHA_CLIENT_SECRET } },
     { provider: 'sha', settings: { baseUrl: env.SHA_BASE_URL, facilityRegistryCode: env.SHA_FACILITY_ID }, secrets: { clientId: env.SHA_CLIENT_ID, clientSecret: env.SHA_CLIENT_SECRET } },
-    { provider: 'mpesa', environment: env.MPESA_ENVIRONMENT, settings: { shortcode: env.MPESA_SHORTCODE, till: env.MPESA_TILL, paybill: env.MPESA_PAYBILL }, secrets: { consumerKey: env.MPESA_CONSUMER_KEY, consumerSecret: env.MPESA_CONSUMER_SECRET, passkey: env.MPESA_PASSKEY } },
     { provider: 'africastalking', settings: { username: env.AT_USERNAME, senderId: env.AT_SENDER_ID }, secrets: { apiKey: env.AT_API_KEY } },
     { provider: 'talksasa', environment: 'production', settings: { baseUrl: env.TALKSASA_BASE_URL, senderId: env.TALKSASA_SENDER_ID }, secrets: { apiToken: env.TALKSASA_API_TOKEN } },
     { provider: 'smtp', settings: { host: env.SMTP_HOST, port: env.SMTP_PORT, encryption: env.SMTP_ENCRYPTION, fromEmail: env.SMTP_FROM }, secrets: { username: env.SMTP_USERNAME, password: env.SMTP_PASSWORD } },

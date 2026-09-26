@@ -136,7 +136,7 @@ export default function FacilityDetail({ params }: { params: Promise<{ id: strin
       {tab === 'integrations' && (
         <Card title="Enabled providers for this facility">
           <div className="space-y-3">
-            {Object.entries(tenant.integrations).filter(([k]) => !['africastalking', 'talksasa'].includes(k)).map(([k, v]) => (
+            {Object.entries(tenant.integrations).filter(([k]) => !['africastalking', 'talksasa', 'mpesa'].includes(k)).map(([k, v]) => (
               <label key={k} className="flex items-center justify-between rounded-md border border-[var(--border)] px-3 py-2 text-sm">
                 <span className="font-medium">{PROVIDER_LABEL[k] ?? k.toUpperCase()}</span>
                 <input type="checkbox" checked={v} onChange={(e) => intMut.mutate({ [k]: e.target.checked })} />

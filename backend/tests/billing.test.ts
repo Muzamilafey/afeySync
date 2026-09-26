@@ -38,11 +38,11 @@ beforeAll(async () => {
   await setupApp();
   daraja = await startDaraja();
   const owner = await ownerToken();
-  await api().put('/api/v1/owner/integrations/mpesa').set('Host', OWNER_HOST).set('Authorization', `Bearer ${owner}`)
-    .send({ environment: 'sandbox', settings: { accountType: 'paybill', shortcode: '174379', baseUrl: daraja.url }, secrets: { consumerKey: 'ck', consumerSecret: 'cs', passkey: 'pk' }, enabled: true });
   F = await createFacility(owner, S);
-  await api().put(`/api/v1/owner/tenants/${F.id}/integrations`).set('Host', OWNER_HOST).set('Authorization', `Bearer ${owner}`).send({ mpesa: true });
   admin = (await tenantLogin(S, F.admin.email)).token;
+  // M-Pesa belongs to the facility: its administrator sets it up, no owner switch.
+  expect((await t(S, admin).put('/api/v1/admin/integrations/mpesa')
+    .send({ environment: 'sandbox', settings: { accountType: 'paybill', shortcode: '174379', baseUrl: daraja.url }, secrets: { consumerKey: 'ck', consumerSecret: 'cs', passkey: 'pk' }, enabled: true })).status).toBe(200);
   cashier = await createUser(S, admin, { email: 'cashier@billfac.test', roleKey: 'cashier', branchAccess: 'specific', branchIds: [F.branches[0].id] });
   await t(S, admin).post('/api/v1/billing/services').send({ code: 'CONS-GEN', name: 'General consultation', category: 'consultation', prices: [{ priceList: 'cash', amount: 1000 }, { priceList: 'sha', amount: 800 }] });
   await t(S, admin).post('/api/v1/billing/services').send({ code: 'LAB-FBC', name: 'Full blood count', category: 'laboratory', prices: [{ priceList: 'cash', amount: 600 }] });

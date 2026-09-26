@@ -142,9 +142,8 @@ describe('emergency claims', () => {
 describe('M-Pesa B2C refund payouts', () => {
   let cnId: string;
   it('is unavailable until the owner enables B2C', async () => {
-    await api().put('/api/v1/owner/integrations/mpesa').set('Host', OWNER_HOST).set('Authorization', `Bearer ${owner}`)
+    await t(S, admin).put('/api/v1/admin/integrations/mpesa')
       .send({ environment: 'sandbox', settings: { accountType: 'paybill', shortcode: '174379', baseUrl: `http://127.0.0.1:${(daraja.address() as AddressInfo).port}` }, secrets: { consumerKey: 'ck', consumerSecret: 'cs', passkey: 'pk' }, enabled: true });
-    await api().put(`/api/v1/owner/tenants/${F.id}/integrations`).set('Host', OWNER_HOST).set('Authorization', `Bearer ${owner}`).send({ mpesa: true });
     await t(S, admin).post('/api/v1/billing/services').send({ code: 'CONS', name: 'Consultation', category: 'consultation', prices: [{ priceList: 'cash', amount: 1000 }] });
     const inv = await t(S, cashier).post('/api/v1/billing/invoices').send({ patientId, lines: [{ serviceCode: 'CONS', quantity: 1 }] });
     const pay = await t(S, cashier).post('/api/v1/billing/payments').send({ invoiceId: inv.body.data._id, method: 'mpesa', amount: 1000, reference: 'QRF0000001', idempotencyKey: 'b2c-pay-0001' });
@@ -156,7 +155,7 @@ describe('M-Pesa B2C refund payouts', () => {
   });
 
   it('pays out with an encrypted security credential and applies the result once', async () => {
-    await api().put('/api/v1/owner/integrations/mpesa').set('Host', OWNER_HOST).set('Authorization', `Bearer ${owner}`)
+    await t(S, admin).put('/api/v1/admin/integrations/mpesa')
       .send({ settings: { b2cEnabled: 'true', b2cShortcode: '600000', b2cInitiatorName: 'afsapi' }, secrets: { b2cInitiatorPassword: 'Initiator#Pass1', b2cCertificate: publicKey.export({ type: 'spki', format: 'pem' }).toString() } });
     // the refund approver cannot also start the payout
     expect((await t(S, admin).post(`/api/v1/payments/mpesa/refunds/${cnId}/payout`).send({ phone: '0712000999' })).body.error.code).toBe('SEGREGATION_OF_DUTIES');

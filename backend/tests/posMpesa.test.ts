@@ -54,7 +54,7 @@ const qty = async () => (await t(S, admin).get('/api/v1/pharmacy/items').query({
 
 describe('M-Pesa paybill / till setup', () => {
   it('needs the account type to enable M-Pesa, and checks the numbers', async () => {
-    const put = (settings: Record<string, string>) => api().put('/api/v1/owner/integrations/mpesa').set('Host', OWNER_HOST).set('Authorization', `Bearer ${owner}`)
+    const put = (settings: Record<string, string>) => t(S, admin).put('/api/v1/admin/integrations/mpesa')
       .send({ environment: 'production', settings, secrets: { consumerKey: 'ck', consumerSecret: 'cs', passkey: 'pk' }, enabled: true });
     const missing = await put({ shortcode: '174379' });
     expect(missing.status).toBe(400);
@@ -64,10 +64,14 @@ describe('M-Pesa paybill / till setup', () => {
     // The sandbox address on a production setup is refused.
     const wrongEnv = await put({ accountType: 'till', shortcode: '600100', till: '5123456', baseUrl: 'https://sandbox.safaricom.co.ke/' });
     expect(wrongEnv.body.error.code).toBe('BASE_URL_ENVIRONMENT_MISMATCH');
-    const cfg = await api().get('/api/v1/owner/integrations').set('Host', OWNER_HOST).set('Authorization', `Bearer ${owner}`);
-    expect(cfg.body.data.find((c: { provider: string }) => c.provider === 'mpesa').defaultBaseUrls).toEqual({ sandbox: 'https://sandbox.safaricom.co.ke', production: 'https://api.safaricom.co.ke' });
+    const cfg = await t(S, admin).get('/api/v1/admin/integrations');
+    expect(cfg.body.data.facilityConfigs.mpesa.defaultBaseUrls).toEqual({ sandbox: 'https://sandbox.safaricom.co.ke', production: 'https://api.safaricom.co.ke' });
+    // The owner neither sees nor configures a facility's M-Pesa.
+    const ownerList = await api().get('/api/v1/owner/integrations').set('Host', OWNER_HOST).set('Authorization', `Bearer ${owner}`);
+    expect(ownerList.body.data.some((c: { provider: string }) => c.provider === 'mpesa' || c.provider === 'payhero')).toBe(false);
+    expect((await api().put('/api/v1/owner/integrations/mpesa').set('Host', OWNER_HOST).set('Authorization', `Bearer ${owner}`).send({ enabled: true })).body.error.code).toBe('FACILITY_OWNED_INTEGRATION');
     // Leave it disabled for the first POS test.
-    await api().put('/api/v1/owner/integrations/mpesa').set('Host', OWNER_HOST).set('Authorization', `Bearer ${owner}`).send({ enabled: false });
+    await t(S, admin).put('/api/v1/admin/integrations/mpesa').send({ enabled: false });
   });
 });
 
@@ -80,9 +84,8 @@ describe('pharmacy POS M-Pesa prompt', () => {
   });
 
   it('sends the prompt to the facility till, and only the Safaricom callback marks the sale paid', async () => {
-    await api().put('/api/v1/owner/integrations/mpesa').set('Host', OWNER_HOST).set('Authorization', `Bearer ${owner}`)
+    await t(S, admin).put('/api/v1/admin/integrations/mpesa')
       .send({ environment: 'sandbox', settings: { accountType: 'till', shortcode: '600100', till: '5123456', baseUrl: darajaUrl }, secrets: { consumerKey: 'ck', consumerSecret: 'cs', passkey: 'pk' }, enabled: true });
-    await api().put(`/api/v1/owner/tenants/${F.id}/integrations`).set('Host', OWNER_HOST).set('Authorization', `Bearer ${owner}`).send({ mpesa: true });
     expect((await t(S, pharmacist).post('/api/v1/pharmacy/sales').send({ locationId: loc, customerName: 'Amina', lines: [{ itemId: item, quantity: 2 }], mpesaPrompt: { phone: '12345', idempotencyKey: 'posmp-00002' } })).status).toBe(400);
 
     const r = await t(S, pharmacist).post('/api/v1/pharmacy/sales').send({ locationId: loc, customerName: 'Amina', lines: [{ itemId: item, quantity: 10 }], mpesaPrompt: { phone: '0712345678', idempotencyKey: 'posmp-00003' } });
@@ -117,7 +120,7 @@ describe('pharmacy POS M-Pesa prompt', () => {
   });
 
   it('pays a paybill facility to its shortcode, with the invoice number as the account', async () => {
-    await api().put('/api/v1/owner/integrations/mpesa').set('Host', OWNER_HOST).set('Authorization', `Bearer ${owner}`)
+    await t(S, admin).put('/api/v1/admin/integrations/mpesa')
       .send({ environment: 'sandbox', settings: { accountType: 'paybill', shortcode: '174379', till: '5123456', baseUrl: darajaUrl }, secrets: { consumerKey: 'ck', consumerSecret: 'cs', passkey: 'pk' }, enabled: true });
     const r = await t(S, pharmacist).post('/api/v1/pharmacy/sales').send({ locationId: loc, customerName: 'Chebet', lines: [{ itemId: item, quantity: 1 }], mpesaPrompt: { phone: '0733000222', idempotencyKey: 'posmp-00008' } });
     expect(r.status).toBe(201);

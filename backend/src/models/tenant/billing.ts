@@ -105,6 +105,10 @@ const paymentSchema = new Schema(
     status: { type: String, enum: ['pending', 'completed', 'failed', 'refunded', 'partially_refunded', 'unallocated'], default: 'completed', index: true },
     refundedAmount: { type: Number, default: 0 },
     mpesa: {
+      /** Which service sent the prompt: Safaricom Daraja directly, or Pay Hero. */
+      gateway: String,
+      /** Pay Hero's own transaction reference (used to look the payment up with Pay Hero). */
+      gatewayReference: { type: String, index: true, sparse: true },
       checkoutRequestId: { type: String, index: true, sparse: true },
       merchantRequestId: String,
       receiptNumber: { type: String, index: true, sparse: true },

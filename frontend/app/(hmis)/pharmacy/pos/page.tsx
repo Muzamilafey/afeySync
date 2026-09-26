@@ -75,7 +75,7 @@ function Sell({ canPay }: { canPay: boolean }) {
   const [customer, setCustomer] = useState({ name: '', phone: '' });
   const [rx, setRx] = useState({ show: false, prescriber: '', facility: '', reference: '' });
   const { data: me } = useMe();
-  const mpesaEnabled = !!me?.integrations?.mpesa?.enabled;
+  const mpesaEnabled = !!(me?.integrations?.mpesa?.enabled || me?.integrations?.payhero?.enabled);
   const [pay, setPay] = useState<{ method: 'cash' | 'stk' | 'mpesa' | 'card' | 'bank' | 'later'; tendered: string; reference: string; phone: string }>({ method: canPay ? 'cash' : 'later', tendered: '', reference: '', phone: '' });
   const [override, setOverride] = useState('');
   const [done, setDone] = useState<{ sale: Sale; receiptNumber?: string; mpesa?: { paymentId?: string; error?: string }; phone?: string } | null>(null);
@@ -271,7 +271,7 @@ function Sales() {
   const [prompt, setPrompt] = useState<Sale | null>(null);
   const can = useCan();
   const { data: me } = useMe();
-  const mpesaEnabled = !!me?.integrations?.mpesa?.enabled && can('pharmacy.sell');
+  const mpesaEnabled = !!(me?.integrations?.mpesa?.enabled || me?.integrations?.payhero?.enabled) && can('pharmacy.sell');
   const doReturn = useMutation({
     mutationFn: async () => (await api<{ message: string }>(`/pharmacy/sales/${ret!.sale._id}/return`, { method: 'POST', body: { reason: ret!.reason, lines: Object.entries(ret!.qty).filter(([, q]) => q > 0).map(([lineId, quantity]) => ({ lineId, quantity })) } })).data,
     onSuccess: (r) => { setMsg(r.message); setRet(null); qc.invalidateQueries({ queryKey: ['pos-sales'] }); qc.invalidateQueries({ queryKey: ['pos-items'] }); },

@@ -8,7 +8,7 @@ import { authenticatePlatform, authenticateTenant, requireAnyPermission, require
 import { audit, platformAudit } from '../audit/auditService';
 import { meta } from '../../models/meta';
 import { resolveIntegration } from '../integrations/integrationConfigService';
-import { requestSmsTopupStk, refreshStk, smsAccountRef } from '../platformBilling/platformMpesa';
+import { collectionsAvailable, requestSmsTopupStk, refreshStk, smsAccountRef } from '../platformBilling/platformMpesa';
 import { creditWallet, ensureWallet, getSmsSettings, MAX_TOPUP_KES, saveSmsSettings, smsSettingsSchema } from './smsWallet';
 
 const DAY = 86_400_000;
@@ -19,11 +19,13 @@ async function usedLast30Days(tenantId: string) {
 }
 
 async function paybillInfo() {
+  const available = await collectionsAvailable();
   try {
     const cfg = await resolveIntegration('mpesa_billing', null);
-    return { available: true, paybill: cfg.settings.paybill || cfg.settings.shortcode || null };
+    return { available, paybill: cfg.settings.paybill || cfg.settings.shortcode || null };
   } catch {
-    return { available: false, paybill: null };
+    // Pay Hero only: prompts work, but there is no paybill to pay into by hand.
+    return { available, paybill: null };
   }
 }
 

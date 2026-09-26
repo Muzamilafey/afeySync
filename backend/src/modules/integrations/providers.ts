@@ -23,6 +23,11 @@ export interface ProviderDefinition {
   facilityCredentialsOnly?: boolean;
   /** Belongs to the platform owner only: never enabled, configured or shown for facilities. */
   platformOnly?: boolean;
+  /**
+   * Every facility sets this up for itself with its own account (e.g. its own M-Pesa till). The owner neither
+   * configures nor switches it on; there is no platform record and no platform fallback.
+   */
+  facilitySelfService?: boolean;
 }
 
 /**
@@ -66,6 +71,7 @@ export const PROVIDER_DEFINITIONS: Record<Provider, ProviderDefinition> = {
   },
   mpesa: {
     label: 'M-Pesa (Daraja)',
+    facilitySelfService: true,
     environments: ['sandbox', 'production'],
     defaultBaseUrls: { sandbox: 'https://sandbox.safaricom.co.ke', production: 'https://api.safaricom.co.ke' },
     settings: [
@@ -182,6 +188,44 @@ export const PROVIDER_DEFINITIONS: Record<Provider, ProviderDefinition> = {
       { key: 'consumerSecret', label: 'Consumer Secret', required: true },
       { key: 'passkey', label: 'Lipa na M-Pesa Online passkey', required: true },
     ],
+  },
+  payhero: {
+    label: 'Pay Hero (M-Pesa)',
+    facilitySelfService: true,
+    environments: ['production'],
+    defaultBaseUrls: { production: 'https://backend.payhero.co.ke' },
+    settings: [
+      { key: 'channelId', label: 'Payment channel ID', required: true, help: 'In Pay Hero: Payment Channels → My Payment Channels. The channel is the paybill, till or bank account the money goes to.' },
+      {
+        key: 'role',
+        label: 'Use Pay Hero for M-Pesa prompts',
+        required: true,
+        default: 'primary',
+        options: [{ value: 'primary', label: 'Always (Pay Hero sends every prompt)' }, { value: 'backup', label: 'Only when M-Pesa (Daraja) is not set up' }],
+      },
+      { key: 'credentialId', label: 'Pay Hero credential ID (optional)', help: 'Only if you registered your own Daraja keys inside Pay Hero. Leave blank otherwise.' },
+      { key: 'baseUrl', label: 'API base URL', help: 'Filled in (backend.payhero.co.ke). Change it only if Pay Hero gives you a different address.' },
+    ],
+    secrets: [{ key: 'authToken', label: 'Basic Authorization token (Pay Hero → API Keys)', required: true }],
+  },
+  payhero_billing: {
+    label: 'Pay Hero (AfeySync subscription and SMS payments)',
+    platformOnly: true,
+    environments: ['production'],
+    defaultBaseUrls: { production: 'https://backend.payhero.co.ke' },
+    settings: [
+      { key: 'channelId', label: 'Payment channel ID', required: true, help: 'In Pay Hero: Payment Channels → My Payment Channels. The channel is the paybill, till or bank account the money goes to.' },
+      {
+        key: 'role',
+        label: 'Use Pay Hero for M-Pesa prompts',
+        required: true,
+        default: 'primary',
+        options: [{ value: 'primary', label: 'Always (Pay Hero sends every prompt)' }, { value: 'backup', label: 'Only when M-Pesa collections (Daraja) is not set up' }],
+      },
+      { key: 'credentialId', label: 'Pay Hero credential ID (optional)', help: 'Only if you registered your own Daraja keys inside Pay Hero. Leave blank otherwise.' },
+      { key: 'baseUrl', label: 'API base URL', help: 'Filled in (backend.payhero.co.ke). Change it only if Pay Hero gives you a different address.' },
+    ],
+    secrets: [{ key: 'authToken', label: 'Basic Authorization token (Pay Hero → API Keys)', required: true }],
   },
   storage: {
     label: 'Document Storage',

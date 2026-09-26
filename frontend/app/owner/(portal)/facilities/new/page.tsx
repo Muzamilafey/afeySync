@@ -130,13 +130,13 @@ export default function NewFacilityWizard() {
         )}
         {step === 5 && (
           <div className="space-y-3">
-            {(Object.keys(integrations) as Array<keyof typeof integrations>).filter((k) => k !== 'africastalking' && k !== 'talksasa').map((k) => (
+            {(Object.keys(integrations) as Array<keyof typeof integrations>).filter((k) => k !== 'africastalking' && k !== 'talksasa' && k !== 'mpesa').map((k) => (
               <label key={k} className="flex items-center gap-3 text-sm">
                 <input type="checkbox" checked={integrations[k]} onChange={(e) => setIntegrations({ ...integrations, [k]: e.target.checked })} />
                 <span className="font-medium">{{ sha: 'SHA', dha: 'DHA HIE', mpesa: 'M-Pesa', africastalking: "Africa's Talking SMS", talksasa: 'Talksasa SMS', smtp: 'SMTP email', slade360: 'Slade360 private insurance' }[k]}</span>
               </label>
             ))}
-            <p className="muted text-xs">Uses platform credentials configured in Owner → Integrations. Facilities never see platform secrets.</p>
+            <p className="muted text-xs">Uses platform credentials configured in Owner → Integrations. Facilities never see platform secrets. M-Pesa and Pay Hero are set up by each facility for its own account.</p>
           </div>
         )}
         {step === 6 && (

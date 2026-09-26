@@ -147,7 +147,7 @@ describe('documents with automatic stamp and signature', () => {
 describe('M-Pesa collections', () => {
   it('is unavailable until the owner configures the collections account', async () => {
     const r = await t(S, admin).post(`/api/v1/subscription/documents/${invoiceId}/pay`).send({ phone: '0712345678' });
-    expect(r.body.error.code).toBe('INTEGRATION_DISABLED');
+    expect(r.body.error.code).toBe('MPESA_NOT_CONFIGURED');
     const cfg = await own('put', '/integrations/mpesa_billing').send({ environment: 'sandbox', settings: { shortcode: '600100', paybill: '600100', baseUrl: daraja.url }, secrets: { consumerKey: 'ck', consumerSecret: 'cs', passkey: 'pk' }, enabled: true });
     expect(cfg.status).toBe(200);
     // facilities can never configure or see the owner's collection account

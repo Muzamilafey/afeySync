@@ -20,7 +20,7 @@ export default function LogsPage() {
       <Card>
         <div className="mb-3 grid gap-2 sm:grid-cols-3 lg:grid-cols-7">
           <Input placeholder="Tenant ID" value={f.tenantId} onChange={(e) => set('tenantId', e.target.value)} />
-          <Select value={f.provider} onChange={(e) => set('provider', e.target.value)}><option value="">All providers</option>{['sha', 'dha', 'mpesa', 'africastalking', 'talksasa', 'smtp'].map((p) => <option key={p}>{p}</option>)}</Select>
+          <Select value={f.provider} onChange={(e) => set('provider', e.target.value)}><option value="">All providers</option>{['sha', 'dha', 'mpesa', 'payhero', 'africastalking', 'talksasa', 'smtp'].map((p) => <option key={p}>{p}</option>)}</Select>
           <Input placeholder="Operation" value={f.operation} onChange={(e) => set('operation', e.target.value)} />
           <Select value={f.status} onChange={(e) => set('status', e.target.value)}><option value="">Any status</option><option value="success">success</option><option value="failure">failure</option></Select>
           <Input placeholder="Reference / request ID" value={f.reference} onChange={(e) => set('reference', e.target.value)} />

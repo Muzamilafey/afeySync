@@ -15,7 +15,7 @@ import { allergyConflicts } from './allergyCheck';
 import { billingCodeOf } from './itemPrices';
 import type { TenantModels } from '../../models/tenant';
 import { checkStk, sendStkForInvoice } from '../billing/mpesa.routes';
-import { resolveIntegration } from '../integrations/integrationConfigService';
+import { promptGateway } from '../../integrations/payments/promptGateway';
 import { toMsisdn } from '../../integrations/mpesa/mpesaService';
 
 /**
@@ -79,7 +79,7 @@ router.post(
     // Checked before any stock moves: the facility must have M-Pesa set up, and the number must be a Safaricom line.
     if (body.mpesaPrompt) {
       toMsisdn(body.mpesaPrompt.phone);
-      await resolveIntegration('mpesa', req.tenant!.id);
+      await promptGateway('facility', req.tenant!.id);
     }
     const loc = await loadScoped(req, m.StockLocation, body.locationId, 'Stock location');
     const codes = [...new Set(body.lines.map((l) => l.itemId))];

@@ -21,6 +21,8 @@ export interface Branch {
 
 export interface IntegrationFlag {
   enabled: boolean;
+  /** Set up by the facility for its own account (M-Pesa Daraja, Pay Hero). */
+  selfService?: boolean;
   message?: string;
   tenantCredentialsAllowed: boolean;
   usingFacilityConfig: boolean;
@@ -33,7 +35,7 @@ export interface Me {
   tenant: { id: string; name: string; slug: string };
   activeBranch: { id: string; name: string; code: string } | null;
   branches: Branch[];
-  integrations: Record<'sha' | 'dha' | 'mpesa' | 'africastalking' | 'smtp' | 'slade360', IntegrationFlag>;
+  integrations: Record<'sha' | 'dha' | 'mpesa' | 'africastalking' | 'smtp' | 'slade360', IntegrationFlag> & { payhero?: IntegrationFlag };
   subscription?: { plan: string; planName?: string; status: string; endsAt?: string; modules: string[]; unrestricted: boolean };
 }
 

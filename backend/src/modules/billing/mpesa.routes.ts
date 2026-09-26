@@ -18,18 +18,66 @@ import { loadScoped, round2 } from '../common/helpers';
 import { logger } from '../../utils/logger';
 import { enqueueJob } from '../../jobs/queue';
 import type { TenantModels } from '../../models/tenant';
+import type { ResolvedIntegration } from '../integrations/integrationConfigService';
+import { promptGateway } from '../../integrations/payments/promptGateway';
+import { payheroStkPush, payheroTransactionStatus, type PayheroCallback } from '../../integrations/payhero/payheroClient';
 
 type InvoiceDoc = NonNullable<Awaited<ReturnType<TenantModels['Invoice']['findOne']>>>;
 type PaymentDoc = NonNullable<Awaited<ReturnType<TenantModels['Payment']['findOne']>>>;
 
 /** Per-tenant M-Pesa callback endpoint (secret URL token, stored hashed + encrypted for URL rebuilding). */
-async function mpesaEndpoint(tenantId: string) {
+async function mpesaEndpoint(tenantId: string, provider: 'mpesa' | 'payhero' = 'mpesa') {
   const { CallbackEndpoint } = meta();
-  const existing = await CallbackEndpoint.findOne({ provider: 'mpesa', tenantId, active: true });
+  const existing = await CallbackEndpoint.findOne({ provider, tenantId, active: true });
   if (existing?.tokenEncrypted?.ciphertext) return IntegrationSecretService.decrypt(existing.tokenEncrypted.ciphertext);
   const token = randomToken(32);
-  await CallbackEndpoint.create({ provider: 'mpesa', tenantId, tokenHash: sha256(token), tokenEncrypted: IntegrationSecretService.encrypt(token), active: true });
+  await CallbackEndpoint.create({ provider, tenantId, tokenHash: sha256(token), tokenEncrypted: IntegrationSecretService.encrypt(token), active: true });
   return token;
+}
+const payheroBase = () => `${env.API_URL.replace(/\/$/, '')}/api/v1/payments/payhero`;
+
+type TenantCtx = { id: string; name: string; models: TenantModels };
+
+/**
+ * Records a confirmed prompt payment exactly once: receipt number, invoice settlement, audit and the patient's SMS
+ * receipt. Both gateways end here, and only after the payment was confirmed by the gateway itself.
+ */
+async function settleConfirmed(tenant: TenantCtx, p: PaymentDoc, receipt: string, via: string, transactionDate?: string) {
+  const m = tenant.models;
+  if (!receipt || (await m.Payment.exists({ 'mpesa.receiptNumber': receipt, _id: { $ne: p._id } }))) {
+    p.status = 'failed';
+    p.notes = 'Duplicate or missing M-Pesa receipt in the confirmation. Check the M-Pesa statement.';
+    await p.save();
+    return false;
+  }
+  p.set('mpesa.receiptNumber', receipt);
+  if (transactionDate) p.set('mpesa.transactionDate', transactionDate);
+  p.reference = receipt;
+  await completePayment(m, p);
+  await m.AuditLog.create({ actorType: 'integration', action: 'billing.mpesa_confirmed', resource: 'payment', resourceId: String(p._id), newValue: { receipt, amount: p.amount, via } });
+  const patient = await m.Patient.findById(p.patientId).select('phone consent').lean();
+  if (patient?.phone && patient.consent?.sms !== false) {
+    await enqueueJob('SMS', `receipt:${tenant.id}:${p._id}`, { to: patient.phone, message: `${tenant.name}: Payment of KES ${p.amount} received. Receipt ${p.receiptNumber}, M-Pesa ${receipt}. Thank you.` }, tenant.id);
+  }
+  return true;
+}
+
+/** Applies a Pay Hero status answer: SUCCESS settles (with Pay Hero's M-Pesa code), FAILED fails, QUEUED waits. */
+async function applyPayheroStatus(tenant: TenantCtx, p: PaymentDoc, cfg: ResolvedIntegration, callbackReceipt?: string) {
+  const st = await payheroTransactionStatus(cfg, p.mpesa!.gatewayReference!);
+  if (st.status === 'FAILED') {
+    p.status = 'failed';
+    p.set('mpesa.resultDesc', 'Not completed on the phone (cancelled, timed out or wrong PIN)');
+    await p.save();
+  } else if (st.status === 'SUCCESS') {
+    const receipt = (st.providerReference || callbackReceipt || '').toUpperCase();
+    if (callbackReceipt && st.providerReference && callbackReceipt.toUpperCase() !== st.providerReference) {
+      p.status = 'failed';
+      p.notes = `M-Pesa code in the callback (${callbackReceipt}) does not match Pay Hero's record (${st.providerReference}). Check before accepting.`;
+      await p.save();
+    } else await settleConfirmed(tenant, p, receipt, 'payhero');
+  }
+  return p;
 }
 const base = () => `${env.API_URL.replace(/\/$/, '')}/api/v1/payments/mpesa`;
 
@@ -52,7 +100,7 @@ mpesaRouter.post(
     if (cn.payout?.status && cn.payout.status !== 'failed') throw conflict(cn.payout.status === 'timeout' ? 'The previous payout timed out; confirm its status with Safaricom before retrying' : `Payout already ${cn.payout.status}`, undefined, 'PAYOUT_EXISTS');
     if (String(cn.approvedBy) === req.user!.id) throw forbidden('The payout must be started by someone other than the refund approver', 'SEGREGATION_OF_DUTIES');
     const cfg = await resolveIntegration('mpesa', req.tenant!.id);
-    if (!b2cReady(cfg)) throw new AppError(503, 'MPESA_B2C_NOT_CONFIGURED', 'M-Pesa B2C payouts are not enabled. Contact AfeySync platform administration.');
+    if (!b2cReady(cfg)) throw new AppError(503, 'MPESA_B2C_NOT_CONFIGURED', 'M-Pesa B2C payouts are not enabled. An administrator can switch them on under Administration → Integrations → M-Pesa.');
     const msisdn = toMsisdn(phone);
     const token = await mpesaEndpoint(req.tenant!.id);
     const originatorConversationId = `AFS-${cn.creditNoteNumber}-${Date.now()}`;
@@ -88,9 +136,18 @@ export async function sendStkForInvoice(req: Request, inv: InvoiceDoc, input: { 
   if (await m.Payment.exists({ invoiceId: inv._id, 'mpesa.phone': phone, status: 'pending', createdAt: { $gte: new Date(Date.now() - 120_000) } })) {
     throw conflict('An M-Pesa prompt was already sent to this phone for this invoice. Wait for it to complete.', undefined, 'STK_IN_PROGRESS');
   }
-  const cfg = await resolveIntegration('mpesa', req.tenant!.id);
-  const token = await mpesaEndpoint(req.tenant!.id);
-  const r = await stkPush(cfg, { phone, amount: input.amount, accountReference: inv.invoiceNumber, description: input.description ?? 'Hospital bill', callbackUrl: `${base()}/callback/${token}` });
+  const gw = await promptGateway('facility', req.tenant!.id);
+  let r: { checkoutRequestId?: string; merchantRequestId?: string; customerMessage?: string; gatewayReference?: string; externalReference?: string };
+  if (gw.kind === 'payhero') {
+    const token = await mpesaEndpoint(req.tenant!.id, 'payhero');
+    // Unique per prompt; the patient's name is not sent to the gateway.
+    const externalReference = `${inv.invoiceNumber}-${randomToken(4).slice(0, 6)}`.toUpperCase();
+    const ph = await payheroStkPush(gw.cfg, { phone, amount: input.amount, externalReference, callbackUrl: `${payheroBase()}/callback/${token}` });
+    r = { checkoutRequestId: ph.checkoutRequestId, gatewayReference: ph.reference, externalReference, customerMessage: 'Prompt sent. Ask the customer to enter their M-Pesa PIN.' };
+  } else {
+    const token = await mpesaEndpoint(req.tenant!.id);
+    r = await stkPush(gw.cfg, { phone, amount: input.amount, accountReference: inv.invoiceNumber, description: input.description ?? 'Hospital bill', callbackUrl: `${base()}/callback/${token}` });
+  }
   const p = await m.Payment.create({
     invoiceId: inv._id,
     patientId: inv.patientId,
@@ -102,14 +159,20 @@ export async function sendStkForInvoice(req: Request, inv: InvoiceDoc, input: { 
     receivedBy: req.user!.id,
     receivedByName: req.user!.name,
     notes: input.notes,
-    mpesa: { checkoutRequestId: r.checkoutRequestId, merchantRequestId: r.merchantRequestId, phone },
+    mpesa: { gateway: gw.kind, gatewayReference: r.gatewayReference, checkoutRequestId: r.checkoutRequestId, merchantRequestId: r.merchantRequestId, billRefNumber: r.externalReference, phone },
   });
-  await audit(req, { action: 'billing.mpesa_stk', resource: 'payment', resourceId: String(p._id), newValue: { invoice: inv.invoiceNumber, amount: input.amount } });
+  await audit(req, { action: 'billing.mpesa_stk', resource: 'payment', resourceId: String(p._id), newValue: { invoice: inv.invoiceNumber, amount: input.amount, gateway: gw.kind } });
   return { payment: p, message: r.customerMessage, replay: false as const };
 }
 
 /** Asks Safaricom about a pending prompt. Only a definitive failure is applied; success comes from the callback (it carries the receipt number). */
 export async function checkStk(req: Request, p: PaymentDoc) {
+  if (p.status === 'pending' && p.mpesa?.gateway === 'payhero' && p.mpesa.gatewayReference) {
+    // Pay Hero's status read is authenticated and carries the M-Pesa code, so it can confirm success as well.
+    const cfg = await resolveIntegration('payhero', req.tenant!.id);
+    await applyPayheroStatus({ id: req.tenant!.id, name: req.tenant!.name, models: req.tenant!.models }, p, cfg);
+    return { payment: p };
+  }
   if (p.status !== 'pending' || !p.mpesa?.checkoutRequestId) return { payment: p };
   const cfg = await resolveIntegration('mpesa', req.tenant!.id);
   const q = await stkQuery(cfg, p.mpesa.checkoutRequestId);
@@ -181,7 +244,7 @@ mpesaPublicRouter.post(
     const cb = (req.body?.Body?.stkCallback ?? {}) as { CheckoutRequestID?: string; MerchantRequestID?: string; ResultCode?: number; ResultDesc?: string; CallbackMetadata?: { Item?: Item[] } };
     if (!cb.CheckoutRequestID) return res.json(ack);
     const m = tenant.models;
-    const p = await m.Payment.findOne({ 'mpesa.checkoutRequestId': cb.CheckoutRequestID });
+    const p = await m.Payment.findOne({ 'mpesa.checkoutRequestId': cb.CheckoutRequestID, 'mpesa.gateway': { $ne: 'payhero' } });
     if (!p) {
       logger.warn({ tenant: tenant.slug }, 'M-Pesa callback for unknown CheckoutRequestID');
       return res.json(ack);
@@ -193,27 +256,50 @@ mpesaPublicRouter.post(
     if (Number(cb.ResultCode) === 0) {
       const receipt = String(item('MpesaReceiptNumber') ?? '').toUpperCase();
       const amount = Number(item('Amount'));
-      if (!receipt || (await m.Payment.exists({ 'mpesa.receiptNumber': receipt, _id: { $ne: p._id } }))) {
-        p.status = 'failed';
-        p.notes = 'Duplicate or missing M-Pesa receipt in callback';
-        await p.save();
-        return res.json(ack);
-      }
-      p.set('mpesa.receiptNumber', receipt);
-      p.set('mpesa.transactionDate', String(item('TransactionDate') ?? ''));
-      p.reference = receipt;
       if (!Number.isNaN(amount) && amount > 0) p.amount = round2(amount);
-      await completePayment(m, p);
-      await m.AuditLog.create({ actorType: 'integration', action: 'billing.mpesa_confirmed', resource: 'payment', resourceId: String(p._id), newValue: { receipt, amount: p.amount } });
-      const patient = await m.Patient.findById(p.patientId).select('phone consent').lean();
-      if (patient?.phone && patient.consent?.sms !== false) {
-        await enqueueJob('SMS', `receipt:${tenant.id}:${p._id}`, { to: patient.phone, message: `${tenant.name}: Payment of KES ${p.amount} received. Receipt ${p.receiptNumber}, M-Pesa ${receipt}. Thank you.` }, tenant.id);
-      }
+      await settleConfirmed(tenant, p, receipt, 'daraja', String(item('TransactionDate') ?? ''));
     } else {
       p.status = 'failed';
       await p.save();
     }
     res.json(ack);
+  }),
+);
+
+/**
+ * Pay Hero callback. Pay Hero does not sign callbacks, so the secret URL only tells us which facility it is about:
+ * the outcome is always confirmed by reading the transaction from Pay Hero before anything is recorded.
+ */
+mpesaPublicRouter.post(
+  '/payments/payhero/callback/:token',
+  h(async (req: Request, res) => {
+    const token = String(req.params.token);
+    const ep = /^[A-Za-z0-9_-]{20,100}$/.test(token) ? await meta().CallbackEndpoint.findOne({ provider: 'payhero', tokenHash: sha256(token), active: true }).lean() : null;
+    const tenant = ep?.tenantId ? await loadTenant(String(ep.tenantId), { requireActive: false }) : null;
+    if (!tenant) return res.status(404).json({ status: false, message: 'Unknown endpoint' });
+    const r = (req.body as PayheroCallback)?.response ?? {};
+    const m = tenant.models;
+    const p = (r.CheckoutRequestID ? await m.Payment.findOne({ 'mpesa.gateway': 'payhero', 'mpesa.checkoutRequestId': r.CheckoutRequestID }) : null)
+      ?? (r.ExternalReference ? await m.Payment.findOne({ 'mpesa.gateway': 'payhero', 'mpesa.billRefNumber': String(r.ExternalReference).toUpperCase() }) : null);
+    if (!p) {
+      logger.warn({ tenant: tenant.slug }, 'Pay Hero callback for an unknown payment');
+      return res.json({ status: true });
+    }
+    if (p.status !== 'pending') return res.json({ status: true }); // already applied
+    if (r.Amount !== undefined && Math.ceil(Number(r.Amount)) !== Math.ceil(p.amount)) {
+      p.status = 'failed';
+      p.notes = `Pay Hero reported KES ${r.Amount} for a KES ${p.amount} prompt. Check before accepting.`;
+      await p.save();
+      return res.json({ status: true });
+    }
+    try {
+      const cfg = await resolveIntegration('payhero', tenant.id);
+      await applyPayheroStatus({ id: tenant.id, name: tenant.name, models: m }, p, cfg, r.MpesaReceiptNumber ? String(r.MpesaReceiptNumber) : undefined);
+    } catch (err) {
+      // Left pending: the cashier's status check (or the next callback) will settle it.
+      logger.warn({ err, tenant: tenant.slug }, 'Pay Hero status check after callback failed');
+    }
+    res.json({ status: true });
   }),
 );
 

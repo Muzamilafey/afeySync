@@ -43,7 +43,7 @@ function PaymentForm({ inv, onDone }: { inv: Invoice; onDone: () => void }) {
   useEffect(() => {
     if (poll.data && poll.data.status !== 'pending') refresh();
   }, [poll.data?.status]); // eslint-disable-line react-hooks/exhaustive-deps
-  const mpesaEnabled = me?.integrations.mpesa.enabled;
+  const mpesaEnabled = !!(me?.integrations.mpesa?.enabled || me?.integrations.payhero?.enabled);
   return (
     <div className="space-y-3">
       <div className="grid gap-3 sm:grid-cols-3">

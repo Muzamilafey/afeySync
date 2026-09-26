@@ -9,6 +9,30 @@ export const generatedRoutes: Record<string, Record<string, RouteDoc>> = {
       "permission": "admin.audit"
     }
   },
+  "/api/v1/admin/branding": {
+    "get": {
+      "summary": "Get admin branding",
+      "tag": "Admin",
+      "permission": "admin.settings"
+    },
+    "put": {
+      "summary": "Replace admin branding",
+      "tag": "Admin",
+      "permission": "admin.settings"
+    }
+  },
+  "/api/v1/admin/branding/logo": {
+    "put": {
+      "summary": "Replace admin branding logo",
+      "tag": "Admin",
+      "permission": "admin.settings"
+    },
+    "delete": {
+      "summary": "Delete admin branding logo",
+      "tag": "Admin",
+      "permission": "admin.settings"
+    }
+  },
   "/api/v1/admin/integrations": {
     "get": {
       "summary": "Get admin integrations",
@@ -89,6 +113,24 @@ export const generatedRoutes: Record<string, Record<string, RouteDoc>> = {
       "permission": "admin.integrations"
     }
   },
+  "/api/v1/announcements": {
+    "get": {
+      "summary": "Get announcements",
+      "tag": "Announcements"
+    }
+  },
+  "/api/v1/announcements/seen": {
+    "post": {
+      "summary": "Create/perform announcements seen",
+      "tag": "Announcements"
+    }
+  },
+  "/api/v1/announcements/unread-count": {
+    "get": {
+      "summary": "Get announcements unread count",
+      "tag": "Announcements"
+    }
+  },
   "/api/v1/appointments": {
     "get": {
       "summary": "Get appointments",
@@ -108,11 +150,51 @@ export const generatedRoutes: Record<string, Record<string, RouteDoc>> = {
       "permission": "appointments.manage"
     }
   },
+  "/api/v1/appointments/course": {
+    "post": {
+      "summary": "Create/perform appointments course",
+      "tag": "Appointments",
+      "permission": "appointments.manage"
+    }
+  },
+  "/api/v1/appointments/export": {
+    "get": {
+      "summary": "Get appointments export",
+      "tag": "Appointments",
+      "permission": "appointments.view"
+    }
+  },
   "/api/v1/appointments/providers": {
     "get": {
       "summary": "Get appointments providers",
       "tag": "Appointments",
       "permission": "appointments.view"
+    }
+  },
+  "/api/v1/appointments/services": {
+    "get": {
+      "summary": "Get appointments services",
+      "tag": "Appointments",
+      "permission": "appointments.view"
+    }
+  },
+  "/api/v1/appointments/slots": {
+    "get": {
+      "summary": "Get appointments slots",
+      "tag": "Appointments",
+      "permission": "appointments.view"
+    }
+  },
+  "/api/v1/auth/activity": {
+    "get": {
+      "summary": "Get auth activity",
+      "tag": "Auth"
+    }
+  },
+  "/api/v1/auth/branding/logo": {
+    "get": {
+      "summary": "Get auth branding logo",
+      "tag": "Auth"
     }
   },
   "/api/v1/auth/change-password": {
@@ -121,9 +203,39 @@ export const generatedRoutes: Record<string, Record<string, RouteDoc>> = {
       "tag": "Auth"
     }
   },
+  "/api/v1/auth/context": {
+    "get": {
+      "summary": "Get auth context",
+      "tag": "Auth"
+    }
+  },
+  "/api/v1/auth/find-facility": {
+    "post": {
+      "summary": "Create/perform auth find facility",
+      "tag": "Auth"
+    }
+  },
+  "/api/v1/auth/find-facility/select": {
+    "post": {
+      "summary": "Create/perform auth find facility select",
+      "tag": "Auth"
+    }
+  },
   "/api/v1/auth/forgot-password": {
     "post": {
       "summary": "Create/perform auth forgot password",
+      "tag": "Auth"
+    }
+  },
+  "/api/v1/auth/handoff": {
+    "post": {
+      "summary": "Create/perform auth handoff",
+      "tag": "Auth"
+    }
+  },
+  "/api/v1/auth/letterhead": {
+    "get": {
+      "summary": "Get auth letterhead",
       "tag": "Auth"
     }
   },
@@ -145,6 +257,16 @@ export const generatedRoutes: Record<string, Record<string, RouteDoc>> = {
       "tag": "Auth"
     }
   },
+  "/api/v1/auth/profile": {
+    "get": {
+      "summary": "Get auth profile",
+      "tag": "Auth"
+    },
+    "patch": {
+      "summary": "Update auth profile",
+      "tag": "Auth"
+    }
+  },
   "/api/v1/auth/refresh": {
     "post": {
       "summary": "Create/perform auth refresh",
@@ -154,6 +276,24 @@ export const generatedRoutes: Record<string, Record<string, RouteDoc>> = {
   "/api/v1/auth/reset-password": {
     "post": {
       "summary": "Create/perform auth reset password",
+      "tag": "Auth"
+    }
+  },
+  "/api/v1/auth/sessions": {
+    "get": {
+      "summary": "Get auth sessions",
+      "tag": "Auth"
+    }
+  },
+  "/api/v1/auth/sessions/{id}/revoke": {
+    "post": {
+      "summary": "Create/perform auth sessions revoke",
+      "tag": "Auth"
+    }
+  },
+  "/api/v1/auth/sessions/revoke-others": {
+    "post": {
+      "summary": "Create/perform auth sessions revoke others",
       "tag": "Auth"
     }
   },
@@ -258,6 +398,32 @@ export const generatedRoutes: Record<string, Record<string, RouteDoc>> = {
       "permission": "billing.refund"
     }
   },
+  "/api/v1/billing/schemes": {
+    "get": {
+      "summary": "Get billing schemes",
+      "tag": "Billing",
+      "permission": "billing.view | queue.manage | insurance.view | billing.prices"
+    },
+    "post": {
+      "summary": "Create/perform billing schemes",
+      "tag": "Billing",
+      "permission": "billing.prices"
+    }
+  },
+  "/api/v1/billing/schemes/{id}": {
+    "patch": {
+      "summary": "Update billing schemes",
+      "tag": "Billing",
+      "permission": "billing.prices"
+    }
+  },
+  "/api/v1/billing/schemes/{id}/utilisation": {
+    "get": {
+      "summary": "Get billing schemes utilisation",
+      "tag": "Billing",
+      "permission": "billing.view | insurance.view | reports.view"
+    }
+  },
   "/api/v1/billing/services": {
     "get": {
       "summary": "Get billing services",
@@ -277,11 +443,43 @@ export const generatedRoutes: Record<string, Record<string, RouteDoc>> = {
       "permission": "billing.prices"
     }
   },
+  "/api/v1/billing/services/import": {
+    "post": {
+      "summary": "Create/perform billing services import",
+      "tag": "Billing",
+      "permission": "billing.prices"
+    }
+  },
+  "/api/v1/billing/services/import-template": {
+    "get": {
+      "summary": "Get billing services import template",
+      "tag": "Billing",
+      "permission": "billing.prices"
+    }
+  },
   "/api/v1/billing/summary": {
     "get": {
       "summary": "Get billing summary",
       "tag": "Billing",
       "permission": "billing.view"
+    }
+  },
+  "/api/v1/blog/images/{id}": {
+    "get": {
+      "summary": "Get blog images",
+      "tag": "Blog"
+    }
+  },
+  "/api/v1/blog/posts": {
+    "get": {
+      "summary": "Get blog posts",
+      "tag": "Blog"
+    }
+  },
+  "/api/v1/blog/posts/{slug}": {
+    "get": {
+      "summary": "Get blog posts",
+      "tag": "Blog"
     }
   },
   "/api/v1/branches": {
@@ -351,6 +549,12 @@ export const generatedRoutes: Record<string, Record<string, RouteDoc>> = {
       "permission": "consultation.finalize"
     }
   },
+  "/api/v1/contact": {
+    "post": {
+      "summary": "Create/perform contact",
+      "tag": "Contact"
+    }
+  },
   "/api/v1/dashboard": {
     "get": {
       "summary": "Get dashboard",
@@ -409,6 +613,40 @@ export const generatedRoutes: Record<string, Record<string, RouteDoc>> = {
       "summary": "Get dha status",
       "tag": "DHA",
       "permission": "dha.view"
+    }
+  },
+  "/api/v1/diagnoses": {
+    "get": {
+      "summary": "Get diagnoses",
+      "tag": "Diagnoses"
+    },
+    "post": {
+      "summary": "Create/perform diagnoses",
+      "tag": "Diagnoses"
+    }
+  },
+  "/api/v1/diagnoses/{id}": {
+    "patch": {
+      "summary": "Update diagnoses",
+      "tag": "Diagnoses"
+    }
+  },
+  "/api/v1/diagnoses/import": {
+    "post": {
+      "summary": "Create/perform diagnoses import",
+      "tag": "Diagnoses"
+    }
+  },
+  "/api/v1/diagnoses/import-template": {
+    "get": {
+      "summary": "Get diagnoses import template",
+      "tag": "Diagnoses"
+    }
+  },
+  "/api/v1/diagnoses/suggest": {
+    "get": {
+      "summary": "Get diagnoses suggest",
+      "tag": "Diagnoses"
     }
   },
   "/api/v1/documents": {
@@ -672,6 +910,27 @@ export const generatedRoutes: Record<string, Record<string, RouteDoc>> = {
       "summary": "Create/perform inpatient admissions transfer",
       "tag": "Inpatient",
       "permission": "inpatient.transfer"
+    }
+  },
+  "/api/v1/inpatient/admissions/phone-otp": {
+    "post": {
+      "summary": "Create/perform inpatient admissions phone otp",
+      "tag": "Inpatient",
+      "permission": "inpatient.admit"
+    }
+  },
+  "/api/v1/inpatient/admissions/phone-otp/{id}/verify": {
+    "post": {
+      "summary": "Create/perform inpatient admissions phone otp verify",
+      "tag": "Inpatient",
+      "permission": "inpatient.admit"
+    }
+  },
+  "/api/v1/inpatient/admissions/phone-verification": {
+    "get": {
+      "summary": "Get inpatient admissions phone verification",
+      "tag": "Inpatient",
+      "permission": "inpatient.admit"
     }
   },
   "/api/v1/inpatient/beds": {
@@ -1118,8 +1377,7 @@ export const generatedRoutes: Record<string, Record<string, RouteDoc>> = {
   "/api/v1/inventory/items": {
     "get": {
       "summary": "Get inventory items",
-      "tag": "Inventory",
-      "permission": "prescription.create"
+      "tag": "Inventory"
     },
     "post": {
       "summary": "Create/perform inventory items",
@@ -1129,6 +1387,18 @@ export const generatedRoutes: Record<string, Record<string, RouteDoc>> = {
   "/api/v1/inventory/items/{id}": {
     "patch": {
       "summary": "Update inventory items",
+      "tag": "Inventory"
+    }
+  },
+  "/api/v1/inventory/items/import": {
+    "post": {
+      "summary": "Create/perform inventory items import",
+      "tag": "Inventory"
+    }
+  },
+  "/api/v1/inventory/items/import-template": {
+    "get": {
+      "summary": "Get inventory items import template",
       "tag": "Inventory"
     }
   },
@@ -1176,6 +1446,13 @@ export const generatedRoutes: Record<string, Record<string, RouteDoc>> = {
       "permission": "pharmacy.dispense"
     }
   },
+  "/api/v1/inventory/prescriptions/{id}/receive": {
+    "post": {
+      "summary": "Create/perform inventory prescriptions receive",
+      "tag": "Inventory",
+      "permission": "nursing.record"
+    }
+  },
   "/api/v1/inventory/prescriptions/{id}/return": {
     "post": {
       "summary": "Create/perform inventory prescriptions return",
@@ -1183,10 +1460,100 @@ export const generatedRoutes: Record<string, Record<string, RouteDoc>> = {
       "permission": "pharmacy.dispense"
     }
   },
+  "/api/v1/inventory/requisition-items": {
+    "get": {
+      "summary": "Get inventory requisition items",
+      "tag": "Inventory"
+    }
+  },
+  "/api/v1/inventory/requisition-locations": {
+    "get": {
+      "summary": "Get inventory requisition locations",
+      "tag": "Inventory"
+    }
+  },
+  "/api/v1/inventory/requisitions": {
+    "get": {
+      "summary": "Get inventory requisitions",
+      "tag": "Inventory"
+    },
+    "post": {
+      "summary": "Create/perform inventory requisitions",
+      "tag": "Inventory"
+    }
+  },
+  "/api/v1/inventory/requisitions/{id}": {
+    "get": {
+      "summary": "Get inventory requisitions",
+      "tag": "Inventory"
+    }
+  },
+  "/api/v1/inventory/requisitions/{id}/cancel": {
+    "post": {
+      "summary": "Create/perform inventory requisitions cancel",
+      "tag": "Inventory"
+    }
+  },
+  "/api/v1/inventory/requisitions/{id}/decide": {
+    "post": {
+      "summary": "Create/perform inventory requisitions decide",
+      "tag": "Inventory"
+    }
+  },
+  "/api/v1/inventory/requisitions/{id}/issue": {
+    "post": {
+      "summary": "Create/perform inventory requisitions issue",
+      "tag": "Inventory"
+    }
+  },
+  "/api/v1/inventory/requisitions/{id}/receive": {
+    "post": {
+      "summary": "Create/perform inventory requisitions receive",
+      "tag": "Inventory"
+    }
+  },
   "/api/v1/inventory/stock": {
     "get": {
       "summary": "Get inventory stock",
       "tag": "Inventory"
+    }
+  },
+  "/api/v1/inventory/stock-takes": {
+    "get": {
+      "summary": "Get inventory stock takes",
+      "tag": "Inventory",
+      "permission": "inventory.view"
+    },
+    "post": {
+      "summary": "Create/perform inventory stock takes",
+      "tag": "Inventory"
+    }
+  },
+  "/api/v1/inventory/stock-takes/{id}": {
+    "get": {
+      "summary": "Get inventory stock takes",
+      "tag": "Inventory",
+      "permission": "inventory.view"
+    }
+  },
+  "/api/v1/inventory/stock-takes/{id}/approve": {
+    "post": {
+      "summary": "Create/perform inventory stock takes approve",
+      "tag": "Inventory",
+      "permission": "inventory.manage"
+    }
+  },
+  "/api/v1/inventory/stock-takes/{id}/cancel": {
+    "post": {
+      "summary": "Create/perform inventory stock takes cancel",
+      "tag": "Inventory"
+    }
+  },
+  "/api/v1/inventory/stock-takes/{id}/counts": {
+    "put": {
+      "summary": "Replace inventory stock takes counts",
+      "tag": "Inventory",
+      "permission": "inventory.view"
     }
   },
   "/api/v1/inventory/stock/adjust": {
@@ -1202,6 +1569,13 @@ export const generatedRoutes: Record<string, Record<string, RouteDoc>> = {
       "tag": "Inventory"
     }
   },
+  "/api/v1/inventory/stock/movement-report": {
+    "get": {
+      "summary": "Get inventory stock movement report",
+      "tag": "Inventory",
+      "permission": "inventory.view | pharmacy.view"
+    }
+  },
   "/api/v1/inventory/stock/movements": {
     "get": {
       "summary": "Get inventory stock movements",
@@ -1212,6 +1586,13 @@ export const generatedRoutes: Record<string, Record<string, RouteDoc>> = {
     "post": {
       "summary": "Create/perform inventory stock receive",
       "tag": "Inventory"
+    }
+  },
+  "/api/v1/inventory/stock/reorder-suggestions": {
+    "get": {
+      "summary": "Get inventory stock reorder suggestions",
+      "tag": "Inventory",
+      "permission": "inventory.view | procurement.view | procurement.manage | lab.manage"
     }
   },
   "/api/v1/inventory/stock/summary": {
@@ -1265,6 +1646,25 @@ export const generatedRoutes: Record<string, Record<string, RouteDoc>> = {
       "permission": "lab.view"
     }
   },
+  "/api/v1/laboratory/packages": {
+    "get": {
+      "summary": "Get laboratory packages",
+      "tag": "Laboratory",
+      "permission": "lab.view | lab.order | lab.walkin"
+    },
+    "post": {
+      "summary": "Create/perform laboratory packages",
+      "tag": "Laboratory",
+      "permission": "lab.manage"
+    }
+  },
+  "/api/v1/laboratory/packages/{code}": {
+    "patch": {
+      "summary": "Update laboratory packages",
+      "tag": "Laboratory",
+      "permission": "lab.manage"
+    }
+  },
   "/api/v1/laboratory/tests": {
     "get": {
       "summary": "Get laboratory tests",
@@ -1282,6 +1682,65 @@ export const generatedRoutes: Record<string, Record<string, RouteDoc>> = {
       "summary": "Update laboratory tests",
       "tag": "Laboratory",
       "permission": "lab.manage"
+    }
+  },
+  "/api/v1/laboratory/tests/import": {
+    "post": {
+      "summary": "Create/perform laboratory tests import",
+      "tag": "Laboratory",
+      "permission": "lab.manage"
+    }
+  },
+  "/api/v1/laboratory/tests/import-template": {
+    "get": {
+      "summary": "Get laboratory tests import template",
+      "tag": "Laboratory",
+      "permission": "lab.manage"
+    }
+  },
+  "/api/v1/laboratory/walk-in": {
+    "post": {
+      "summary": "Create/perform laboratory walk in",
+      "tag": "Laboratory",
+      "permission": "lab.walkin"
+    }
+  },
+  "/api/v1/maternity/birth-notifications": {
+    "get": {
+      "summary": "Get maternity birth notifications",
+      "tag": "Maternity",
+      "permission": "maternity.view | mch.view"
+    }
+  },
+  "/api/v1/maternity/birth-notifications/{id}": {
+    "get": {
+      "summary": "Get maternity birth notifications",
+      "tag": "Maternity",
+      "permission": "maternity.view | mch.view"
+    },
+    "patch": {
+      "summary": "Update maternity birth notifications",
+      "tag": "Maternity",
+      "permission": "maternity.manage"
+    }
+  },
+  "/api/v1/maternity/birth-notifications/{id}/printed": {
+    "post": {
+      "summary": "Create/perform maternity birth notifications printed",
+      "tag": "Maternity",
+      "permission": "maternity.view | maternity.manage"
+    }
+  },
+  "/api/v1/maternity/deliveries/{id}/birth-notifications": {
+    "get": {
+      "summary": "Get maternity deliveries birth notifications",
+      "tag": "Maternity",
+      "permission": "maternity.view | mch.view"
+    },
+    "post": {
+      "summary": "Create/perform maternity deliveries birth notifications",
+      "tag": "Maternity",
+      "permission": "maternity.manage"
     }
   },
   "/api/v1/maternity/labour/{id}/partograph": {
@@ -1373,6 +1832,51 @@ export const generatedRoutes: Record<string, Record<string, RouteDoc>> = {
       "permission": "mch.view | maternity.view"
     }
   },
+  "/api/v1/medical-reports": {
+    "get": {
+      "summary": "Get medical reports",
+      "tag": "Medical reports",
+      "permission": "medicalreports.view"
+    },
+    "post": {
+      "summary": "Create/perform medical reports",
+      "tag": "Medical reports",
+      "permission": "medicalreports.create"
+    }
+  },
+  "/api/v1/medical-reports/{id}": {
+    "get": {
+      "summary": "Get medical reports",
+      "tag": "Medical reports",
+      "permission": "medicalreports.view"
+    },
+    "put": {
+      "summary": "Replace medical reports",
+      "tag": "Medical reports",
+      "permission": "medicalreports.create"
+    }
+  },
+  "/api/v1/medical-reports/{id}/addendum": {
+    "post": {
+      "summary": "Create/perform medical reports addendum",
+      "tag": "Medical reports",
+      "permission": "medicalreports.create"
+    }
+  },
+  "/api/v1/medical-reports/{id}/finalize": {
+    "post": {
+      "summary": "Create/perform medical reports finalize",
+      "tag": "Medical reports",
+      "permission": "medicalreports.create"
+    }
+  },
+  "/api/v1/medical-reports/{id}/void": {
+    "post": {
+      "summary": "Create/perform medical reports void",
+      "tag": "Medical reports",
+      "permission": "medicalreports.create"
+    }
+  },
   "/api/v1/mortuary/cases": {
     "post": {
       "summary": "Create/perform mortuary cases",
@@ -1435,6 +1939,42 @@ export const generatedRoutes: Record<string, Record<string, RouteDoc>> = {
       "tag": "Google"
     }
   },
+  "/api/v1/onboarding/applications": {
+    "post": {
+      "summary": "Create/perform onboarding applications",
+      "tag": "Onboarding"
+    }
+  },
+  "/api/v1/onboarding/applications/resend": {
+    "post": {
+      "summary": "Create/perform onboarding applications resend",
+      "tag": "Onboarding"
+    }
+  },
+  "/api/v1/onboarding/applications/status": {
+    "post": {
+      "summary": "Create/perform onboarding applications status",
+      "tag": "Onboarding"
+    }
+  },
+  "/api/v1/onboarding/applications/verify": {
+    "post": {
+      "summary": "Create/perform onboarding applications verify",
+      "tag": "Onboarding"
+    }
+  },
+  "/api/v1/onboarding/config": {
+    "get": {
+      "summary": "Get onboarding config",
+      "tag": "Onboarding"
+    }
+  },
+  "/api/v1/onboarding/slug": {
+    "get": {
+      "summary": "Get onboarding slug",
+      "tag": "Onboarding"
+    }
+  },
   "/api/v1/opd/diagnoses/search": {
     "get": {
       "summary": "Get opd diagnoses search",
@@ -1473,6 +2013,30 @@ export const generatedRoutes: Record<string, Record<string, RouteDoc>> = {
       "summary": "Get opd vitals",
       "tag": "OPD",
       "permission": "opd.view | nursing.view | consultation.view"
+    }
+  },
+  "/api/v1/owner/announcements": {
+    "get": {
+      "summary": "Get owner announcements",
+      "tag": "Owner"
+    },
+    "post": {
+      "summary": "Create/perform owner announcements",
+      "tag": "Owner"
+    }
+  },
+  "/api/v1/owner/announcements/{id}": {
+    "get": {
+      "summary": "Get owner announcements",
+      "tag": "Owner"
+    },
+    "put": {
+      "summary": "Replace owner announcements",
+      "tag": "Owner"
+    },
+    "delete": {
+      "summary": "Delete owner announcements",
+      "tag": "Owner"
     }
   },
   "/api/v1/owner/audit": {
@@ -1517,6 +2081,152 @@ export const generatedRoutes: Record<string, Record<string, RouteDoc>> = {
       "summary": "Get owner backups",
       "tag": "Owner",
       "permission": "owner.platform"
+    }
+  },
+  "/api/v1/owner/billing/assets/{kind}": {
+    "post": {
+      "summary": "Create/perform owner billing assets",
+      "tag": "Owner",
+      "permission": "owner.platform"
+    },
+    "delete": {
+      "summary": "Delete owner billing assets",
+      "tag": "Owner",
+      "permission": "owner.platform"
+    }
+  },
+  "/api/v1/owner/billing/assets/file/{id}": {
+    "get": {
+      "summary": "Get owner billing assets file",
+      "tag": "Owner"
+    }
+  },
+  "/api/v1/owner/billing/documents": {
+    "get": {
+      "summary": "Get owner billing documents",
+      "tag": "Owner"
+    },
+    "post": {
+      "summary": "Create/perform owner billing documents",
+      "tag": "Owner"
+    }
+  },
+  "/api/v1/owner/billing/documents/{id}": {
+    "get": {
+      "summary": "Get owner billing documents",
+      "tag": "Owner"
+    },
+    "patch": {
+      "summary": "Update owner billing documents",
+      "tag": "Owner"
+    }
+  },
+  "/api/v1/owner/billing/documents/{id}/convert": {
+    "post": {
+      "summary": "Create/perform owner billing documents convert",
+      "tag": "Owner"
+    }
+  },
+  "/api/v1/owner/billing/documents/{id}/issue": {
+    "post": {
+      "summary": "Create/perform owner billing documents issue",
+      "tag": "Owner"
+    }
+  },
+  "/api/v1/owner/billing/documents/{id}/payments": {
+    "post": {
+      "summary": "Create/perform owner billing documents payments",
+      "tag": "Owner"
+    }
+  },
+  "/api/v1/owner/billing/documents/{id}/pdf": {
+    "get": {
+      "summary": "Get owner billing documents pdf",
+      "tag": "Owner"
+    }
+  },
+  "/api/v1/owner/billing/documents/{id}/send": {
+    "post": {
+      "summary": "Create/perform owner billing documents send",
+      "tag": "Owner"
+    }
+  },
+  "/api/v1/owner/billing/documents/{id}/stk": {
+    "post": {
+      "summary": "Create/perform owner billing documents stk",
+      "tag": "Owner"
+    }
+  },
+  "/api/v1/owner/billing/documents/{id}/void": {
+    "post": {
+      "summary": "Create/perform owner billing documents void",
+      "tag": "Owner"
+    }
+  },
+  "/api/v1/owner/billing/mpesa/register-c2b": {
+    "post": {
+      "summary": "Create/perform owner billing mpesa register c2b",
+      "tag": "Owner",
+      "permission": "owner.integrations"
+    }
+  },
+  "/api/v1/owner/billing/payments": {
+    "get": {
+      "summary": "Get owner billing payments",
+      "tag": "Owner"
+    }
+  },
+  "/api/v1/owner/billing/payments/{id}": {
+    "get": {
+      "summary": "Get owner billing payments",
+      "tag": "Owner"
+    }
+  },
+  "/api/v1/owner/billing/payments/{id}/allocate": {
+    "post": {
+      "summary": "Create/perform owner billing payments allocate",
+      "tag": "Owner"
+    }
+  },
+  "/api/v1/owner/billing/settings": {
+    "get": {
+      "summary": "Get owner billing settings",
+      "tag": "Owner"
+    },
+    "put": {
+      "summary": "Replace owner billing settings",
+      "tag": "Owner",
+      "permission": "owner.platform"
+    }
+  },
+  "/api/v1/owner/blog/images": {
+    "post": {
+      "summary": "Create/perform owner blog images",
+      "tag": "Owner"
+    }
+  },
+  "/api/v1/owner/blog/posts": {
+    "get": {
+      "summary": "Get owner blog posts",
+      "tag": "Owner"
+    },
+    "post": {
+      "summary": "Create/perform owner blog posts",
+      "tag": "Owner"
+    }
+  },
+  "/api/v1/owner/blog/posts/{id}": {
+    "get": {
+      "summary": "Get owner blog posts",
+      "tag": "Owner"
+    },
+    "put": {
+      "summary": "Replace owner blog posts",
+      "tag": "Owner"
+    },
+    "delete": {
+      "summary": "Delete owner blog posts",
+      "tag": "Owner"
     }
   },
   "/api/v1/owner/contracts/{provider}": {
@@ -1579,6 +2289,65 @@ export const generatedRoutes: Record<string, Record<string, RouteDoc>> = {
       "permission": "owner.integrations"
     }
   },
+  "/api/v1/owner/onboarding/applications": {
+    "get": {
+      "summary": "Get owner onboarding applications",
+      "tag": "Owner",
+      "permission": "owner.tenants"
+    }
+  },
+  "/api/v1/owner/onboarding/applications/{id}/approve": {
+    "post": {
+      "summary": "Create/perform owner onboarding applications approve",
+      "tag": "Owner",
+      "permission": "owner.tenants"
+    }
+  },
+  "/api/v1/owner/onboarding/applications/{id}/reject": {
+    "post": {
+      "summary": "Create/perform owner onboarding applications reject",
+      "tag": "Owner",
+      "permission": "owner.tenants"
+    }
+  },
+  "/api/v1/owner/onboarding/settings": {
+    "get": {
+      "summary": "Get owner onboarding settings",
+      "tag": "Owner",
+      "permission": "owner.tenants"
+    },
+    "put": {
+      "summary": "Replace owner onboarding settings",
+      "tag": "Owner",
+      "permission": "owner.platform"
+    }
+  },
+  "/api/v1/owner/plans": {
+    "get": {
+      "summary": "Get owner plans",
+      "tag": "Owner",
+      "permission": "owner.subscriptions"
+    },
+    "post": {
+      "summary": "Create/perform owner plans",
+      "tag": "Owner",
+      "permission": "owner.subscriptions"
+    }
+  },
+  "/api/v1/owner/plans/{key}": {
+    "patch": {
+      "summary": "Update owner plans",
+      "tag": "Owner",
+      "permission": "owner.subscriptions"
+    }
+  },
+  "/api/v1/owner/plans/modules": {
+    "get": {
+      "summary": "Get owner plans modules",
+      "tag": "Owner",
+      "permission": "owner.subscriptions"
+    }
+  },
   "/api/v1/owner/security/mfa-policy": {
     "get": {
       "summary": "Get owner security mfa policy",
@@ -1589,6 +2358,55 @@ export const generatedRoutes: Record<string, Record<string, RouteDoc>> = {
       "summary": "Replace owner security mfa policy",
       "tag": "Owner",
       "permission": "owner.platform"
+    }
+  },
+  "/api/v1/owner/sha-callbacks": {
+    "get": {
+      "summary": "Get owner sha callbacks",
+      "tag": "Owner",
+      "permission": "owner.integrations"
+    }
+  },
+  "/api/v1/owner/sha-callbacks/active": {
+    "post": {
+      "summary": "Create/perform owner sha callbacks active",
+      "tag": "Owner",
+      "permission": "owner.integrations"
+    }
+  },
+  "/api/v1/owner/sha-callbacks/register": {
+    "post": {
+      "summary": "Create/perform owner sha callbacks register",
+      "tag": "Owner",
+      "permission": "owner.integrations"
+    }
+  },
+  "/api/v1/owner/sms/settings": {
+    "get": {
+      "summary": "Get owner sms settings",
+      "tag": "Owner"
+    },
+    "put": {
+      "summary": "Replace owner sms settings",
+      "tag": "Owner"
+    }
+  },
+  "/api/v1/owner/sms/wallets": {
+    "get": {
+      "summary": "Get owner sms wallets",
+      "tag": "Owner"
+    }
+  },
+  "/api/v1/owner/sms/wallets/{tenantId}/adjust": {
+    "post": {
+      "summary": "Create/perform owner sms wallets adjust",
+      "tag": "Owner"
+    }
+  },
+  "/api/v1/owner/sms/wallets/{tenantId}/ledger": {
+    "get": {
+      "summary": "Get owner sms wallets ledger",
+      "tag": "Owner"
     }
   },
   "/api/v1/owner/support-access": {
@@ -1650,6 +2468,30 @@ export const generatedRoutes: Record<string, Record<string, RouteDoc>> = {
   "/api/v1/owner/tenants/{id}/branches": {
     "post": {
       "summary": "Create/perform owner tenants branches",
+      "tag": "Owner",
+      "permission": "owner.tenants"
+    }
+  },
+  "/api/v1/owner/tenants/{id}/branding": {
+    "get": {
+      "summary": "Get owner tenants branding",
+      "tag": "Owner",
+      "permission": "owner.tenants"
+    },
+    "put": {
+      "summary": "Replace owner tenants branding",
+      "tag": "Owner",
+      "permission": "owner.tenants"
+    }
+  },
+  "/api/v1/owner/tenants/{id}/branding/logo": {
+    "put": {
+      "summary": "Replace owner tenants branding logo",
+      "tag": "Owner",
+      "permission": "owner.tenants"
+    },
+    "delete": {
+      "summary": "Delete owner tenants branding logo",
       "tag": "Owner",
       "permission": "owner.tenants"
     }
@@ -1830,11 +2672,45 @@ export const generatedRoutes: Record<string, Record<string, RouteDoc>> = {
       "permission": "billing.create"
     }
   },
+  "/api/v1/payments/payhero/callback/{token}": {
+    "post": {
+      "summary": "Create/perform payments payhero callback",
+      "tag": "Billing",
+      "public": true
+    }
+  },
+  "/api/v1/payments/platform-mpesa/c2b/{token}/confirmation": {
+    "post": {
+      "summary": "Create/perform payments platform mpesa c2b confirmation",
+      "tag": "PlatformBilling",
+      "public": true
+    }
+  },
+  "/api/v1/payments/platform-mpesa/c2b/{token}/validation": {
+    "post": {
+      "summary": "Create/perform payments platform mpesa c2b validation",
+      "tag": "PlatformBilling",
+      "public": true
+    }
+  },
+  "/api/v1/payments/platform-mpesa/callback/{token}": {
+    "post": {
+      "summary": "Create/perform payments platform mpesa callback",
+      "tag": "PlatformBilling",
+      "public": true
+    }
+  },
+  "/api/v1/payments/platform-payhero/callback/{token}": {
+    "post": {
+      "summary": "Create/perform payments platform payhero callback",
+      "tag": "PlatformBilling",
+      "public": true
+    }
+  },
   "/api/v1/pharmacy/items": {
     "get": {
       "summary": "Get pharmacy items",
-      "tag": "Pharmacy",
-      "permission": "prescription.create"
+      "tag": "Pharmacy"
     },
     "post": {
       "summary": "Create/perform pharmacy items",
@@ -1844,6 +2720,18 @@ export const generatedRoutes: Record<string, Record<string, RouteDoc>> = {
   "/api/v1/pharmacy/items/{id}": {
     "patch": {
       "summary": "Update pharmacy items",
+      "tag": "Pharmacy"
+    }
+  },
+  "/api/v1/pharmacy/items/import": {
+    "post": {
+      "summary": "Create/perform pharmacy items import",
+      "tag": "Pharmacy"
+    }
+  },
+  "/api/v1/pharmacy/items/import-template": {
+    "get": {
+      "summary": "Get pharmacy items import template",
       "tag": "Pharmacy"
     }
   },
@@ -1919,11 +2807,56 @@ export const generatedRoutes: Record<string, Record<string, RouteDoc>> = {
       "permission": "prescription.create | pharmacy.dispense"
     }
   },
+  "/api/v1/pharmacy/prescriptions/{id}/receive": {
+    "post": {
+      "summary": "Create/perform pharmacy prescriptions receive",
+      "tag": "Pharmacy",
+      "permission": "nursing.record"
+    }
+  },
   "/api/v1/pharmacy/prescriptions/{id}/return": {
     "post": {
       "summary": "Create/perform pharmacy prescriptions return",
       "tag": "Pharmacy",
       "permission": "pharmacy.dispense"
+    }
+  },
+  "/api/v1/pharmacy/sales": {
+    "post": {
+      "summary": "Create/perform pharmacy sales",
+      "tag": "Pharmacy",
+      "permission": "pharmacy.sell"
+    },
+    "get": {
+      "summary": "Get pharmacy sales",
+      "tag": "Pharmacy",
+      "permission": "pharmacy.sell | pharmacy.view"
+    }
+  },
+  "/api/v1/pharmacy/sales/{id}": {
+    "get": {
+      "summary": "Get pharmacy sales",
+      "tag": "Pharmacy",
+      "permission": "pharmacy.sell | pharmacy.view | billing.view"
+    }
+  },
+  "/api/v1/pharmacy/sales/{id}/mpesa": {
+    "post": {
+      "summary": "Create/perform pharmacy sales mpesa",
+      "tag": "Pharmacy",
+      "permission": "pharmacy.sell"
+    },
+    "get": {
+      "summary": "Get pharmacy sales mpesa",
+      "tag": "Pharmacy",
+      "permission": "pharmacy.sell | billing.view"
+    }
+  },
+  "/api/v1/pharmacy/sales/{id}/return": {
+    "post": {
+      "summary": "Create/perform pharmacy sales return",
+      "tag": "Pharmacy",
+      "permission": "pharmacy.sell"
     }
   },
   "/api/v1/pharmacy/stock": {
@@ -1969,6 +2902,13 @@ export const generatedRoutes: Record<string, Record<string, RouteDoc>> = {
       "tag": "Pharmacy"
     }
   },
+  "/api/v1/pharmacy/z-report": {
+    "get": {
+      "summary": "Get pharmacy z report",
+      "tag": "Pharmacy",
+      "permission": "pharmacy.sell | pharmacy.view | billing.view"
+    }
+  },
   "/api/v1/procurement/purchase-orders": {
     "get": {
       "summary": "Get procurement purchase orders",
@@ -1978,7 +2918,7 @@ export const generatedRoutes: Record<string, Record<string, RouteDoc>> = {
     "post": {
       "summary": "Create/perform procurement purchase orders",
       "tag": "Procurement",
-      "permission": "procurement.manage"
+      "permission": "procurement.manage | inventory.manage | pharmacy.stock | lab.manage"
     }
   },
   "/api/v1/procurement/purchase-orders/{id}": {
@@ -2148,16 +3088,44 @@ export const generatedRoutes: Record<string, Record<string, RouteDoc>> = {
       "permission": "sha.eligibility"
     }
   },
-  "/api/v1/sha/biometrics/matches": {
+  "/api/v1/sha/biometrics/enrollment-status": {
+    "get": {
+      "summary": "Get sha biometrics enrollment status",
+      "tag": "SHA",
+      "permission": "sha.view | sha.authorization"
+    }
+  },
+  "/api/v1/sha/biometrics/enrollments": {
     "post": {
-      "summary": "Create/perform sha biometrics matches",
+      "summary": "Create/perform sha biometrics enrollments",
       "tag": "SHA",
       "permission": "sha.authorization"
     }
   },
-  "/api/v1/sha/biometrics/matches/{matchId}": {
+  "/api/v1/sha/biometrics/jobs": {
     "get": {
-      "summary": "Get sha biometrics matches",
+      "summary": "Get sha biometrics jobs",
+      "tag": "SHA",
+      "permission": "sha.view | sha.authorization"
+    }
+  },
+  "/api/v1/sha/biometrics/jobs/{id}": {
+    "get": {
+      "summary": "Get sha biometrics jobs",
+      "tag": "SHA",
+      "permission": "sha.view | sha.authorization"
+    }
+  },
+  "/api/v1/sha/biometrics/jobs/{id}/reconcile": {
+    "post": {
+      "summary": "Create/perform sha biometrics jobs reconcile",
+      "tag": "SHA",
+      "permission": "sha.authorization"
+    }
+  },
+  "/api/v1/sha/biometrics/verifications": {
+    "post": {
+      "summary": "Create/perform sha biometrics verifications",
       "tag": "SHA",
       "permission": "sha.authorization"
     }
@@ -2230,11 +3198,44 @@ export const generatedRoutes: Record<string, Record<string, RouteDoc>> = {
       "permission": "sha.view"
     }
   },
+  "/api/v1/sha/hie-callbacks": {
+    "get": {
+      "summary": "Get sha hie callbacks",
+      "tag": "SHA",
+      "permission": "admin.integrations"
+    }
+  },
+  "/api/v1/sha/hie-callbacks/active": {
+    "post": {
+      "summary": "Create/perform sha hie callbacks active",
+      "tag": "SHA",
+      "permission": "admin.integrations"
+    }
+  },
+  "/api/v1/sha/hie-callbacks/register": {
+    "post": {
+      "summary": "Create/perform sha hie callbacks register",
+      "tag": "SHA",
+      "permission": "admin.integrations"
+    }
+  },
   "/api/v1/sha/interventions": {
     "get": {
       "summary": "Get sha interventions",
       "tag": "SHA",
       "permission": "sha.eligibility"
+    }
+  },
+  "/api/v1/sha/otp-whitelists": {
+    "get": {
+      "summary": "Get sha otp whitelists",
+      "tag": "SHA",
+      "permission": "sha.view | sha.authorization"
+    },
+    "post": {
+      "summary": "Create/perform sha otp whitelists",
+      "tag": "SHA",
+      "permission": "sha.authorization"
     }
   },
   "/api/v1/sha/pomsf-balances": {
@@ -2382,6 +3383,20 @@ export const generatedRoutes: Record<string, Record<string, RouteDoc>> = {
       "permission": "sha.view"
     }
   },
+  "/api/v1/sha/visits/{id}/authorization/refresh": {
+    "post": {
+      "summary": "Create/perform sha visits authorization refresh",
+      "tag": "SHA",
+      "permission": "sha.authorization"
+    }
+  },
+  "/api/v1/sha/visits/{id}/authorization/reject": {
+    "post": {
+      "summary": "Create/perform sha visits authorization reject",
+      "tag": "SHA",
+      "permission": "sha.authorization"
+    }
+  },
   "/api/v1/sha/visits/{id}/authorize": {
     "post": {
       "summary": "Create/perform sha visits authorize",
@@ -2399,6 +3414,13 @@ export const generatedRoutes: Record<string, Record<string, RouteDoc>> = {
   "/api/v1/sha/visits/{id}/contacts": {
     "get": {
       "summary": "Get sha visits contacts",
+      "tag": "SHA",
+      "permission": "sha.authorization"
+    }
+  },
+  "/api/v1/sha/visits/{id}/discharge-otp": {
+    "post": {
+      "summary": "Create/perform sha visits discharge otp",
       "tag": "SHA",
       "permission": "sha.authorization"
     }
@@ -2422,6 +3444,13 @@ export const generatedRoutes: Record<string, Record<string, RouteDoc>> = {
       "summary": "Create/perform sha visits link claim",
       "tag": "SHA",
       "permission": "sha.claim"
+    }
+  },
+  "/api/v1/sha/visits/{id}/minor-match": {
+    "post": {
+      "summary": "Create/perform sha visits minor match",
+      "tag": "SHA",
+      "permission": "sha.authorization"
     }
   },
   "/api/v1/sha/visits/{id}/otp": {
@@ -2471,6 +3500,112 @@ export const generatedRoutes: Record<string, Record<string, RouteDoc>> = {
       "summary": "Create/perform sha workflow",
       "tag": "SHA",
       "permission": "sha.eligibility"
+    }
+  },
+  "/api/v1/sms-wallet": {
+    "get": {
+      "summary": "Get sms wallet",
+      "tag": "Sms wallet"
+    }
+  },
+  "/api/v1/sms-wallet/ledger": {
+    "get": {
+      "summary": "Get sms wallet ledger",
+      "tag": "Sms wallet"
+    }
+  },
+  "/api/v1/sms-wallet/topup": {
+    "post": {
+      "summary": "Create/perform sms wallet topup",
+      "tag": "Sms wallet"
+    }
+  },
+  "/api/v1/sms-wallet/topup/{id}": {
+    "get": {
+      "summary": "Get sms wallet topup",
+      "tag": "Sms wallet"
+    }
+  },
+  "/api/v1/sms/campaigns": {
+    "post": {
+      "summary": "Create/perform sms campaigns",
+      "tag": "Sms"
+    },
+    "get": {
+      "summary": "Get sms campaigns",
+      "tag": "Sms"
+    }
+  },
+  "/api/v1/sms/campaigns/{id}": {
+    "get": {
+      "summary": "Get sms campaigns",
+      "tag": "Sms"
+    }
+  },
+  "/api/v1/sms/campaigns/{id}/cancel": {
+    "post": {
+      "summary": "Create/perform sms campaigns cancel",
+      "tag": "Sms"
+    }
+  },
+  "/api/v1/sms/campaigns/preview": {
+    "post": {
+      "summary": "Create/perform sms campaigns preview",
+      "tag": "Sms"
+    }
+  },
+  "/api/v1/subscription": {
+    "get": {
+      "summary": "Get subscription",
+      "tag": "Subscription"
+    }
+  },
+  "/api/v1/subscription/documents": {
+    "get": {
+      "summary": "Get subscription documents",
+      "tag": "Subscription"
+    }
+  },
+  "/api/v1/subscription/documents/{id}": {
+    "get": {
+      "summary": "Get subscription documents",
+      "tag": "Subscription"
+    }
+  },
+  "/api/v1/subscription/documents/{id}/accept": {
+    "post": {
+      "summary": "Create/perform subscription documents accept",
+      "tag": "Subscription"
+    }
+  },
+  "/api/v1/subscription/documents/{id}/decline": {
+    "post": {
+      "summary": "Create/perform subscription documents decline",
+      "tag": "Subscription"
+    }
+  },
+  "/api/v1/subscription/documents/{id}/pay": {
+    "post": {
+      "summary": "Create/perform subscription documents pay",
+      "tag": "Subscription"
+    }
+  },
+  "/api/v1/subscription/documents/{id}/pdf": {
+    "get": {
+      "summary": "Get subscription documents pdf",
+      "tag": "Subscription"
+    }
+  },
+  "/api/v1/subscription/payments/{id}": {
+    "get": {
+      "summary": "Get subscription payments",
+      "tag": "Subscription"
+    }
+  },
+  "/api/v1/subscription/quote": {
+    "post": {
+      "summary": "Create/perform subscription quote",
+      "tag": "Subscription"
     }
   },
   "/api/v1/users": {

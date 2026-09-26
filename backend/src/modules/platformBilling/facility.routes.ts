@@ -13,7 +13,7 @@ import { publicPlans } from '../onboarding/onboarding.routes';
 import { computeTotals, CYCLE_LABEL, issueDocument, nextNumber, type BillingDoc, type LineIn } from './documentService';
 import { currentAssets, getBusiness } from './business';
 import { renderDocumentPdf } from './pdf';
-import { refreshStk, requestStk } from './platformMpesa';
+import { collectionsAvailable, refreshStk, requestStk } from './platformMpesa';
 import { convertQuotation } from './owner.routes';
 
 /**
@@ -37,7 +37,7 @@ subscriptionRouter.get('/', view, h(async (req, res) => {
     m.Branch.countDocuments({}),
     m.User.countDocuments({ status: { $ne: 'suspended' } }),
     BillingDocument.aggregate<{ _id: null; balance: number }>([{ $match: { tenantId: new Types.ObjectId(tenantId), type: 'invoice', status: { $in: ['issued', 'partially_paid'] } } }, { $group: { _id: null, balance: { $sum: '$balance' } } }]),
-    IntegrationConfig.findOne({ scope: 'platform', provider: 'mpesa_billing' }).select('enabled').lean(),
+    collectionsAvailable(),
   ]);
   const plan = sub ? await SubscriptionPlan.findOne({ key: sub.plan }).lean() : null;
   res.json({
@@ -47,7 +47,7 @@ subscriptionRouter.get('/', view, h(async (req, res) => {
       usage: { branches, users },
       modules: { core: CORE_MODULES, included: ent.modules, unrestricted: ent.unrestricted, all: MODULE_KEYS.map((k) => ({ key: k, label: MODULES[k].label, description: MODULES[k].description })) },
       outstanding: open[0]?.balance ?? 0,
-      mpesaAvailable: Boolean(collections?.enabled),
+      mpesaAvailable: collections,
       plans: await publicPlans(),
     },
   });

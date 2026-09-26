@@ -9,6 +9,8 @@ import { logger } from '../../utils/logger';
 import { IntegrationSecretService } from '../integrations/secretService';
 import { resolveIntegration, type ResolvedIntegration } from '../integrations/integrationConfigService';
 import { registerC2BUrls, stkPush, stkQuery, toMsisdn } from '../../integrations/mpesa/mpesaService';
+import { promptGateway } from '../../integrations/payments/promptGateway';
+import { payheroStkPush, payheroTransactionStatus, type PayheroCallback } from '../../integrations/payhero/payheroClient';
 import { applyPayment, round2, type BillingDoc } from './documentService';
 import { creditWallet, getSmsSettings, MAX_TOPUP_KES } from '../sms/smsWallet';
 
@@ -17,15 +19,38 @@ import { creditWallet, getSmsSettings, MAX_TOPUP_KES } from '../sms/smsWallet';
  * configured in Owner → Integrations). Payments are confirmed only by Safaricom's callbacks, which are
  * idempotent and deduplicated by M-Pesa receipt number.
  */
-async function endpointToken() {
+async function endpointToken(provider: 'mpesa_billing' | 'payhero_billing' = 'mpesa_billing') {
   const { CallbackEndpoint } = meta();
-  const existing = await CallbackEndpoint.findOne({ provider: 'mpesa_billing', tenantId: null, active: true });
+  const existing = await CallbackEndpoint.findOne({ provider, tenantId: null, active: true });
   if (existing?.tokenEncrypted?.ciphertext) return IntegrationSecretService.decrypt(existing.tokenEncrypted.ciphertext);
   const token = randomToken(32);
-  await CallbackEndpoint.create({ provider: 'mpesa_billing', tokenHash: sha256(token), tokenEncrypted: IntegrationSecretService.encrypt(token), active: true });
+  await CallbackEndpoint.create({ provider, tokenHash: sha256(token), tokenEncrypted: IntegrationSecretService.encrypt(token), active: true });
   return token;
 }
 const publicBase = () => `${env.API_URL.replace(/\/$/, '')}/api/v1/payments/platform-mpesa`;
+const payheroPublicBase = () => `${env.API_URL.replace(/\/$/, '')}/api/v1/payments/platform-payhero`;
+
+/** Is any collections channel (Daraja or Pay Hero) switched on for subscription and SMS payments? */
+export async function collectionsAvailable() {
+  return Boolean(await meta().IntegrationConfig.exists({ scope: 'platform', tenantId: null, provider: { $in: ['mpesa_billing', 'payhero_billing'] }, enabled: true }));
+}
+
+/**
+ * Sends the prompt through the owner's chosen channel (Daraja or Pay Hero). Returns the ids stored on the payment.
+ */
+async function sendPlatformPrompt(input: { phone: string; amount: number; accountReference: string; description: string }) {
+  const gw = await promptGateway('platform', null);
+  if (gw.kind === 'payhero') {
+    const token = await endpointToken('payhero_billing');
+    const externalReference = `${input.accountReference}-${randomToken(4).slice(0, 6)}`.toUpperCase();
+    const r = await payheroStkPush(gw.cfg, { phone: input.phone, amount: input.amount, externalReference, callbackUrl: `${payheroPublicBase()}/callback/${token}` });
+    return { mpesa: { gateway: 'payhero', gatewayReference: r.reference, checkoutRequestId: r.checkoutRequestId, billRef: externalReference, phone: input.phone }, customerMessage: 'Prompt sent. Enter your M-Pesa PIN on the phone.' };
+  }
+  if (gw.cfg.environment === 'production' && !env.API_URL.startsWith('https://')) throw new AppError(503, 'MPESA_CALLBACK_NOT_HTTPS', 'API_URL must be a public HTTPS address before taking live M-Pesa payments.');
+  const token = await endpointToken();
+  const r = await stkPush(gw.cfg, { ...input, callbackUrl: `${publicBase()}/callback/${token}` });
+  return { mpesa: { gateway: 'daraja', checkoutRequestId: r.checkoutRequestId, merchantRequestId: r.merchantRequestId, phone: input.phone }, customerMessage: r.customerMessage };
+}
 
 export async function collectionsConfig(): Promise<ResolvedIntegration> {
   const cfg = await resolveIntegration('mpesa_billing', null);
@@ -46,10 +71,8 @@ export async function requestStk(doc: BillingDoc, phoneIn: string, initiatedBy: 
   const { PlatformPayment } = meta();
   const recent = await PlatformPayment.findOne({ documentId: doc._id, method: 'mpesa_stk', status: 'pending', createdAt: { $gte: new Date(Date.now() - 2 * 60_000) } }).lean();
   if (recent) throw conflict('A payment prompt was sent less than two minutes ago. Complete it on the phone or wait before retrying.', { paymentId: recent._id }, 'STK_PENDING');
-  const cfg = await collectionsConfig();
-  const token = await endpointToken();
-  const r = await stkPush(cfg, { phone, amount, accountReference: doc.number.replace(/-/g, ''), description: 'AfeySync', callbackUrl: `${publicBase()}/callback/${token}` });
-  const p = await PlatformPayment.create({ documentId: doc._id, tenantId: doc.tenantId, method: 'mpesa_stk', amount, status: 'pending', mpesa: { checkoutRequestId: r.checkoutRequestId, merchantRequestId: r.merchantRequestId, phone }, initiatedBy });
+  const r = await sendPlatformPrompt({ phone, amount, accountReference: doc.number.replace(/-/g, ''), description: 'AfeySync' });
+  const p = await PlatformPayment.create({ documentId: doc._id, tenantId: doc.tenantId, method: 'mpesa_stk', amount, status: 'pending', mpesa: r.mpesa, initiatedBy });
   doc.history.push({ at: new Date(), action: 'mpesa_prompt', byName: initiatedBy, note: `KES ${amount} to ${phone.replace(/^(\d{6})\d{3}/, '$1***')}` });
   await doc.save();
   return { paymentId: String(p._id), customerMessage: r.customerMessage };
@@ -69,10 +92,8 @@ export async function requestSmsTopupStk(tenant: { id: string; slug: string }, a
   const { PlatformPayment } = meta();
   const recent = await PlatformPayment.findOne({ purpose: 'sms_topup', tenantId: tenant.id, method: 'mpesa_stk', status: 'pending', createdAt: { $gte: new Date(Date.now() - 2 * 60_000) } }).lean();
   if (recent) throw conflict('A payment prompt was sent less than two minutes ago. Complete it on the phone or wait before retrying.', { paymentId: recent._id }, 'STK_PENDING');
-  const cfg = await collectionsConfig();
-  const token = await endpointToken();
-  const r = await stkPush(cfg, { phone, amount, accountReference: smsAccountRef(tenant.slug), description: 'SMS credits', callbackUrl: `${publicBase()}/callback/${token}` });
-  const p = await PlatformPayment.create({ purpose: 'sms_topup', tenantId: tenant.id, smsCredits: credits, smsPrice: settings.pricePerSms, method: 'mpesa_stk', amount, status: 'pending', mpesa: { checkoutRequestId: r.checkoutRequestId, merchantRequestId: r.merchantRequestId, phone }, initiatedBy });
+  const r = await sendPlatformPrompt({ phone, amount, accountReference: smsAccountRef(tenant.slug), description: 'SMS credits' });
+  const p = await PlatformPayment.create({ purpose: 'sms_topup', tenantId: tenant.id, smsCredits: credits, smsPrice: settings.pricePerSms, method: 'mpesa_stk', amount, status: 'pending', mpesa: r.mpesa, initiatedBy });
   return { paymentId: String(p._id), credits, customerMessage: r.customerMessage };
 }
 
@@ -89,6 +110,14 @@ export async function refreshStk(paymentId: unknown) {
   const { PlatformPayment } = meta();
   const p = await PlatformPayment.findById(paymentId);
   if (!p) return null;
+  if (p.status === 'pending' && p.mpesa?.gateway === 'payhero' && p.mpesa.gatewayReference && Date.now() - p.createdAt.getTime() > 20_000) {
+    try {
+      await applyPlatformPayheroStatus(p, await resolveIntegration('payhero_billing', null));
+    } catch (err) {
+      logger.warn({ err }, 'platform Pay Hero status check failed');
+    }
+    return p;
+  }
   if (p.status === 'pending' && p.method === 'mpesa_stk' && p.mpesa?.checkoutRequestId && Date.now() - p.createdAt.getTime() > 45_000) {
     try {
       const q = await stkQuery(await collectionsConfig(), p.mpesa.checkoutRequestId);
@@ -131,7 +160,7 @@ platformMpesaPublicRouter.post('/payments/platform-mpesa/callback/:token', h(asy
   const cb = (req.body?.Body?.stkCallback ?? {}) as { CheckoutRequestID?: string; ResultCode?: number; ResultDesc?: string; CallbackMetadata?: { Item?: Item[] } };
   if (!cb.CheckoutRequestID) return res.json(ack);
   const { PlatformPayment } = meta();
-  const p = await PlatformPayment.findOne({ 'mpesa.checkoutRequestId': cb.CheckoutRequestID });
+  const p = await PlatformPayment.findOne({ 'mpesa.checkoutRequestId': cb.CheckoutRequestID, 'mpesa.gateway': { $ne: 'payhero' } });
   if (!p || p.status === 'completed') return res.json(ack); // unknown or already applied: acknowledge, never double count
   const item = (n: string) => cb.CallbackMetadata?.Item?.find((i) => i.Name === n)?.Value;
   p.set('mpesa.resultCode', Number(cb.ResultCode));
@@ -143,17 +172,72 @@ platformMpesaPublicRouter.post('/payments/platform-mpesa/callback/:token', h(asy
   }
   const receipt = String(item('MpesaReceiptNumber') ?? '').toUpperCase();
   const amount = Number(item('Amount'));
-  if (!receipt || !(amount > 0) || (await receiptTaken(receipt, p._id))) {
+  if (!(amount > 0)) {
     p.status = 'failed';
-    p.notes = 'Missing or duplicate M-Pesa receipt, or no amount, in callback. Verify on the M-Pesa statement.';
+    p.notes = 'No amount in the callback. Verify on the M-Pesa statement.';
     await p.save();
     return res.json(ack);
   }
-  p.set({ status: 'completed', amount: round2(amount), reference: receipt, receivedAt: new Date(), 'mpesa.receiptNumber': receipt, 'mpesa.transactionDate': String(item('TransactionDate') ?? '') });
+  p.amount = round2(amount);
+  await settlePlatform(p, receipt, String(item('TransactionDate') ?? ''));
+  res.json(ack);
+}));
+
+const findPlatformPayment = (id: unknown) => meta().PlatformPayment.findById(id);
+type PlatformPaymentDoc = NonNullable<Awaited<ReturnType<typeof findPlatformPayment>>>;
+
+/** Records a confirmed subscription or SMS payment once, then pays the invoice or credits the SMS wallet. */
+async function settlePlatform(p: PlatformPaymentDoc, receipt: string, transactionDate?: string) {
+  if (!receipt || (await receiptTaken(receipt, p._id))) {
+    p.status = 'failed';
+    p.notes = 'Missing or duplicate M-Pesa receipt in the confirmation. Verify on the M-Pesa statement.';
+    await p.save();
+    return;
+  }
+  p.set({ status: 'completed', reference: receipt, receivedAt: new Date(), 'mpesa.receiptNumber': receipt, ...(transactionDate ? { 'mpesa.transactionDate': transactionDate } : {}) });
   await p.save();
   if (p.purpose === 'sms_topup') await settleSmsTopup(p);
   else await applyPayment(p.documentId, p.amount, `M-Pesa ${receipt}`);
-  res.json(ack);
+}
+
+/** Pay Hero's authenticated status read decides: SUCCESS settles with its M-Pesa code, FAILED fails, QUEUED waits. */
+async function applyPlatformPayheroStatus(p: PlatformPaymentDoc, cfg: ResolvedIntegration, callbackReceipt?: string) {
+  const st = await payheroTransactionStatus(cfg, p.mpesa!.gatewayReference!);
+  if (st.status === 'FAILED') {
+    p.status = 'failed';
+    p.set('mpesa.resultDesc', 'Not completed on the phone (cancelled, timed out or wrong PIN)');
+    await p.save();
+  } else if (st.status === 'SUCCESS') {
+    if (callbackReceipt && st.providerReference && callbackReceipt.toUpperCase() !== st.providerReference) {
+      p.status = 'failed';
+      p.notes = `M-Pesa code in the callback (${callbackReceipt}) does not match Pay Hero's record (${st.providerReference}).`;
+      await p.save();
+    } else await settlePlatform(p, (st.providerReference || callbackReceipt || '').toUpperCase());
+  }
+}
+
+/** Pay Hero callback for subscription and SMS payments: always re-checked with Pay Hero before recording. */
+platformMpesaPublicRouter.post('/payments/platform-payhero/callback/:token', rateLimit({ windowMs: 60_000, limit: 600, standardHeaders: true, legacyHeaders: false }), h(async (req: Request, res) => {
+  const token = String(req.params.token);
+  const known = /^[A-Za-z0-9_-]{20,100}$/.test(token) && (await meta().CallbackEndpoint.exists({ provider: 'payhero_billing', tokenHash: sha256(token), active: true }));
+  if (!known) return res.status(404).json({ status: false, message: 'Unknown endpoint' });
+  const r = (req.body as PayheroCallback)?.response ?? {};
+  const { PlatformPayment } = meta();
+  const p = (r.CheckoutRequestID ? await PlatformPayment.findOne({ 'mpesa.gateway': 'payhero', 'mpesa.checkoutRequestId': r.CheckoutRequestID }) : null)
+    ?? (r.ExternalReference ? await PlatformPayment.findOne({ 'mpesa.gateway': 'payhero', 'mpesa.billRef': String(r.ExternalReference).toUpperCase() }) : null);
+  if (!p || p.status !== 'pending') return res.json({ status: true });
+  if (r.Amount !== undefined && Math.ceil(Number(r.Amount)) !== Math.ceil(p.amount)) {
+    p.status = 'failed';
+    p.notes = `Pay Hero reported KES ${r.Amount} for a KES ${p.amount} prompt. Check before accepting.`;
+    await p.save();
+    return res.json({ status: true });
+  }
+  try {
+    await applyPlatformPayheroStatus(p, await resolveIntegration('payhero_billing', null), r.MpesaReceiptNumber ? String(r.MpesaReceiptNumber) : undefined);
+  } catch (err) {
+    logger.warn({ err }, 'platform Pay Hero status check after callback failed');
+  }
+  res.json({ status: true });
 }));
 
 /** C2B validation: accept only references that match an open invoice, so wrong account numbers bounce back to the payer. */

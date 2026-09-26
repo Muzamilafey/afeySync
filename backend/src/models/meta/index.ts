@@ -214,7 +214,7 @@ const tenantSubscriptionSchema = new Schema(
 );
 
 /* ---------------------------------------------------------------- Integrations */
-export const PROVIDERS = ['sha', 'dha', 'mpesa', 'africastalking', 'talksasa', 'smtp', 'storage', 'google', 'slade360', 'mpesa_billing'] as const;
+export const PROVIDERS = ['sha', 'dha', 'mpesa', 'africastalking', 'talksasa', 'smtp', 'storage', 'google', 'slade360', 'mpesa_billing', 'payhero', 'payhero_billing'] as const;
 export type Provider = (typeof PROVIDERS)[number];
 
 const integrationConfigSchema = new Schema(
@@ -569,7 +569,7 @@ const platformPaymentSchema = new Schema(
     currency: { type: String, default: 'KES' },
     status: { type: String, enum: ['pending', 'completed', 'failed'], default: 'pending', index: true },
     reference: String,
-    mpesa: { checkoutRequestId: { type: String, index: true }, merchantRequestId: String, phone: String, receiptNumber: String, resultCode: Number, resultDesc: String, transactionDate: String, billRef: String, payerName: String },
+    mpesa: { gateway: String, gatewayReference: { type: String, index: true, sparse: true }, checkoutRequestId: { type: String, index: true }, merchantRequestId: String, phone: String, receiptNumber: String, resultCode: Number, resultDesc: String, transactionDate: String, billRef: String, payerName: String },
     notes: String,
     receivedAt: Date,
     recordedBy: Schema.Types.ObjectId,

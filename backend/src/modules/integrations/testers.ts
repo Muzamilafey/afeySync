@@ -6,6 +6,7 @@ import { createTransport, sendMail } from '../../integrations/smtp/smtpService';
 import { checkAccount } from '../../integrations/africastalking/smsService';
 import { checkAccount as checkTalksasa, sendSms as sendTalksasa } from '../../integrations/talksasa/smsService';
 import { darajaToken, describeStkTarget } from '../../integrations/mpesa/mpesaService';
+import { channelId, payheroChannels } from '../../integrations/payhero/payheroClient';
 import { IntegrationSecretService, type EncryptedValue } from './secretService';
 import { recordHealth, type ResolvedIntegration } from './integrationConfigService';
 import { PROVIDER_DEFINITIONS } from './providers';
@@ -91,8 +92,19 @@ export async function testIntegration(cfg: ResolvedIntegration, kind: TestKind =
         await darajaToken(cfg);
         detail.token = 'VALID';
         detail.paysInto = describeStkTarget(cfg);
-        if (!cfg.secrets.passkey) throw new AppError(400, 'MPESA_NOT_CONFIGURED', 'Credentials work, but the passkey is missing, so prompts cannot be sent');
+        if (!cfg.secrets.passkey) throw new AppError(422, 'MPESA_NOT_CONFIGURED', 'Credentials work, but the passkey is missing, so prompts cannot be sent');
         break;
+      case 'payhero':
+      case 'payhero_billing': {
+        const channels = await payheroChannels(cfg);
+        detail.token = 'VALID';
+        const id = channelId(cfg);
+        const ch = channels.find((c) => Number(c.id) === id);
+        if (!ch) throw new AppError(422, 'PAYHERO_CHANNEL_NOT_FOUND', `The token works, but payment channel ${id} is not on this Pay Hero account. Your channels: ${channels.map((c) => `${c.id} (${c.description ?? c.short_code})`).join(', ') || 'none'}`);
+        if (ch.is_active === false) throw new AppError(422, 'PAYHERO_CHANNEL_INACTIVE', `Payment channel ${id} is inactive in Pay Hero`);
+        detail.paysInto = `${ch.channel_type ?? 'channel'} ${ch.short_code ?? ''}${ch.account_number ? ` account ${ch.account_number}` : ''}${ch.description ? ` (${ch.description})` : ''}`.trim();
+        break;
+      }
       case 'mpesa_billing':
         await darajaToken(cfg);
         detail.token = 'VALID';

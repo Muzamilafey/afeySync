@@ -3,6 +3,7 @@ import { env } from '../../config/env';
 import { clearFacilityIdentityCache } from '../../integrations/hie/hieClient';
 import { platformMfaPolicy } from '../auth/ownerAuth.routes';
 import { policySchema } from '../auth/mfa/mfaService';
+import { PROVIDER_DEFINITIONS } from '../integrations/providers';
 import { Router } from 'express';
 import os from 'node:os';
 import fs from 'node:fs/promises';
@@ -450,7 +451,8 @@ router.get(
   requirePermission('owner.integrations'),
   h(async (_req, res) => {
     const docs = await meta().IntegrationConfig.find({ scope: 'platform', tenantId: null });
-    res.json({ success: true, data: PROVIDERS.map((p) => toPublicConfig(docs.find((d) => d.provider === p) ?? null, p)) });
+    // Facility-owned integrations (M-Pesa Daraja, Pay Hero) are set up by each facility, so the owner does not see them.
+    res.json({ success: true, data: PROVIDERS.filter((p) => !PROVIDER_DEFINITIONS[p].facilitySelfService).map((p) => toPublicConfig(docs.find((d) => d.provider === p) ?? null, p)) });
   }),
 );
 

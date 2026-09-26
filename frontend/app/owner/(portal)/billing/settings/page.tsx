@@ -59,7 +59,9 @@ function AssetCard({ kind, asset }: { kind: keyof typeof ASSET_COPY; asset: Asse
 export default function BillingSettingsPage() {
   const qc = useQueryClient();
   const q = useQuery({ queryKey: ['owner-billing-settings'], queryFn: async () => (await ownerApi<Settings>('/billing/settings')).data });
-  const mpesa = useQuery({ queryKey: ['owner-integration', 'mpesa_billing'], queryFn: async () => (await ownerApi<Integration[]>('/integrations')).data.find((i) => i.provider === 'mpesa_billing') ?? null });
+  const integrations = useQuery({ queryKey: ['owner-integrations'], queryFn: async () => (await ownerApi<Integration[]>('/integrations')).data });
+  const mpesa = { data: integrations.data?.find((i) => i.provider === 'mpesa_billing') ?? null };
+  const payhero = integrations.data?.find((i) => i.provider === 'payhero_billing') ?? null;
   const [b, setB] = useState<Business | null>(null);
   useEffect(() => { if (q.data) setB(q.data.business); }, [q.data]);
   const save = useMutation({
@@ -130,6 +132,12 @@ export default function BillingSettingsPage() {
               </div>
               {c2b.isSuccess && <p className="mt-2 text-xs text-emerald-600">Paybill confirmation URLs registered with Safaricom.</p>}
               <ErrorText error={c2b.error} />
+            </div>
+            <div className="rounded-xl border border-[var(--border)] p-4">
+              <div className="flex items-center justify-between"><p className="font-medium">Pay Hero</p>{payhero?.enabled ? <Badge tone="green">active</Badge> : <Badge tone="amber">not configured</Badge>}</div>
+              <p className="muted mt-1 text-sm">A second way to collect subscription and SMS credit payments: prompts go through your Pay Hero account into its payment channel (paybill, till or bank). Each payment is confirmed with Pay Hero before it is recorded.</p>
+              {payhero?.enabled && <p className="mt-2 text-sm">Channel <strong>{payhero.settings?.channelId}</strong> · {payhero.settings?.role === 'backup' ? 'used only when M-Pesa (Daraja) is off' : 'sends every prompt'}</p>}
+              <div className="mt-3"><Link href="/owner/integrations/payhero_billing"><Button size="sm" variant="secondary">Configure Pay Hero</Button></Link></div>
             </div>
             <div className="rounded-xl border border-[var(--border)] p-4">
               <p className="font-medium">Bank transfer</p>

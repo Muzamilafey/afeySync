@@ -21,9 +21,9 @@ export function SettingFields({ fields, values, onChange }: { fields: SettingFie
       {fields
         .filter((f) => !f.hidden && (!f.showWhen || values[f.showWhen.key] === f.showWhen.value))
         .map((f, i) => (
-          <Field key={`${f.key}-${i}`} label={`${f.label}${f.required ? ' *' : ''}`} hint={f.help ?? (f.default ? `Default: ${f.default}` : undefined)} className={f.options ? 'sm:col-span-2' : undefined}>
+          <Field key={`${f.key}-${i}`} label={`${f.label}${f.required ? ' *' : ''}`} hint={f.help ?? (f.default && !f.options ? `Default: ${f.default}` : undefined)} className={f.options ? 'sm:col-span-2' : undefined}>
             {f.options ? (
-              <Select value={values[f.key] ?? ''} onChange={(e) => set(f.key, e.target.value)}>
+              <Select value={values[f.key] || f.default || ''} onChange={(e) => set(f.key, e.target.value)}>
                 <option value="">Choose…</option>
                 {f.options.map((o) => <option key={o.value} value={o.value}>{o.label}</option>)}
               </Select>
