@@ -36,7 +36,7 @@ const patientSchema = z.object({
   middleName: z.string().trim().max(60).optional(),
   lastName: z.string().trim().min(1).max(60),
   gender: z.enum(['male', 'female', 'other', 'unknown']),
-  dateOfBirth: z.coerce.date().max(new Date(), 'Date of birth cannot be in the future').optional(),
+  dateOfBirth: z.coerce.date().refine((d) => d.getTime() <= Date.now(), 'Date of birth cannot be in the future').optional(),
   dobEstimated: z.boolean().optional(),
   maritalStatus: z.string().max(30).optional(),
   occupation: z.string().max(80).optional(),
@@ -211,14 +211,32 @@ router.patch(
   requirePermission('patients.edit'),
   h(async (req, res) => {
     const p = await loadAccessiblePatient(req, req.params.id as string);
-    const body = parsePatch(patientSchema.partial(), req.body);
-    if (p.dha?.source === 'client_registry' && (body.clientRegistryId !== undefined && body.clientRegistryId !== p.clientRegistryId)) {
-      throw forbidden('The Client Registry ID of an imported patient cannot be changed manually');
+    const body = parsePatch(patientSchema.partial(), req.body) as Record<string, unknown>;
+    // A blanked optional field clears it (stored as absent, not as an empty string that could collide).
+    for (const k of ['middleName', 'maritalStatus', 'occupation', 'nationality', 'phone', 'altPhone', 'email', 'nationalId', 'clientRegistryId', 'shaNumber'] as const) {
+      if (body[k] === '') body[k] = undefined;
     }
-    const dupes = await findDuplicates(req, { ...body, excludeId: String(p._id) });
+    if (p.dha?.source === 'client_registry') {
+      if (body.clientRegistryId !== undefined && body.clientRegistryId !== p.clientRegistryId) throw forbidden('The Client Registry ID of an imported patient cannot be changed manually');
+      // Names and date of birth come from the DHA Client Registry; they are corrected there, not overwritten here.
+      const sameDate = (a: unknown, b: unknown) => (a ? new Date(a as Date).toISOString().slice(0, 10) : '') === (b ? new Date(b as Date).toISOString().slice(0, 10) : '');
+      const locked = (['firstName', 'middleName', 'lastName'] as const).filter((k) => k in body && (body[k] ?? '') !== (p[k] ?? ''));
+      if ('dateOfBirth' in body && !sameDate(body.dateOfBirth, p.dateOfBirth)) locked.push('dateOfBirth' as never);
+      if (locked.length) throw forbidden('Names and date of birth of a patient imported from the DHA Client Registry cannot be changed here', 'REGISTRY_FIELDS_LOCKED');
+    }
+    const dupes = await findDuplicates(req, { ...(body as { nationalId?: string; clientRegistryId?: string; shaNumber?: string }), identifiers: body.identifiers as never, excludeId: String(p._id) });
     if (dupes.length) throw conflict('Another patient already has one of these identifiers', dupes, 'PATIENT_EXISTS');
     const before = p.toObject();
-    p.set({ ...body, phone: body.phone !== undefined ? normalizePhone(body.phone) : p.phone, updatedBy: req.user!.id });
+    // Keep the matching entry in the identifier list in step with an edited National ID / SHA number.
+    if (!('identifiers' in body)) {
+      for (const [field, type] of [['nationalId', 'National ID'], ['shaNumber', 'SHA Number']] as const) {
+        if (!(field in body)) continue;
+        const list = (p.identifiers ?? []).filter((i) => i.type !== type);
+        if (body[field]) list.push({ type, value: String(body[field]), source: 'local' } as never);
+        p.set('identifiers', list);
+      }
+    }
+    p.set({ ...body, phone: 'phone' in body ? normalizePhone(body.phone as string | undefined) : p.phone, altPhone: 'altPhone' in body ? normalizePhone(body.altPhone as string | undefined) : p.altPhone, updatedBy: req.user!.id });
     await p.save();
     await audit(req, { action: 'patient.update', resource: 'patient', resourceId: String(p._id), oldValue: before, newValue: p.toObject() });
     res.json({ success: true, data: p });

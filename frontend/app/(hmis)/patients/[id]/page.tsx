@@ -15,6 +15,7 @@ import { ChildEnrollmentPanel } from '@/features/sha/biometrics/ChildEnrollmentP
 import { OtpWhitelistPanel } from '@/features/sha/biometrics/OtpWhitelistPanel';
 import { BenefitsPanel } from '@/features/sha/BenefitsPanel';
 import { CheckInForm } from '@/features/frontdesk/CheckInForm';
+import { EditPatientForm } from '@/features/patients/EditPatientForm';
 import { Modal, Table, Td, statusTone as tone } from '@/components/ui';
 import Link from 'next/link';
 import type { Visit } from '@/features/frontdesk/types';
@@ -23,30 +24,6 @@ import type { Patient } from '@/types/api';
 
 type Full = Patient & { lastEligibility?: { status: string; createdAt: string; summary?: { scheme?: string } } };
 type TabKey = 'overview' | 'visits' | 'sha' | 'insurance' | 'reports' | 'documents' | 'edit';
-
-function EditPatient({ p }: { p: Full }) {
-  const qc = useQueryClient();
-  const [form, setForm] = useState({ phone: p.phone ?? '', email: p.email ?? '', county: p.address?.county ?? '', subCounty: p.address?.subCounty ?? '', ward: p.address?.ward ?? '' });
-  const m = useMutation({
-    mutationFn: () => api(`/patients/${p._id}`, { method: 'PATCH', body: { phone: form.phone || undefined, email: form.email || undefined, address: { county: form.county, subCounty: form.subCounty, ward: form.ward } } }),
-    onSuccess: () => qc.invalidateQueries({ queryKey: ['patient', p._id] }),
-  });
-  return (
-    <Card title="Update contact & address">
-      <form className="grid gap-3 sm:grid-cols-2" onSubmit={(e) => { e.preventDefault(); m.mutate(); }}>
-        {(['phone', 'email', 'county', 'subCounty', 'ward'] as const).map((k) => (
-          <Field key={k} label={k}><Input value={form[k]} onChange={(e) => setForm({ ...form, [k]: e.target.value })} /></Field>
-        ))}
-        <div className="col-span-full space-y-2">
-          {p.dha?.source === 'client_registry' && <p className="muted text-xs">Names, date of birth and CR ID were imported from the DHA Client Registry and are not edited locally.</p>}
-          <ErrorText error={m.error} />
-          {m.isSuccess && <Alert tone="green">Saved.</Alert>}
-          <Button type="submit" loading={m.isPending}>Save changes</Button>
-        </div>
-      </form>
-    </Card>
-  );
-}
 
 function Profile({ id }: { id: string }) {
   const params = useSearchParams();
@@ -165,7 +142,7 @@ function Profile({ id }: { id: string }) {
       )}
       {tab === 'reports' && <MedicalReportsPanel patientId={id} />}
       {tab === 'documents' && <DocumentsPanel patientId={id} category="identification" />}
-      {tab === 'edit' && <EditPatient p={p} />}
+      {tab === 'edit' && <EditPatientForm p={p} />}
       {tab === 'visits' && (
         <Card title="Visits">
           <Table head={['Visit', 'Type', 'Payer', 'Status', 'Date']} empty={(visits.data ?? []).length === 0}>

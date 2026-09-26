@@ -34,11 +34,20 @@ export async function findDuplicates(req: Request, input: { identifiers?: Identi
   if (input.nationalId) or.push({ nationalId: input.nationalId.trim() });
   if (input.clientRegistryId) or.push({ clientRegistryId: input.clientRegistryId.trim() });
   if (input.shaNumber) or.push({ shaNumber: input.shaNumber.trim() });
-  for (const id of input.identifiers ?? []) if (id.value?.trim()) or.push({ identifiers: { $elemMatch: { type: id.type, value: id.value.trim() } } });
+  // Candidates are found by identifier number; the type is confirmed below. ($elemMatch on sub-documents is not
+  // supported by every MongoDB-compatible server, and this keeps the query on the identifiers.value index.)
+  const ids = (input.identifiers ?? []).filter((id) => id.value?.trim()).map((id) => ({ type: id.type, value: id.value.trim() }));
+  if (ids.length) or.push({ 'identifiers.value': { $in: ids.map((i) => i.value) } });
   if (!or.length) return [];
   const filter: Record<string, unknown> = { $or: or, status: { $ne: 'merged' } };
   if (input.excludeId) filter._id = { $ne: new Types.ObjectId(input.excludeId) };
-  const matches = await Patient.find(filter).select('patientNumber firstName lastName clientRegistryId branchIds registeredBranchId').limit(5).lean();
+  const candidates = await Patient.find(filter).select('patientNumber firstName lastName clientRegistryId nationalId shaNumber identifiers branchIds registeredBranchId').limit(25).lean();
+  const matches = candidates.filter((p) =>
+    (input.nationalId && p.nationalId === input.nationalId.trim())
+    || (input.clientRegistryId && p.clientRegistryId === input.clientRegistryId.trim())
+    || (input.shaNumber && p.shaNumber === input.shaNumber.trim())
+    || ids.some((i) => (p.identifiers ?? []).some((x) => x.type === i.type && x.value === i.value)),
+  ).slice(0, 5);
   return matches.map((p) => {
     const accessible = canAccessAnyBranch(req, p.branchIds ?? []);
     return {
