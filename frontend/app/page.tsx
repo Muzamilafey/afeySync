@@ -33,5 +33,5 @@ export default async function Root() {
   if (ownerHosts.includes(host)) redirect('/owner');
   // The central sign-in address has no dashboard of its own.
   if (host === `accounts.${platformDomain()}` || host === 'accounts.localhost') redirect('/login');
-  redirect('/dashboard');
+  redirect('/home');
 }

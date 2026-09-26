@@ -10,7 +10,7 @@ import { MfaSettings } from './MfaSettings';
 export function SetupPage({ realm }: { realm: Realm }) {
   const router = useRouter();
   const clear = useSessionStore((s) => s.clear);
-  const home = realm === 'owner' ? '/owner' : '/dashboard';
+  const home = realm === 'owner' ? '/owner' : '/home';
   const signOut = async () => {
     await api(realm === 'owner' ? '/owner/auth/logout' : '/auth/logout', { method: 'POST', realm }).catch(() => null);
     clear(realm);

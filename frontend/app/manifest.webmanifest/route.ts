@@ -1,7 +1,7 @@
 import { headers } from 'next/headers';
 
 /**
- * Web app manifest, per host: facility sites install as "AfeySync" (opening the dashboard) and the
+ * Web app manifest, per host: facility sites install as "AfeySync" (opening the Home page) and the
  * owner portal as "AfeySync Owner". Each host is its own installable app with its own scope.
  */
 export const dynamic = 'force-dynamic';
@@ -39,7 +39,7 @@ export async function GET() {
     name: owner ? 'AfeySync Owner Portal' : brand ? brand.name : 'AfeySync HMIS',
     short_name: owner ? 'AfeySync Owner' : brand ? brand.name.slice(0, 24) : 'AfeySync',
     description: owner ? 'Manage AfeySync facilities, plans and billing' : brand?.tagline ? `${brand.tagline} · powered by AfeySync` : 'Hospital management for your facility: patients, OPD, lab, pharmacy, billing, SHA and more',
-    start_url: owner ? '/owner?source=pwa' : '/dashboard?source=pwa',
+    start_url: owner ? '/owner?source=pwa' : '/home?source=pwa',
     scope: '/',
     display: 'standalone',
     display_override: ['window-controls-overlay', 'standalone'],

@@ -22,7 +22,7 @@ export function ChangePasswordCard({ first, lastChanged }: { first?: boolean; la
       await qc.invalidateQueries({ queryKey: ['me'] });
       qc.invalidateQueries({ queryKey: ['my-profile'] });
       qc.invalidateQueries({ queryKey: ['my-activity'] });
-      if (first) setTimeout(() => router.push('/dashboard'), 800);
+      if (first) setTimeout(() => router.push('/home'), 800);
     },
   });
   const strong = next.length >= 10 && /[a-z]/.test(next) && /[A-Z]/.test(next) && /\d/.test(next);

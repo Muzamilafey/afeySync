@@ -29,7 +29,7 @@ function Inner({ realm }: { realm: Realm }) {
   const [challenge, setChallenge] = useState<MfaChallengeData | null>(null);
   const [next, setNext] = useState<string | undefined>();
   const ran = useRef(false);
-  const home = realm === 'owner' ? '/owner' : '/dashboard';
+  const home = realm === 'owner' ? '/owner' : '/home';
   const account = realm === 'owner' ? '/owner/security' : '/account/security';
   const loginPath = realm === 'owner' ? '/owner/login' : '/login';
 

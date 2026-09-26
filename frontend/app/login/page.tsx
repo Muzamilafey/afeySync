@@ -107,7 +107,7 @@ function LoginForm({ ctx }: { ctx: HostContext | null }) {
   const finish = (r: LoginResult) => {
     setToken('tenant', r.accessToken!);
     qc.clear();
-    router.replace(r.mfaEnrollmentRequired ? '/setup-2fa' : r.mustChangePassword ? '/account?first=1' : safeNext ?? '/dashboard');
+    router.replace(r.mfaEnrollmentRequired ? '/setup-2fa' : r.mustChangePassword ? '/account?first=1' : safeNext ?? '/home');
   };
 
   const withNext = (u: string) => (safeNext ? u.replace('/login#', `/login?next=${encodeURIComponent(safeNext)}#`) : u);

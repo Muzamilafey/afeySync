@@ -145,11 +145,11 @@ export function EmptyState({ title, children, icon }: { title: string; children?
   );
 }
 
-export function PageHeader({ title, subtitle, actions, crumbs }: { title: string; subtitle?: ReactNode; actions?: ReactNode; crumbs?: string[] }) {
+/** Page title and actions. `crumbs` is kept for callers; the app shell shows the breadcrumb trail. */
+export function PageHeader({ title, subtitle, actions }: { title: string; subtitle?: ReactNode; actions?: ReactNode; crumbs?: string[] }) {
   return (
     <div className="mb-5 flex flex-wrap items-end justify-between gap-3">
       <div>
-        {crumbs && <p className="muted mb-1 text-xs">{crumbs.join(' › ')}</p>}
         <h1 className="text-xl font-semibold tracking-tight">{title}</h1>
         {subtitle && <p className="muted mt-0.5 text-sm">{subtitle}</p>}
       </div>

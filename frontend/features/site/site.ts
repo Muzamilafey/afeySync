@@ -1,13 +1,6 @@
 import { headers } from 'next/headers';
 
-/** Public contact details shown across the website. */
-export const CONTACT = {
-  phoneDisplay: '0722 651 888',
-  phoneTel: '+254722651888',
-  whatsapp: 'https://wa.me/254722651888',
-  email: 'info@afey.co.ke',
-  location: 'Kenya',
-} as const;
+export { CONTACT } from './contact';
 
 /** Other names people search for; used in structured data so search engines connect them to AfeySync. */
 export const BRAND_NAMES = ['Afey', 'Afey HMIS', 'AfeySync HMIS', 'Afey Sync', 'Afeysync', 'afey.co.ke', 'Afey Hospital Management System'];
