@@ -1,5 +1,7 @@
 'use client';
 
+import { itemLabel } from '@/features/pharmacy/types';
+
 import Link from 'next/link';
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
@@ -69,10 +71,10 @@ function Sell({ canPay }: { canPay: boolean }) {
   const ready = cart.length > 0 && !!loc && (who === 'walkin' ? customer.name.trim().length > 1 : !!patient) && (pay.method === 'cash' || pay.method === 'later' || pay.reference.trim().length > 3) && (change === null || change >= 0);
 
   return (
-    <div className="grid gap-4 lg:grid-cols-[1.2fr_1fr]">
+    <div className="grid gap-4 lg:grid-cols-[minmax(0,1.2fr)_minmax(0,1fr)]">
       <div className="space-y-4">
         <Card>
-          <div className="grid gap-3 sm:grid-cols-[1fr_200px]">
+          <div className="grid gap-3 sm:grid-cols-[minmax(0,1fr)_200px]">
             <label className="relative block">
               <ScanLine className="muted pointer-events-none absolute top-2.5 left-3 h-4 w-4" />
               <input
@@ -94,13 +96,13 @@ function Sell({ canPay }: { canPay: boolean }) {
                   const usable = i.stock?.usable ?? 0;
                   return (
                     <li key={i._id}>
-                      <button type="button" disabled={usable < 1 || price == null} onClick={() => add(i)} className="flex w-full items-center gap-3 px-1 py-2 text-left hover:bg-[var(--surface-2)] disabled:cursor-not-allowed disabled:opacity-50">
+                      <button type="button" disabled={usable < 1 || price == null} onClick={() => add(i)} className="flex w-full items-start gap-3 px-1 py-2 text-left hover:bg-[var(--surface-2)] disabled:cursor-not-allowed disabled:opacity-50">
                         <div className="min-w-0 flex-1">
-                          <p className="truncate text-sm font-medium">{i.name}{i.strength ? ` ${i.strength}` : ''}</p>
-                          <p className="muted truncate text-xs">{[i.genericName, i.brand, i.form, i.code].filter(Boolean).join(' · ')}</p>
+                          <p className="text-sm font-medium break-words">{itemLabel(i)}</p>
+                          <p className="muted text-xs break-words">{[i.genericName, i.brand, i.form, i.code].filter(Boolean).join(' · ')}</p>
                         </div>
-                        <span className={cn('text-xs', usable > 0 ? 'text-emerald-600' : 'text-red-600')}>{usable} {i.unit}</span>
-                        <span className="w-24 text-right text-sm font-semibold">{price != null ? money(price) : <span className="text-xs text-red-600">No price</span>}</span>
+                        <span className={cn('shrink-0 text-xs whitespace-nowrap', usable > 0 ? 'text-emerald-600' : 'text-red-600')}>{usable} {i.unit}</span>
+                        <span className="w-24 shrink-0 text-right text-sm font-semibold whitespace-nowrap">{price != null ? money(price) : <span className="text-xs text-red-600">No price</span>}</span>
                       </button>
                     </li>
                   );
@@ -122,7 +124,7 @@ function Sell({ canPay }: { canPay: boolean }) {
                 return (
                   <li key={l.item._id} className="flex items-center gap-2 py-2">
                     <div className="min-w-0 flex-1">
-                      <p className="truncate text-sm font-medium">{l.item.name}{l.item.strength ? ` ${l.item.strength}` : ''}</p>
+                      <p className="text-sm font-medium break-words">{itemLabel(l.item)}</p>
                       <p className={cn('text-xs', over ? 'text-red-600' : 'muted')}>{money(price)} × {l.quantity}{over ? ` · only ${l.item.stock?.usable ?? 0} in stock` : ''}</p>
                     </div>
                     <button type="button" className="rounded p-1 hover:bg-[var(--surface-2)]" onClick={() => setQty(l.item._id, l.quantity - 1)} aria-label="Less"><Minus className="h-4 w-4" /></button>

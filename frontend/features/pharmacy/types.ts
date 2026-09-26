@@ -4,3 +4,10 @@ export interface RxItem { _id: string; itemId?: string; drugName: string; dose?:
 export interface Prescription { _id: string; rxNumber: string; status: string; admissionId?: string; urgency?: 'routine' | 'urgent' | 'stat'; ward?: { name?: string; bedNumber?: string }; receipts?: Array<{ at: string; byName?: string; dispenseCount: number; note?: string }>; ePrescription?: { externalId?: string; status?: 'sent' | 'failed' | 'dispense_reported'; lastError?: string }; prescriberName?: string; createdAt: string; visitId?: string; items: RxItem[]; dispenses: Array<{ at: string; byName?: string; lines: Array<{ rxItemId: string; itemId: string; batchId: string; batchNumber: string; quantity: number }> }>; patientId: string | { _id: string; patientNumber: string; firstName: string; lastName: string; gender: string; dateOfBirth?: string; allergies?: Array<{ substance: string }> } }
 export interface Location { _id: string; name: string; type: string; branchId: { _id: string; branchName: string } | string }
 export interface Batch { _id: string; batchNumber: string; expiryDate: string; quantity: number; unitCost: number; itemId: { _id: string; code: string; name: string; unit: string } | string; locationId?: { name: string } }
+
+/** Display name with strength, without repeating a strength the name already contains (e.g. "Abacavir 300mg Tablet"). */
+export function itemLabel(i: { name: string; strength?: string | null }) {
+  const st = i.strength?.trim();
+  if (!st) return i.name;
+  return i.name.toLowerCase().replace(/\s+/g, '').includes(st.toLowerCase().replace(/\s+/g, '')) ? i.name : `${i.name} ${st}`;
+}
