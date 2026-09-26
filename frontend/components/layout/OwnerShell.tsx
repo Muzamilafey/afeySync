@@ -6,7 +6,7 @@ import { ThemeToggle } from '@/features/theme/ThemeToggle';
 import { usePathname, useRouter } from 'next/navigation';
 import { useEffect, useState, type ReactNode } from 'react';
 import { useQuery } from '@tanstack/react-query';
-import { Activity, Boxes, Building2, Cable, FileCode2, HeartPulse, LayoutDashboard, LifeBuoy, ListChecks, LogOut, Menu, ScrollText, Settings2, Users, X, DatabaseBackup, ShieldCheck, Inbox, Layers, Receipt, MessageSquareText, Newspaper, Megaphone } from 'lucide-react';
+import { Activity, Boxes, Building2, Cable, FileCode2, HeartPulse, LayoutDashboard, LifeBuoy, ListChecks, LogOut, Menu, ScrollText, Settings2, Users, X, DatabaseBackup, ShieldCheck, Inbox, Layers, Receipt, MessageSquareText, Newspaper, Megaphone, Mail } from 'lucide-react';
 import { ownerApi } from '@/services/api';
 import { useSessionStore } from '@/stores/session';
 import { cn } from '@/lib/utils';
@@ -19,6 +19,7 @@ const NAV = [
   { href: '/owner', label: 'Dashboard', icon: LayoutDashboard },
   { href: '/owner/facilities', label: 'Facilities', icon: Building2, perm: 'owner.tenants' },
   { href: '/owner/registrations', label: 'Registrations', icon: Inbox, perm: 'owner.tenants' },
+  { href: '/owner/messages', label: 'Messages', icon: Mail, perm: 'owner.support' },
   { href: '/owner/plans', label: 'Plans & Modules', icon: Layers, perm: 'owner.subscriptions' },
   { href: '/owner/billing', label: 'Billing', icon: Receipt, perm: 'owner.subscriptions' },
   { href: '/owner/sms', label: 'SMS', icon: MessageSquareText, perm: 'owner.subscriptions' },
@@ -42,12 +43,15 @@ export function OwnerShell({ children }: { children: ReactNode }) {
   const pathname = usePathname();
   const clear = useSessionStore((s) => s.clear);
   const [open, setOpen] = useState(false);
+  // Unread website messages, for the sidebar count (refreshed every minute).
+  const unread = useQuery({ queryKey: ['owner-messages-unread'], enabled: !!me?.permissions.includes('owner.support'), refetchInterval: 60_000, queryFn: async () => (await ownerApi<{ unread: number }>('/contact-messages/unread')).data.unread });
   useEffect(() => {
     if (error) router.replace('/owner/login');
   }, [error, router]);
   if (isLoading || !me) return <div className="flex min-h-screen items-center justify-center"><Loading /></div>;
   const perms = new Set(me.permissions);
   const items = NAV.filter((n) => !n.perm || perms.has(n.perm));
+  const unreadMessages = unread.data ?? 0;
   const nav = (
     <nav className="space-y-0.5 p-3">
       {items.map((i) => {
@@ -55,6 +59,7 @@ export function OwnerShell({ children }: { children: ReactNode }) {
         return (
           <Link key={i.href} href={i.href} onClick={() => setOpen(false)} className={cn('flex items-center gap-2.5 rounded-md px-2.5 py-2 text-sm font-medium', active ? 'bg-slate-900 text-white dark:bg-slate-100 dark:text-slate-900' : 'hover:bg-[var(--surface-2)]')}>
             <i.icon className="h-4 w-4" /> {i.label}
+            {i.href === '/owner/messages' && unreadMessages > 0 && <span className="ml-auto rounded-full bg-red-600 px-1.5 py-0.5 text-[10px] font-semibold leading-none text-white">{unreadMessages > 99 ? '99+' : unreadMessages}</span>}
           </Link>
         );
       })}

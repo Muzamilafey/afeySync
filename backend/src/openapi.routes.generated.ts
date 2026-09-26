@@ -2229,6 +2229,24 @@ export const generatedRoutes: Record<string, Record<string, RouteDoc>> = {
       "tag": "Owner"
     }
   },
+  "/api/v1/owner/contact-messages": {
+    "get": {
+      "summary": "Get owner contact messages",
+      "tag": "Owner"
+    }
+  },
+  "/api/v1/owner/contact-messages/{id}": {
+    "patch": {
+      "summary": "Update owner contact messages",
+      "tag": "Owner"
+    }
+  },
+  "/api/v1/owner/contact-messages/unread": {
+    "get": {
+      "summary": "Get owner contact messages unread",
+      "tag": "Owner"
+    }
+  },
   "/api/v1/owner/contracts/{provider}": {
     "get": {
       "summary": "Get owner contracts",

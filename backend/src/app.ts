@@ -16,7 +16,7 @@ import { billingOwnerRouter } from './modules/platformBilling/owner.routes';
 import { subscriptionRouter } from './modules/platformBilling/facility.routes';
 import { platformMpesaPublicRouter } from './modules/platformBilling/platformMpesa';
 import { onboardingOwnerRouter, onboardingPublicRouter } from './modules/onboarding/onboarding.routes';
-import { contactRouter } from './modules/contact/contact.routes';
+import { contactOwnerRouter, contactRouter } from './modules/contact/contact.routes';
 import medicalReportRoutes from './modules/medicalReports/medicalReports.routes';
 import posRoutes from './modules/pharmacy/pos.routes';
 import storesRoutes from './modules/pharmacy/stores.routes';
@@ -129,6 +129,7 @@ export function createApp() {
   api.use(blogPublicRouter);
   api.use('/owner/blog', blogOwnerRouter);
   api.use('/owner/announcements', announcementOwnerRouter);
+  api.use('/owner/contact-messages', contactOwnerRouter);
   api.use('/announcements', announcementTenantRouter);
   api.use('/owner/onboarding', onboardingOwnerRouter);
   api.use('/owner/plans', planOwnerRouter);

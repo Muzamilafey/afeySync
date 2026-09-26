@@ -691,6 +691,25 @@ const announcementSchema = new Schema(
 );
 announcementSchema.index({ status: 1, publishedAt: -1 });
 
+/** A message sent through the website's contact form, kept for the owner portal inbox (also emailed when an inbox is set). */
+const contactMessageSchema = new Schema(
+  {
+    name: { type: String, required: true },
+    email: { type: String, required: true },
+    phone: String,
+    facility: String,
+    topic: { type: String, default: 'other' },
+    message: { type: String, required: true },
+    status: { type: String, enum: ['new', 'read', 'replied', 'archived'], default: 'new', index: true },
+    note: String,
+    emailed: { type: Boolean, default: false },
+    handledByName: String,
+    handledAt: Date,
+  },
+  { timestamps: true },
+);
+contactMessageSchema.index({ createdAt: -1 });
+
 const schemas = {
   PlatformUser: platformUserSchema,
   Tenant: tenantSchema,
@@ -724,6 +743,7 @@ const schemas = {
   BlogPost: blogPostSchema,
   BlogImage: blogImageSchema,
   Announcement: announcementSchema,
+  ContactMessage: contactMessageSchema,
 };
 
 type Schemas = typeof schemas;
