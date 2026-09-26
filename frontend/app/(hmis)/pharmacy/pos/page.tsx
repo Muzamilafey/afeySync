@@ -219,7 +219,7 @@ function Sales() {
     onSuccess: (r) => { setMsg(r.message); setRet(null); qc.invalidateQueries({ queryKey: ['pos-sales'] }); qc.invalidateQueries({ queryKey: ['pos-items'] }); },
   });
   return (
-    <Card title="Counter sales" actions={<div className="flex items-center gap-2"><Input type="date" value={date} onChange={(e) => setDate(e.target.value)} /><a href={`/print/z-report?date=${date}`} target="_blank" rel="noreferrer" className="inline-flex items-center gap-1.5 rounded-md border border-[var(--border)] px-3 py-2 text-sm hover:bg-[var(--surface-2)]"><Printer className="h-4 w-4" /> Z-report</a></div>}>
+    <Card title="Counter sales" actions={<div className="flex items-center gap-2"><Input type="date" value={date} onChange={(e) => setDate(e.target.value)} /><a href={`/print/z-report?date=${date}`} target="_blank" rel="noreferrer" className="inline-flex shrink-0 items-center gap-1.5 whitespace-nowrap rounded-md border border-[var(--border)] px-3 py-2 text-sm hover:bg-[var(--surface-2)]"><Printer className="h-4 w-4" /> Z-report</a></div>}>
       {msg && <div className="mb-3"><Alert tone="green">{msg}</Alert></div>}
       {sales.isLoading ? <Loading /> : (
         <Table head={['Sale', 'Time', 'Customer', 'Items', 'Total', 'Status', 'By', '']} empty={!sales.data?.length}>
