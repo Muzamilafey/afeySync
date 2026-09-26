@@ -73,7 +73,8 @@ afterAll(async () => {
   await teardown();
 });
 
-const setupPayhero = (settings: Record<string, string>, secrets: Record<string, string> = { authToken: 'Basic dG9rOnNlY3JldA==' }) =>
+// Pay Hero shows an API key username and password; together they make the HTTP Basic sign-in (tok:secret here).
+const setupPayhero = (settings: Record<string, string>, secrets: Record<string, string> = { apiUsername: 'tok', apiPassword: 'secret', apiSecret: 'signing-secret' }) =>
   t(S, admin).put('/api/v1/admin/integrations/payhero').send({ environment: 'production', settings: { baseUrl: url, ...settings }, secrets, enabled: true });
 
 describe('facility sets up Pay Hero itself', () => {
@@ -84,6 +85,7 @@ describe('facility sets up Pay Hero itself', () => {
     expect(list.body.data.facilityConfigs.payhero.defaultBaseUrls).toEqual({ production: 'https://backend.payhero.co.ke' });
     expect((await api().put('/api/v1/owner/integrations/payhero').set('Host', OWNER_HOST).set('Authorization', `Bearer ${owner}`).send({ enabled: true })).body.error.code).toBe('FACILITY_OWNED_INTEGRATION');
     expect((await setupPayhero({ channelId: 'abc', role: 'primary' })).body.error.message).toMatch(/channel ID must be a number/);
+    expect((await setupPayhero({ channelId: '133', role: 'primary' }, { apiUsername: 'tok' })).body.error.message).toMatch(/API key password/);
     expect((await setupPayhero({ role: 'primary' })).body.error.message).toMatch(/Payment channel ID/);
 
     expect((await setupPayhero({ channelId: '999', role: 'primary' })).status).toBe(200);
@@ -95,7 +97,9 @@ describe('facility sets up Pay Hero itself', () => {
     expect(ok.body.data).toMatchObject({ ok: true, paysInto: 'till 1731901 (Ndabibi Nursing Home)' });
     expect((await t(S, admin).get('/api/v1/admin/integrations')).body.data.status.payhero.enabled).toBe(true);
     // the token is never returned
-    expect(JSON.stringify((await t(S, admin).get('/api/v1/admin/integrations')).body)).not.toContain('dG9rOnNlY3JldA');
+    const listed = JSON.stringify((await t(S, admin).get('/api/v1/admin/integrations')).body);
+    expect(listed).not.toContain('signing-secret');
+    expect(listed).not.toMatch(/"secret"/);
   });
 });
 
@@ -174,7 +178,7 @@ describe('M-Pesa prompts through Pay Hero', () => {
 describe('owner collects subscriptions and SMS credits through Pay Hero', () => {
   it('tops up the SMS wallet by a Pay Hero prompt, confirmed with Pay Hero', async () => {
     const own = (path: string) => api().put(`/api/v1/owner${path}`).set('Host', OWNER_HOST).set('Authorization', `Bearer ${owner}`);
-    expect((await own('/integrations/payhero_billing').send({ environment: 'production', settings: { baseUrl: url, channelId: '133', role: 'primary' }, secrets: { authToken: 'dG9rOnNlY3JldA==' }, enabled: true })).status).toBe(200);
+    expect((await own('/integrations/payhero_billing').send({ environment: 'production', settings: { baseUrl: url, channelId: '133', role: 'primary' }, secrets: { apiUsername: 'tok', apiPassword: 'secret' }, enabled: true })).status).toBe(200);
     // facilities cannot touch the owner's account
     expect((await t(S, admin).put('/api/v1/admin/integrations/payhero_billing').send({ enabled: true })).status).toBe(403);
     const before = (await t(S, admin).get('/api/v1/sms-wallet')).body.data;

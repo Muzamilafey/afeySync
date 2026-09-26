@@ -18,7 +18,7 @@ interface PublicConfig {
   defaultBaseUrls?: Record<string, string>;
   settings: Record<string, string>;
   settingFields: SettingField[];
-  secretFields: Array<{ key: string; label: string; configured: boolean; hint?: string }>;
+  secretFields: Array<{ key: string; label: string; required?: boolean; configured: boolean; hint?: string }>;
   useTenantConfig: boolean;
   exists?: boolean;
 }
@@ -54,7 +54,7 @@ function FacilityConfig({ cfg, selfService = false }: { cfg: PublicConfig; selfS
         <div className="grid gap-3 sm:grid-cols-2">
           {cfg.environments.length > 1 && <Field label="Environment"><select className="field" value={environment} onChange={(e) => { setEnvironment(e.target.value); setSettings(switchEnvironment(settings, cfg.settingFields, cfg.defaultBaseUrls, e.target.value)); }}>{cfg.environments.map((e) => <option key={e}>{e}</option>)}</select></Field>}
           <SettingFields fields={cfg.settingFields} values={settings} onChange={setSettings} />
-          {cfg.secretFields.map((f) => <Field key={f.key} label={f.label} hint={f.configured ? `Configured ${f.hint ?? ''} — leave blank to keep` : 'Not set'}><Input type="password" autoComplete="new-password" value={secrets[f.key] ?? ''} onChange={(e) => setSecrets({ ...secrets, [f.key]: e.target.value })} /></Field>)}
+          {cfg.secretFields.map((f) => <Field key={f.key} label={`${f.label}${f.required ? ' *' : ''}`} hint={f.configured ? `Configured ${f.hint ?? ''} — leave blank to keep` : 'Not set'}><Input type="password" autoComplete="new-password" value={secrets[f.key] ?? ''} onChange={(e) => setSecrets({ ...secrets, [f.key]: e.target.value })} /></Field>)}
         </div>
       )}
       <ErrorText error={save.error || test.error || turnOff.error} />

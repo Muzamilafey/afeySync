@@ -7,9 +7,13 @@ import { AppError } from '../../utils/errors';
  * Pay Hero → API Keys, stored encrypted and sent only from the server.
  */
 const baseUrl = (cfg: ResolvedIntegration) => (cfg.settings.baseUrl || 'https://backend.payhero.co.ke').replace(/\/+$/, '');
-const authHeader = (cfg: ResolvedIntegration) => {
+/** HTTP Basic from the API key username and password (Pay Hero → API Keys), or a ready-made Basic token. */
+export const authHeader = (cfg: ResolvedIntegration) => {
+  const user = (cfg.secrets.apiUsername ?? '').trim();
+  const pass = (cfg.secrets.apiPassword ?? '').trim();
+  if (user && pass) return `Basic ${Buffer.from(`${user}:${pass}`).toString('base64')}`;
   const token = (cfg.secrets.authToken ?? '').trim().replace(/^Basic\s+/i, '');
-  if (!token) throw new AppError(503, 'PAYHERO_NOT_CONFIGURED', 'The Pay Hero authorization token is not saved');
+  if (!token) throw new AppError(503, 'PAYHERO_NOT_CONFIGURED', 'Pay Hero API key username and password are not saved');
   return `Basic ${token}`;
 };
 

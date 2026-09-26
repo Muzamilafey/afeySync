@@ -206,7 +206,13 @@ export const PROVIDER_DEFINITIONS: Record<Provider, ProviderDefinition> = {
       { key: 'credentialId', label: 'Pay Hero credential ID (optional)', help: 'Only if you registered your own Daraja keys inside Pay Hero. Leave blank otherwise.' },
       { key: 'baseUrl', label: 'API base URL', help: 'Filled in (backend.payhero.co.ke). Change it only if Pay Hero gives you a different address.' },
     ],
-    secrets: [{ key: 'authToken', label: 'Basic Authorization token (Pay Hero → API Keys)', required: true }],
+    // Pay Hero → Developers → API Keys → Generate key shows a username, a password and a secret.
+    // Prompts sign in with HTTP Basic (username + password); the secret is optional.
+    secrets: [
+      { key: 'apiUsername', label: 'API key username', required: true },
+      { key: 'apiPassword', label: 'API key password', required: true },
+      { key: 'apiSecret', label: 'API secret (optional)' },
+    ],
   },
   payhero_billing: {
     label: 'Pay Hero (AfeySync subscription and SMS payments)',
@@ -225,7 +231,13 @@ export const PROVIDER_DEFINITIONS: Record<Provider, ProviderDefinition> = {
       { key: 'credentialId', label: 'Pay Hero credential ID (optional)', help: 'Only if you registered your own Daraja keys inside Pay Hero. Leave blank otherwise.' },
       { key: 'baseUrl', label: 'API base URL', help: 'Filled in (backend.payhero.co.ke). Change it only if Pay Hero gives you a different address.' },
     ],
-    secrets: [{ key: 'authToken', label: 'Basic Authorization token (Pay Hero → API Keys)', required: true }],
+    // Pay Hero → Developers → API Keys → Generate key shows a username, a password and a secret.
+    // Prompts sign in with HTTP Basic (username + password); the secret is optional.
+    secrets: [
+      { key: 'apiUsername', label: 'API key username', required: true },
+      { key: 'apiPassword', label: 'API key password', required: true },
+      { key: 'apiSecret', label: 'API secret (optional)' },
+    ],
   },
   storage: {
     label: 'Document Storage',
