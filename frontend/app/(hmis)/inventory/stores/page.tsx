@@ -6,7 +6,7 @@ import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { ClipboardCheck, Download, Plus, Printer, ShoppingCart, Trash2 } from 'lucide-react';
 import { api } from '@/services/api';
 import { useCan } from '@/hooks/useMe';
-import { Alert, Badge, Button, Card, ErrorText, Field, Input, KV, Loading, Modal, PageHeader, Select, Table, Tabs, Td, Textarea, statusTone } from '@/components/ui';
+import { Alert, Badge, Button, Card, ErrorText, Field, Input, KV, Loading, Modal, PageHeader, SearchInput, Select, Table, Tabs, Td, Textarea, statusTone, useDebounced } from '@/components/ui';
 import { fmtDateTime, money } from '@/lib/utils';
 
 type Tab = 'requisitions' | 'stocktakes' | 'movement' | 'reorder';
@@ -142,13 +142,16 @@ function Requisitions({ locations }: { locations: Loc[] }) {
   const can = useCan();
   const qc = useQueryClient();
   const [status, setStatus] = useState('pending,approved,partially_issued,issued');
+  const [search, setSearch] = useState('');
+  const term = useDebounced(search.trim()) || undefined;
   const [mine, setMine] = useState(false);
   const [open, setOpen] = useState<string | 'new' | null>(null);
-  const list = useQuery({ queryKey: ['requisitions', status, mine], queryFn: async () => (await api<Requisition[]>('/inventory/requisitions', { query: { status: status || undefined, mine: mine ? 'true' : undefined, limit: 100 } })).data });
+  const list = useQuery({ queryKey: ['requisitions', status, mine, term], queryFn: async () => (await api<Requisition[]>('/inventory/requisitions', { query: { status: status || undefined, mine: mine ? 'true' : undefined, q: term, limit: 100 } })).data, placeholderData: (prev) => prev });
   const refresh = () => { qc.invalidateQueries({ queryKey: ['requisitions'] }); };
   return (
     <>
       <div className="mb-3 flex flex-wrap items-center gap-2">
+        <SearchInput value={search} onChange={setSearch} placeholder="Search number, item or requester" />
         <Button size="sm" onClick={() => setOpen('new')}><Plus className="h-3 w-3" /> New requisition</Button>
         <Select className="w-48" value={status} onChange={(e) => setStatus(e.target.value)}>
           <option value="pending,approved,partially_issued,issued">Open</option>
@@ -186,11 +189,16 @@ function StockTakes({ locations }: { locations: Loc[] }) {
   const qc = useQueryClient();
   const [open, setOpen] = useState(false);
   const [f, setF] = useState({ locationId: '', category: '', notes: '' });
-  const list = useQuery({ queryKey: ['stock-takes'], queryFn: async () => (await api<StockTakeRow[]>('/inventory/stock-takes')).data });
+  const [search, setSearch] = useState('');
+  const term = useDebounced(search.trim()) || undefined;
+  const list = useQuery({ queryKey: ['stock-takes', term], queryFn: async () => (await api<StockTakeRow[]>('/inventory/stock-takes', { query: { q: term } })).data, placeholderData: (prev) => prev });
   const start = useMutation({ mutationFn: () => api<{ _id: string }>('/inventory/stock-takes', { method: 'POST', body: { locationId: f.locationId || locations[0]?._id, category: f.category || undefined, notes: f.notes || undefined } }), onSuccess: (r) => { qc.invalidateQueries({ queryKey: ['stock-takes'] }); window.location.href = `/inventory/stock-takes/${r.data._id}`; } });
   return (
     <>
-      {can('inventory.manage', 'pharmacy.stock') && <div className="mb-3"><Button size="sm" onClick={() => setOpen(true)}><ClipboardCheck className="h-3 w-3" /> Start stock take</Button></div>}
+      <div className="mb-3 flex flex-wrap items-center gap-2">
+        <SearchInput value={search} onChange={setSearch} placeholder="Search number, location, item or person" />
+        {can('inventory.manage', 'pharmacy.stock') && <Button size="sm" onClick={() => setOpen(true)}><ClipboardCheck className="h-3 w-3" /> Start stock take</Button>}
+      </div>
       {list.isLoading ? <Loading /> : (
         <Table head={['Number', 'Started', 'Location', 'Category', 'Started by', 'Approved by', 'Status', '']} empty={(list.data ?? []).length === 0}>
           {list.data?.map((s) => (
@@ -218,7 +226,9 @@ function StockTakes({ locations }: { locations: Loc[] }) {
 
 function MovementReport({ locations }: { locations: Loc[] }) {
   const [f, setF] = useState({ from: monthStart(), to: today(), locationId: '', category: '' });
-  const q = useQuery({ queryKey: ['movement-report', f], queryFn: async () => (await api<MoveRow[]>('/inventory/stock/movement-report', { query: { ...f, locationId: f.locationId || undefined, category: f.category || undefined } })).data });
+  const [search, setSearch] = useState('');
+  const term = useDebounced(search.trim()) || undefined;
+  const q = useQuery({ queryKey: ['movement-report', f, term], queryFn: async () => (await api<MoveRow[]>('/inventory/stock/movement-report', { query: { ...f, locationId: f.locationId || undefined, category: f.category || undefined, q: term } })).data, placeholderData: (prev) => prev });
   const csv = () => {
     const rows = [['Code', 'Item', 'Unit', 'Opening', 'Received', 'Issued', 'Adjusted', 'Closing'], ...(q.data ?? []).map((r) => [r.code, r.name, r.unit, r.opening, r.received, r.issued, r.adjusted, r.closing])];
     const blob = new Blob([rows.map((r) => r.map((c) => `"${String(c).replace(/"/g, '""')}"`).join(',')).join('\n')], { type: 'text/csv' });
@@ -228,9 +238,10 @@ function MovementReport({ locations }: { locations: Loc[] }) {
     a.click();
     URL.revokeObjectURL(a.href);
   };
-  const qs = new URLSearchParams(Object.entries(f).filter(([, v]) => v) as Array<[string, string]>).toString();
+  const qs = new URLSearchParams([...Object.entries(f), ['q', term ?? '']].filter(([, v]) => v) as Array<[string, string]>).toString();
   return (
     <>
+      <SearchInput className="mb-3" value={search} onChange={setSearch} placeholder="Search item name, code, generic or brand" />
       <div className="mb-3 grid gap-2 sm:grid-cols-[repeat(4,minmax(0,1fr))_auto]">
         <Field label="From"><Input type="date" value={f.from} onChange={(e) => setF({ ...f, from: e.target.value })} /></Field>
         <Field label="To"><Input type="date" value={f.to} onChange={(e) => setF({ ...f, to: e.target.value })} /></Field>
@@ -254,10 +265,12 @@ function MovementReport({ locations }: { locations: Loc[] }) {
 function ReorderLpo({ locations }: { locations: Loc[] }) {
   const can = useCan();
   const [category, setCategory] = useState('');
+  const [search, setSearch] = useState('');
+  const term = useDebounced(search.trim()) || undefined;
   const [picked, setPicked] = useState<Record<string, { quantity: string; unitCost: string }>>({});
   const [f, setF] = useState({ supplierId: '', locationId: '', notes: '' });
   const [created, setCreated] = useState<string | null>(null);
-  const q = useQuery({ queryKey: ['reorder', category], queryFn: async () => (await api<Reorder[]>('/inventory/stock/reorder-suggestions', { query: { category: category || undefined } })).data });
+  const q = useQuery({ queryKey: ['reorder', category, term], queryFn: async () => (await api<Reorder[]>('/inventory/stock/reorder-suggestions', { query: { category: category || undefined, q: term } })).data, placeholderData: (prev) => prev });
   const canLpo = can('procurement.manage', 'inventory.manage', 'pharmacy.stock', 'lab.manage');
   const suppliers = useQuery({ queryKey: ['suppliers'], queryFn: async () => (await api<Array<{ _id: string; name: string }>>('/procurement/suppliers')).data, enabled: canLpo });
   const stores = locations.filter((l) => l.type === 'store' || l.type === 'pharmacy' || l.type === 'lab');
@@ -271,6 +284,7 @@ function ReorderLpo({ locations }: { locations: Loc[] }) {
   return (
     <>
       <div className="mb-3 flex flex-wrap items-end gap-2">
+        <SearchInput value={search} onChange={setSearch} placeholder="Search item name, code or brand" />
         <Field label="Category"><Select className="w-48" value={category} onChange={(e) => setCategory(e.target.value)}><option value="">All</option>{['drug', 'consumable', 'reagent', 'equipment', 'other'].map((c) => <option key={c} value={c}>{c === 'reagent' ? 'Lab reagents' : c}</option>)}</Select></Field>
         {canLpo && q.data && q.data.length > 0 && <Button size="sm" variant="outline" onClick={() => setPicked(Object.fromEntries(q.data.map((r) => [r.itemId, { quantity: String(r.suggestedQuantity), unitCost: String(r.lastUnitCost || '') }])))}>Select all</Button>}
       </div>

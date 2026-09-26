@@ -8,7 +8,7 @@ import { ExcelImport } from '@/features/imports/ExcelImport';
 import { DOSAGE_FORMS, STOCK_UNITS } from '@/features/pharmacy/dosageForms';
 import { api } from '@/services/api';
 import { useCan } from '@/hooks/useMe';
-import { Badge, Button, Card, ErrorText, Field, Input, Loading, Modal, PageHeader, Select, Stat, Table, Tabs, Td } from '@/components/ui';
+import { Badge, Button, Card, ErrorText, Field, Input, Loading, Modal, PageHeader, SearchInput, Select, Stat, Table, Tabs, Td, useDebounced } from '@/components/ui';
 import { fmtDate, fmtDateTime, money } from '@/lib/utils';
 import { ItemPicker } from '@/features/pharmacy/ItemPicker';
 import { STANDARD_LISTS } from '@/features/billing/types';
@@ -131,6 +131,8 @@ export default function InventoryPage() {
   const qc = useQueryClient();
   const [tab, setTab] = useState<Tab>('summary');
   const [loc, setLoc] = useState('');
+  const [search, setSearch] = useState('');
+  const q = useDebounced(search.trim()) || undefined;
   const [modal, setModal] = useState<'receive' | 'transfer' | 'adjust' | 'item' | null>(null);
   const [editItem, setEditItem] = useState<Item | undefined>();
   const [importing, setImporting] = useState(false);
@@ -138,11 +140,11 @@ export default function InventoryPage() {
   const [trf, setTrf] = useState<{ item?: Item; to: string; qty: string }>({ to: '', qty: '' });
   const locs = useQuery({ queryKey: ['locations'], queryFn: async () => (await api<Location[]>('/pharmacy/locations')).data });
   const location = loc || locs.data?.[0]?._id || '';
-  const summary = useQuery({ queryKey: ['stock-summary', location], queryFn: () => api<Row[]>('/pharmacy/stock/summary', { query: { locationId: location } }), enabled: !!location && tab === 'summary' });
-  const batches = useQuery({ queryKey: ['batches', location], queryFn: async () => (await api<Batch[]>('/pharmacy/stock', { query: { locationId: location } })).data, enabled: !!location && tab === 'batches' });
-  const expiring = useQuery({ queryKey: ['expiring'], queryFn: async () => (await api<Batch[]>('/pharmacy/stock/expiring', { query: { days: 90 } })).data, enabled: tab === 'expiring' });
-  const moves = useQuery({ queryKey: ['movements'], queryFn: async () => (await api<Array<{ _id: string; type: string; quantity: number; reference?: string; reason?: string; createdAt: string; itemId: { name: string } }>>('/pharmacy/stock/movements', { query: { limit: 100 } })).data, enabled: tab === 'movements' });
-  const items = useQuery({ queryKey: ['items-admin'], queryFn: async () => (await api<Item[]>('/pharmacy/items', { query: { all: 'true', limit: 500 } })).data, enabled: tab === 'items' });
+  const summary = useQuery({ queryKey: ['stock-summary', location, q], queryFn: () => api<Row[]>('/pharmacy/stock/summary', { query: { locationId: location, q } }), placeholderData: (prev) => prev, enabled: !!location && tab === 'summary' });
+  const batches = useQuery({ queryKey: ['batches', location, q], queryFn: async () => (await api<Batch[]>('/pharmacy/stock', { query: { locationId: location, q } })).data, enabled: !!location && tab === 'batches' });
+  const expiring = useQuery({ queryKey: ['expiring', q], queryFn: async () => (await api<Batch[]>('/pharmacy/stock/expiring', { query: { days: 90, q } })).data, enabled: tab === 'expiring' });
+  const moves = useQuery({ queryKey: ['movements', q], queryFn: async () => (await api<Array<{ _id: string; type: string; quantity: number; reference?: string; reason?: string; createdAt: string; itemId: { name: string } }>>('/pharmacy/stock/movements', { query: { limit: 100, q } })).data, enabled: tab === 'movements' });
+  const items = useQuery({ queryKey: ['items-admin', q], queryFn: async () => (await api<Item[]>('/pharmacy/items', { query: { all: 'true', limit: 500, q } })).data, enabled: tab === 'items' });
   const refresh = () => { qc.invalidateQueries({ queryKey: ['stock-summary'] }); qc.invalidateQueries({ queryKey: ['batches'] }); qc.invalidateQueries({ queryKey: ['expiring'] }); qc.invalidateQueries({ queryKey: ['items-admin'] }); setModal(null); };
   const adjust = useMutation({ mutationFn: () => api('/pharmacy/stock/adjust', { method: 'POST', body: { batchId: adj.batch!._id, quantityDelta: Number(adj.delta), reason: adj.reason, type: adj.type } }), onSuccess: refresh });
   const transfer = useMutation({ mutationFn: () => api('/pharmacy/stock/transfer', { method: 'POST', body: { fromLocationId: location, toLocationId: trf.to, itemId: trf.item!._id, quantity: Number(trf.qty) } }), onSuccess: refresh });
@@ -164,6 +166,10 @@ export default function InventoryPage() {
       )}
       <Tabs<Tab> value={tab} onChange={setTab} tabs={[{ key: 'summary', label: 'Stock on hand' }, { key: 'batches', label: 'Batches' }, { key: 'expiring', label: 'Expiring (90d)' }, { key: 'movements', label: 'Ledger' }, { key: 'items', label: 'Items' }]} />
       <Card>
+        <div className="mb-3 flex flex-wrap items-center gap-2">
+          <SearchInput value={search} onChange={setSearch} placeholder={tab === 'batches' || tab === 'expiring' ? 'Search item, code, brand or batch no.' : tab === 'movements' ? 'Search item, reference or reason' : 'Search item name, code, generic, brand or barcode'} />
+          {q && <span className="muted text-xs">Showing results for “{q}”</span>}
+        </div>
         {tab === 'summary' && (summary.isLoading ? <Loading /> : (
           <Table head={['Item', 'Category', 'Usable', 'Expired', 'Reorder', 'Nearest expiry', 'Value']} empty={(summary.data?.data ?? []).length === 0}>
             {summary.data?.data.map((r) => <tr key={r._id}><Td className="font-medium">{r.name}<span className="muted block font-mono text-xs">{r.code}</span></Td><Td className="capitalize">{r.category}</Td><Td>{r.usable} {r.unit} {r.lowStock && r.reorderLevel > 0 && <Badge tone="amber">low</Badge>}</Td><Td className={r.expired ? 'text-red-600' : ''}>{r.expired || '—'}</Td><Td>{r.reorderLevel}</Td><Td>{fmtDate(r.nearestExpiry)}</Td><Td>{money(r.value)}</Td></tr>)}

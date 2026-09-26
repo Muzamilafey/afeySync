@@ -92,6 +92,24 @@ describe('stock take', () => {
   });
 });
 
+describe('search', () => {
+  it('filters stock, batches, ledger, requisitions, stock takes and reports by the search term', async () => {
+    const hit = (r: { body: { data: unknown[] } }) => r.body.data.length;
+    expect(hit(await t(S, manager).get('/api/v1/pharmacy/stock/summary').query({ locationId: store, q: 'gloves' }))).toBe(1);
+    const none = await t(S, manager).get('/api/v1/pharmacy/stock/summary').query({ locationId: store, q: 'zzz-nothing' });
+    expect(none.body.data).toHaveLength(0);
+    expect(none.body.meta.totalValue).toBeGreaterThan(0); // totals stay for the whole location
+    expect(hit(await t(S, manager).get('/api/v1/pharmacy/stock').query({ locationId: store, q: 'G2' }))).toBe(1);
+    expect(hit(await t(S, manager).get('/api/v1/pharmacy/stock/movements').query({ q: 'SRQ' }))).toBeGreaterThan(0);
+    expect(hit(await t(S, manager).get('/api/v1/pharmacy/stock/movements').query({ q: 'zzz-nothing' }))).toBe(0);
+    expect(hit(await t(S, manager).get('/api/v1/inventory/requisitions').query({ q: 'gloves' }))).toBeGreaterThan(0);
+    expect(hit(await t(S, manager).get('/api/v1/inventory/requisitions').query({ q: 'zzz-nothing' }))).toBe(0);
+    expect(hit(await t(S, manager).get('/api/v1/inventory/stock-takes').query({ q: 'Main store' }))).toBeGreaterThan(0);
+    expect(hit(await t(S, manager).get('/api/v1/inventory/stock/movement-report').query({ locationId: store, q: 'zzz-nothing' }))).toBe(0);
+    expect(hit(await t(S, manager).get('/api/v1/inventory/stock/reorder-suggestions').query({ q: 'STORESGLOVE' }))).toBe(1);
+  });
+});
+
 describe('stock reports', () => {
   it('reports opening, received, issued, adjusted and closing for the period', async () => {
     const r = await t(S, manager).get('/api/v1/inventory/stock/movement-report').query({ locationId: store });

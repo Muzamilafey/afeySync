@@ -9,6 +9,7 @@ import { branchFilter } from '../../middleware/branchScope';
 import { audit } from '../audit/auditService';
 import { dayRange, loadScoped, nextNumber, oid, round2 } from '../common/helpers';
 import { allocateFefo, stockOnHand } from './stockService';
+import { itemSearch } from './pharmacy.routes';
 
 /**
  * Stores: requisitions (a department asks, a manager approves, the store issues, the department
@@ -43,6 +44,11 @@ router.get('/requisitions', requireAnyPermission(...REQUEST), h(async (req, res)
   const filter: Record<string, unknown> = { ...branchFilter(req) };
   if (req.query.status) filter.status = { $in: String(req.query.status).split(',') };
   if (req.query.mine === 'true') filter.requestedBy = req.user!.id;
+  const q = String(req.query.q ?? '').trim().slice(0, 80);
+  if (q) {
+    const rx = new RegExp(escapeRegex(q), 'i');
+    filter.$or = [{ reqNumber: rx }, { 'items.name': rx }, { requestedByName: rx }, { notes: rx }];
+  }
   const [rows, total] = await Promise.all([
     m.StockRequisition.find(filter).populate('fromLocationId', 'name').populate('toLocationId', 'name').sort({ createdAt: -1 }).skip(skip).limit(limit).lean(),
     m.StockRequisition.countDocuments(filter),
@@ -161,7 +167,10 @@ router.post('/requisitions/:id/cancel', requireAnyPermission(...REQUEST), h(asyn
 /* ================================================================== Stock takes */
 router.get('/stock-takes', requireAnyPermission('inventory.view', ...MANAGE), h(async (req, res) => {
   const m = req.tenant!.models;
-  const rows = await m.StockTake.find({ ...branchFilter(req) }).select('-lines').populate('locationId', 'name').sort({ createdAt: -1 }).limit(100).lean();
+  const q = String(req.query.q ?? '').trim().slice(0, 80);
+  const rx = q ? new RegExp(escapeRegex(q), 'i') : null;
+  const locIds = rx ? (await m.StockLocation.find({ name: rx }).select('_id').lean()).map((l) => l._id) : [];
+  const rows = await m.StockTake.find({ ...branchFilter(req), ...(rx ? { $or: [{ takeNumber: rx }, { createdByName: rx }, { notes: rx }, { category: rx }, { locationId: { $in: locIds } }, { 'lines.name': rx }] } : {}) }).select('-lines').populate('locationId', 'name').sort({ createdAt: -1 }).limit(100).lean();
   res.json({ success: true, data: rows });
 }));
 
@@ -266,6 +275,8 @@ router.get('/stock/movement-report', requireAnyPermission('inventory.view', 'pha
   const itemFilter: Record<string, unknown> = { active: true };
   if (req.query.category) itemFilter.category = String(req.query.category);
   if (req.query.itemId) itemFilter._id = oid(req.query.itemId, 'Item');
+  const q = String(req.query.q ?? '').trim().slice(0, 80);
+  if (q) Object.assign(itemFilter, itemSearch(q));
   const items = await m.Item.find(itemFilter).select('code name strength unit category').lean();
   const itemIds = items.map((i) => i._id);
   const soh = await stockOnHand(m, { locationIds, itemIds });
@@ -294,6 +305,8 @@ router.get('/stock/reorder-suggestions', requireAnyPermission('inventory.view', 
   const locationIds = req.query.locationId ? [(await loc(req, req.query.locationId))._id] : (await m.StockLocation.find(branchFilter(req)).select('_id').lean()).map((l) => l._id);
   const filter: Record<string, unknown> = { active: true, reorderLevel: { $gt: 0 } };
   if (req.query.category) filter.category = String(req.query.category);
+  const q = String(req.query.q ?? '').trim().slice(0, 80);
+  if (q) Object.assign(filter, itemSearch(q));
   const items = await m.Item.find(filter).lean();
   const soh = await stockOnHand(m, { locationIds, itemIds: items.map((i) => i._id) });
   const lastCost = new Map<string, number>();

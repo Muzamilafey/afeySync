@@ -1,7 +1,7 @@
 'use client';
 
-import { forwardRef, useEffect, type ButtonHTMLAttributes, type InputHTMLAttributes, type ReactNode, type SelectHTMLAttributes, type TextareaHTMLAttributes } from 'react';
-import { Loader2, X, AlertTriangle, CheckCircle2, Info } from 'lucide-react';
+import { forwardRef, useEffect, useState, type ButtonHTMLAttributes, type InputHTMLAttributes, type ReactNode, type SelectHTMLAttributes, type TextareaHTMLAttributes } from 'react';
+import { Loader2, X, AlertTriangle, CheckCircle2, Info, Search } from 'lucide-react';
 import { cn } from '@/lib/utils';
 
 type Variant = 'primary' | 'secondary' | 'ghost' | 'danger' | 'outline';
@@ -269,5 +269,26 @@ export function ErrorText({ error }: { error: unknown }) {
     <Alert tone={GENTLE.has(code) ? 'blue' : 'red'} title={title}>
       {e.message ?? 'Please try again.'}
     </Alert>
+  );
+}
+
+/** A value that settles after the user stops typing (for search boxes that query the server). */
+export function useDebounced<T>(value: T, ms = 300) {
+  const [v, setV] = useState(value);
+  useEffect(() => {
+    const t = setTimeout(() => setV(value), ms);
+    return () => clearTimeout(t);
+  }, [value, ms]);
+  return v;
+}
+
+/** Search box with an icon and a clear button. */
+export function SearchInput({ value, onChange, placeholder = 'Search…', className }: { value: string; onChange: (v: string) => void; placeholder?: string; className?: string }) {
+  return (
+    <div className={cn('relative w-full sm:w-80', className)}>
+      <Search className="muted pointer-events-none absolute top-1/2 left-3 h-4 w-4 -translate-y-1/2" />
+      <input value={value} onChange={(e) => onChange(e.target.value)} placeholder={placeholder} aria-label={placeholder} className="field pr-8 pl-9" />
+      {value && <button type="button" onClick={() => onChange('')} aria-label="Clear search" className="muted absolute top-1/2 right-2 -translate-y-1/2 rounded p-0.5 hover:bg-[var(--surface-2)]"><X className="h-4 w-4" /></button>}
+    </div>
   );
 }

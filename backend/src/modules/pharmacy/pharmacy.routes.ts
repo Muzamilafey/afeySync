@@ -23,6 +23,14 @@ router.use(authenticateTenant);
 
 const STOCK_WRITE = ['pharmacy.stock', 'inventory.manage'];
 const STOCK_READ = ['pharmacy.view', 'inventory.view', 'pharmacy.stock', 'inventory.manage'];
+/** Item filter for a search box: code prefix, name, generic name, brand or exact barcode. */
+export const itemSearch = (q: string) => ({ $or: [{ code: new RegExp(`^${escapeRegex(q.toUpperCase())}`) }, { name: new RegExp(escapeRegex(q), 'i') }, { genericName: new RegExp(escapeRegex(q), 'i') }, { brand: new RegExp(escapeRegex(q), 'i') }, { barcode: q }] });
+const searchTerm = (req: Request) => String(req.query.q ?? '').trim().slice(0, 80);
+/** Ids of items matching the search (capped), for filtering batches and movements. */
+async function matchingItemIds(req: Request, q: string) {
+  return (await req.tenant!.models.Item.find(itemSearch(q)).select('_id').limit(2000).lean()).map((i) => i._id);
+}
+
 /** Ward nurses search the drug list (with stock) to chart doses. */
 const DRUG_SEARCH = [...STOCK_READ, 'prescription.create', 'nursing.view', 'nursing.record'];
 
@@ -59,7 +67,7 @@ router.get(
     const m = req.tenant!.models;
     const q = String(req.query.q ?? '').trim();
     const filter: Record<string, unknown> = req.query.all === 'true' ? {} : { active: true };
-    if (q) filter.$or = [{ code: new RegExp(`^${escapeRegex(q.toUpperCase())}`) }, { name: new RegExp(escapeRegex(q), 'i') }, { genericName: new RegExp(escapeRegex(q), 'i') }, { brand: new RegExp(escapeRegex(q), 'i') }, { barcode: q }];
+    if (q) Object.assign(filter, itemSearch(q));
     if (req.query.category) filter.category = String(req.query.category);
     const items = await m.Item.find(filter).sort({ name: 1 }).limit(Math.min(500, Number(req.query.limit) || 100)).lean();
     // Stock at one location (e.g. the pharmacy counter) when asked, otherwise across the branch.
@@ -148,6 +156,8 @@ router.get(
     const loc = await location(req, req.query.locationId);
     const filter: Record<string, unknown> = { locationId: loc._id, quantity: { $gt: 0 } };
     if (req.query.itemId) filter.itemId = oid(req.query.itemId, 'Item');
+    const q = searchTerm(req);
+    if (q) filter.$or = [{ itemId: { $in: await matchingItemIds(req, q) } }, { batchNumber: new RegExp(escapeRegex(q), 'i') }];
     res.json({ success: true, data: await req.tenant!.models.Batch.find(filter).populate('itemId', 'code name unit strength form').sort({ expiryDate: 1 }).lean() });
   }),
 );
@@ -161,8 +171,11 @@ router.get(
     const locs = loc ? [loc._id] : (await m.StockLocation.find(req.branch ? { branchId: req.branch.id } : branchFilter(req)).select('_id').lean()).map((l) => l._id);
     const items = await m.Item.find({ active: true }).sort({ name: 1 }).lean();
     const soh = await stockOnHand(m, { locationIds: locs });
-    const rows = items.map((i) => ({ _id: i._id, code: i.code, name: i.name, unit: i.unit, category: i.category, reorderLevel: i.reorderLevel, ...(soh.get(String(i._id)) ?? { onHand: 0, usable: 0, expired: 0, value: 0 }) }));
-    res.json({ success: true, data: rows.map((r) => ({ ...r, value: round2(r.value), lowStock: r.usable <= (r.reorderLevel ?? 0) })), meta: { totalValue: round2(rows.reduce((s, r) => s + r.value, 0)), lowStock: rows.filter((r) => r.usable <= (r.reorderLevel ?? 0) && (r.reorderLevel ?? 0) > 0).length } });
+    const rows = items.map((i) => ({ _id: i._id, code: i.code, name: i.name, genericName: i.genericName, brand: i.brand, barcode: i.barcode, unit: i.unit, category: i.category, reorderLevel: i.reorderLevel, ...(soh.get(String(i._id)) ?? { onHand: 0, usable: 0, expired: 0, value: 0 }) }));
+    // The search narrows the list; the totals above it stay for the whole location.
+    const q = searchTerm(req).toLowerCase();
+    const shown = q ? rows.filter((r) => r.code.toLowerCase().startsWith(q) || [r.name, r.genericName, r.brand].some((x) => x?.toLowerCase().includes(q)) || r.barcode === searchTerm(req)) : rows;
+    res.json({ success: true, data: shown.map(({ genericName: _g, brand: _b, barcode: _c, ...r }) => ({ ...r, value: round2(r.value), lowStock: r.usable <= (r.reorderLevel ?? 0) })), meta: { totalValue: round2(rows.reduce((s, r) => s + r.value, 0)), lowStock: rows.filter((r) => r.usable <= (r.reorderLevel ?? 0) && (r.reorderLevel ?? 0) > 0).length } });
   }),
 );
 
@@ -174,7 +187,8 @@ router.get(
     const m = req.tenant!.models;
     // Stock at one location (e.g. the pharmacy counter) when asked, otherwise across the branch.
     const locs = req.query.locationId ? [await location(req, req.query.locationId)] : await m.StockLocation.find(req.branch ? { branchId: req.branch.id } : branchFilter(req)).select('_id').lean();
-    const rows = await m.Batch.find({ locationId: { $in: locs.map((l) => l._id) }, quantity: { $gt: 0 }, expiryDate: { $lte: new Date(Date.now() + days * 86400_000) } }).populate('itemId', 'code name unit').populate('locationId', 'name').sort({ expiryDate: 1 }).lean();
+    const q = searchTerm(req);
+    const rows = await m.Batch.find({ locationId: { $in: locs.map((l) => l._id) }, quantity: { $gt: 0 }, expiryDate: { $lte: new Date(Date.now() + days * 86400_000) }, ...(q ? { $or: [{ itemId: { $in: await matchingItemIds(req, q) } }, { batchNumber: new RegExp(escapeRegex(q), 'i') }] } : {}) }).populate('itemId', 'code name unit').populate('locationId', 'name').sort({ expiryDate: 1 }).lean();
     res.json({ success: true, data: rows });
   }),
 );
@@ -188,6 +202,8 @@ router.get(
     if (req.query.itemId) filter.itemId = oid(req.query.itemId, 'Item');
     if (req.query.type) filter.type = String(req.query.type);
     if (req.query.from || req.query.to) filter.createdAt = dayRange(req.query.from, req.query.to);
+    const q = searchTerm(req);
+    if (q) filter.$or = [{ itemId: { $in: await matchingItemIds(req, q) } }, { reference: new RegExp(escapeRegex(q), 'i') }, { reason: new RegExp(escapeRegex(q), 'i') }];
     const m = req.tenant!.models;
     const [items, total] = await Promise.all([m.StockMovement.find(filter).populate('itemId', 'code name').sort({ createdAt: -1 }).skip(skip).limit(limit).lean(), m.StockMovement.countDocuments(filter)]);
     res.json({ success: true, data: items, meta: { page, limit, total } });

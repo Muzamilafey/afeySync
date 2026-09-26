@@ -6,7 +6,7 @@ import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { Plus, Trash2 } from 'lucide-react';
 import { api } from '@/services/api';
 import { useCan } from '@/hooks/useMe';
-import { Badge, Button, Card, ErrorText, Field, Input, Loading, Modal, PageHeader, Select, statusTone, Table, Tabs, Td } from '@/components/ui';
+import { Badge, Button, Card, ErrorText, Field, Input, Loading, Modal, PageHeader, SearchInput, Select, statusTone, Table, Tabs, Td } from '@/components/ui';
 import { fmtDateTime, money } from '@/lib/utils';
 import { ItemPicker } from '@/features/pharmacy/ItemPicker';
 import type { Item, Location } from '@/features/pharmacy/types';
@@ -16,6 +16,7 @@ interface PO { _id: string; poNumber: string; status: string; total: number; cre
 
 export default function ProcurementPage() {
   const can = useCan();
+  const [search, setSearch] = useState('');
   const qc = useQueryClient();
   const [tab, setTab] = useState<'pos' | 'suppliers'>('pos');
   const [modal, setModal] = useState<'po' | 'supplier' | null>(null);
@@ -32,6 +33,10 @@ export default function ProcurementPage() {
   const createPo = useMutation({ mutationFn: () => api('/procurement/purchase-orders', { method: 'POST', body: { supplierId: po.supplierId, locationId: po.locationId || locs.data?.[0]?._id, notes: po.notes || undefined, items: po.lines.map((l) => ({ itemId: l.item._id, quantity: Number(l.quantity), unitCost: Number(l.unitCost) })) } }), onSuccess: refresh });
   const act = useMutation({ mutationFn: ({ id, action }: { id: string; action: string }) => api(`/procurement/purchase-orders/${id}/${action}`, { method: 'POST' }), onSuccess: refresh });
   const receive = useMutation({ mutationFn: () => api(`/procurement/purchase-orders/${grn!._id}/receive`, { method: 'POST', body: { deliveryNote: deliveryNote || undefined, lines: Object.entries(grnLines).filter(([, l]) => l.quantity && l.batchNumber && l.expiryDate).map(([itemId, l]) => ({ itemId, batchNumber: l.batchNumber, expiryDate: l.expiryDate, quantity: Number(l.quantity) })) } }), onSuccess: refresh });
+  const term = search.trim().toLowerCase();
+  const has = (...xs: Array<string | number | undefined | null>) => !term || xs.some((x) => x != null && String(x).toLowerCase().includes(term));
+  const shownPos = (pos.data ?? []).filter((p) => has(p.poNumber, p.supplierId?.name, p.locationId?.name, p.status, ...p.items.map((i) => i.itemName)));
+  const shownSuppliers = (suppliers.data ?? []).filter((s) => has(s.name, s.contactPerson, s.phone, s.email, s.kraPin));
   return (
     <>
       <PageHeader title="Procurement" crumbs={['Procurement']} actions={<>
@@ -39,11 +44,12 @@ export default function ProcurementPage() {
         {can('procurement.manage') && (tab === 'pos' ? <Button onClick={() => setModal('po')}><Plus className="h-4 w-4" /> Purchase order</Button> : <Button onClick={() => setModal('supplier')}><Plus className="h-4 w-4" /> Supplier</Button>)}
       </>} />
       <Tabs value={tab} onChange={setTab} tabs={[{ key: 'pos', label: 'Purchase orders' }, { key: 'suppliers', label: 'Suppliers' }]} />
+      <SearchInput className="mb-3" value={search} onChange={setSearch} placeholder={tab === 'pos' ? 'Search PO number, supplier, location or item' : 'Search supplier, contact, phone, email or KRA PIN'} />
       <ErrorText error={act.error} />
       <Card>
         {tab === 'pos' && (pos.isLoading ? <Loading /> : (
-          <Table head={['PO', 'Supplier', 'Deliver to', 'Items', 'Total', 'Status', '']} empty={(pos.data ?? []).length === 0}>
-            {pos.data?.map((p) => (
+          <Table head={['PO', 'Supplier', 'Deliver to', 'Items', 'Total', 'Status', '']} empty={shownPos.length === 0}>
+            {shownPos.map((p) => (
               <tr key={p._id}>
                 <Td className="font-mono text-xs">{p.poNumber}<span className="muted block">{fmtDateTime(p.createdAt)}</span></Td>
                 <Td>{p.supplierId?.name}</Td><Td>{p.locationId?.name}</Td>
@@ -60,7 +66,7 @@ export default function ProcurementPage() {
         ))}
         {tab === 'suppliers' && (
           <Table head={['Supplier', 'Contact', 'Phone', 'Email', 'KRA PIN', 'Status']}>
-            {suppliers.data?.map((s) => <tr key={s._id}><Td className="font-medium">{s.name}</Td><Td>{s.contactPerson}</Td><Td>{s.phone}</Td><Td>{s.email}</Td><Td>{s.kraPin}</Td><Td><Badge tone={s.active ? 'green' : 'gray'}>{s.active ? 'active' : 'inactive'}</Badge></Td></tr>)}
+            {shownSuppliers.map((s) => <tr key={s._id}><Td className="font-medium">{s.name}</Td><Td>{s.contactPerson}</Td><Td>{s.phone}</Td><Td>{s.email}</Td><Td>{s.kraPin}</Td><Td><Badge tone={s.active ? 'green' : 'gray'}>{s.active ? 'active' : 'inactive'}</Badge></Td></tr>)}
           </Table>
         )}
       </Card>
