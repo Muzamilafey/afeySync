@@ -171,6 +171,7 @@ export default function AdmissionPage({ params }: { params: Promise<{ id: string
         </Card>
       )}
       {tab === 'orders' && (a.visitId ? <VisitOrders visitId={a.visitId} patientId={p._id} open={active} /> : <p className="muted">No linked visit.</p>)}
+      {tab === 'discharge' && active && can('prescription.create') && <div className="mb-4"><PrescriptionPanel admissionId={a._id} patientId={p._id} open={active} purpose="discharge" /></div>}
       {tab === 'discharge' && (
         <Card>
           {active && can('inpatient.discharge') ? (
@@ -181,7 +182,7 @@ export default function AdmissionPage({ params }: { params: Promise<{ id: string
                 {a.admissionDiagnosis && dis.finalDiagnosis !== a.admissionDiagnosis && <button type="button" className="text-xs text-brand-600 hover:underline" onClick={() => setDis({ ...dis, finalDiagnosis: a.admissionDiagnosis })}>Same as admission: {a.admissionDiagnosis}</button>}
               </div>
               <Field label="Discharge summary" className="col-span-full"><Textarea rows={6} value={dis.summary} onChange={(e) => setDis({ ...dis, summary: e.target.value })} /></Field>
-              <Field label="Discharge medications"><Textarea rows={3} value={dis.dischargeMedications} onChange={(e) => setDis({ ...dis, dischargeMedications: e.target.value })} /></Field>
+              <Field label="Discharge medications (notes)" hint="Take-home drugs prescribed above are dispensed and billed by the pharmacy; use this for other instructions."><Textarea rows={3} value={dis.dischargeMedications} onChange={(e) => setDis({ ...dis, dischargeMedications: e.target.value })} /></Field>
               <Field label="Follow-up"><Textarea rows={3} value={dis.followUp} onChange={(e) => setDis({ ...dis, followUp: e.target.value })} /></Field>
               <div className="col-span-full"><Button onClick={() => post.mutate({ path: 'discharge', body: { ...dis, dischargeMedications: dis.dischargeMedications || undefined, followUp: dis.followUp || undefined } })} disabled={dis.summary.trim().length < 10 || dis.finalDiagnosis.trim().length < 2} loading={post.isPending}>Discharge (bed-day charges posted)</Button>{(dis.summary.trim().length < 10 || dis.finalDiagnosis.trim().length < 2) && <p className="muted mt-1 text-xs">To discharge: {[dis.finalDiagnosis.trim().length < 2 && 'choose the final diagnosis', dis.summary.trim().length < 10 && `write the discharge summary (at least 10 characters${dis.summary.trim() ? `, ${10 - dis.summary.trim().length} more` : ''})`].filter(Boolean).join(' and ')}.</p>}</div>
             </div>

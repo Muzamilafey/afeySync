@@ -10,6 +10,13 @@ const itemSchema = new Schema(
     form: String,
     strength: String,
     unit: { type: String, default: 'unit' },
+    /** Brand / trade name and maker, e.g. Panadol by GSK (the generic is in genericName). */
+    brand: String,
+    manufacturer: String,
+    /** How the item is bought: a pack of `packSize` units (e.g. box of 100 tablets). Stock is always kept in units. */
+    packUnit: String,
+    packSize: { type: Number, min: 1, default: 1 },
+    barcode: { type: String, index: true, sparse: true },
     category: { type: String, enum: ['drug', 'consumable', 'reagent', 'equipment', 'other'], default: 'drug', index: true },
     isDrug: { type: Boolean, default: true },
     controlled: { type: Boolean, default: false },
@@ -91,6 +98,8 @@ const prescriptionSchema = new Schema(
     status: { type: String, enum: ['pending', 'partially_dispensed', 'dispensed', 'cancelled'], default: 'pending', index: true },
     /** Ward (inpatient) requests: how soon pharmacy should supply, and where to. */
     urgency: { type: String, enum: ['routine', 'urgent', 'stat'], default: 'routine' },
+    /** 'discharge': take-home drugs prescribed when the patient leaves the ward. */
+    purpose: { type: String, enum: ['treatment', 'discharge'], default: 'treatment' },
     ward: { wardId: ObjectId, name: String, bedNumber: String },
     /** Ward confirms it received what pharmacy dispensed (one entry per receipt). */
     receipts: [{ _id: false, at: Date, by: ObjectId, byName: String, dispenseCount: Number, note: String }],
@@ -149,6 +158,89 @@ const purchaseOrderSchema = new Schema(
   { timestamps: true },
 );
 
+/** A counter (over-the-counter) sale in the pharmacy: walk-in customers and external prescriptions. */
+const pharmacySaleSchema = new Schema(
+  {
+    saleNumber: { type: String, required: true, unique: true },
+    branchId: { type: ObjectId, ref: 'Branch', required: true, index: true },
+    locationId: { type: ObjectId, ref: 'StockLocation', required: true },
+    patientId: { type: ObjectId, ref: 'Patient', required: true, index: true },
+    walkIn: { type: Boolean, default: false },
+    customerName: String,
+    customerPhone: String,
+    externalPrescription: { prescriber: String, facility: String, reference: String },
+    lines: [
+      {
+        itemId: { type: ObjectId, ref: 'Item', required: true },
+        name: String,
+        quantity: { type: Number, required: true, min: 1 },
+        unitPrice: Number,
+        amount: Number,
+        returnedQuantity: { type: Number, default: 0 },
+        batches: [{ _id: false, batchId: ObjectId, batchNumber: String, expiryDate: Date, quantity: Number }],
+      },
+    ],
+    total: Number,
+    invoiceId: { type: ObjectId, ref: 'Invoice' },
+    invoiceNumber: String,
+    paymentMethod: String,
+    status: { type: String, enum: ['awaiting_payment', 'paid', 'returned'], default: 'awaiting_payment', index: true },
+    returns: [{ _id: false, at: Date, byName: String, reason: String, lines: [{ _id: false, lineId: ObjectId, quantity: Number, amount: Number }] }],
+    soldBy: ObjectId,
+    soldByName: String,
+  },
+  { timestamps: true },
+);
+pharmacySaleSchema.index({ createdAt: -1 });
+
+/** A department (ward, lab, theatre, pharmacy) asks the store for items; a manager approves; the store issues. */
+const requisitionSchema = new Schema(
+  {
+    reqNumber: { type: String, required: true, unique: true },
+    branchId: { type: ObjectId, ref: 'Branch', required: true, index: true },
+    fromLocationId: { type: ObjectId, ref: 'StockLocation', required: true },
+    toLocationId: { type: ObjectId, ref: 'StockLocation', required: true },
+    items: [{ itemId: { type: ObjectId, ref: 'Item', required: true }, name: String, unit: String, quantity: { type: Number, required: true, min: 1 }, approvedQuantity: Number, issuedQuantity: { type: Number, default: 0 } }],
+    status: { type: String, enum: ['pending', 'approved', 'rejected', 'partially_issued', 'issued', 'received', 'cancelled'], default: 'pending', index: true },
+    urgency: { type: String, enum: ['routine', 'urgent'], default: 'routine' },
+    notes: String,
+    requestedBy: ObjectId,
+    requestedByName: String,
+    decidedBy: ObjectId,
+    decidedByName: String,
+    decidedAt: Date,
+    rejectionReason: String,
+    issues: [{ _id: false, at: Date, byName: String, reference: String, lines: [{ _id: false, itemId: ObjectId, batchNumber: String, quantity: Number }] }],
+    receivedByName: String,
+    receivedAt: Date,
+  },
+  { timestamps: true },
+);
+requisitionSchema.index({ createdAt: -1 });
+
+/** Stock take: the system quantity of every batch at a location is frozen on a sheet, counted, then approved. */
+const stockTakeSchema = new Schema(
+  {
+    takeNumber: { type: String, required: true, unique: true },
+    branchId: { type: ObjectId, ref: 'Branch', required: true, index: true },
+    locationId: { type: ObjectId, ref: 'StockLocation', required: true },
+    category: String,
+    status: { type: String, enum: ['counting', 'submitted', 'approved', 'cancelled'], default: 'counting', index: true },
+    lines: [{ itemId: { type: ObjectId, ref: 'Item' }, code: String, name: String, unit: String, batchId: ObjectId, batchNumber: String, expiryDate: Date, systemQuantity: Number, countedQuantity: Number, unitCost: Number, note: String }],
+    notes: String,
+    createdBy: ObjectId,
+    createdByName: String,
+    submittedBy: ObjectId,
+    submittedByName: String,
+    submittedAt: Date,
+    approvedBy: ObjectId,
+    approvedByName: String,
+    approvedAt: Date,
+  },
+  { timestamps: true },
+);
+stockTakeSchema.index({ createdAt: -1 });
+
 export const pharmacySchemas = {
   Item: itemSchema,
   StockLocation: locationSchema,
@@ -157,4 +249,7 @@ export const pharmacySchemas = {
   Prescription: prescriptionSchema,
   Supplier: supplierSchema,
   PurchaseOrder: purchaseOrderSchema,
+  PharmacySale: pharmacySaleSchema,
+  StockRequisition: requisitionSchema,
+  StockTake: stockTakeSchema,
 };

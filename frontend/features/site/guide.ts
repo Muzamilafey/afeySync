@@ -1,7 +1,7 @@
 import {
   Archive, Baby, BarChart3, BedDouble, Boxes, CalendarDays, ClipboardList, CreditCard, FlaskConical, HeartHandshake, HeartPulse,
   IdCard, KeyRound, Landmark, LifeBuoy, MessageSquareText, Pill, Printer, Receipt, Rocket, ScanLine, Settings, ShieldCheck, ShoppingCart,
-  Smile, Stethoscope, UserPlus, UserRound, Users, Wallet, type LucideIcon,
+  Smile, Stethoscope, UserPlus, UserRound, Users, Wallet, Warehouse, ShoppingBag, FileSignature, Briefcase, type LucideIcon,
 } from 'lucide-react';
 
 /**
@@ -438,6 +438,33 @@ export const GUIDE_TOPICS: GuideTopic[] = [
       },
     ],
   },
+  {
+    slug: 'medical-reports',
+    title: 'Sick notes, medical reports and fitness certificates',
+    group: 'Clinical care',
+    icon: FileSignature,
+    summary: 'Write sick leave notes, medical reports, fitness certificates and attendance letters, signed and printed on your letterhead.',
+    who: 'Doctors, clinical officers and dentists (records officers can view and reprint)',
+    where: 'Visit or patient → Reports & certificates',
+    sections: [
+      {
+        title: 'Write a report',
+        steps: [
+          { title: 'Open the tab', text: 'Open the patient’s visit (or their record) and click the “Reports & certificates” tab.' },
+          { title: 'Choose the type', text: 'Sick leave note (first and last day off; the number of days is counted for you), medical report (for an employer, insurer, school, court or another doctor), fitness certificate (fit, fit with restrictions or not fit, and for what) or attendance letter.' },
+          { title: 'Write it', text: 'Fill in who it is addressed to, the subject and the body. Choose whether the diagnosis is shown: leave it off unless the patient agrees.' },
+          { title: 'Save or sign', text: '“Save draft” keeps it editable by you. “Sign & print” finalises it with your name, cadre and licence number and opens the printout on your letterhead.' },
+        ],
+      },
+      {
+        title: 'After signing',
+        steps: [
+          { title: 'Corrections', text: 'A signed report cannot be edited. Use “Add addendum” to add a dated correction or update; it prints with the report.' },
+          { title: 'Void', text: 'If a report was issued in error, use “Void report” with a reason. It stays on the record marked void and cannot be reprinted as valid.' },
+        ],
+      },
+    ],
+  },
 
   /* ------------------------------------------------------------------ Diagnostics & pharmacy */
   {
@@ -469,6 +496,26 @@ export const GUIDE_TOPICS: GuideTopic[] = [
           { title: 'Parameters and ranges', text: 'Use “Add parameter” for each result (numeric, options or free text) and “Add range” for normal ranges by sex and age.' },
           { title: 'Import many tests', text: 'Use “Import from Excel” to load a whole catalogue at once.' },
         ],
+      },
+      {
+        title: 'Test packages (profiles)',
+        intro: 'A package bundles several tests at one price, for example a medical check-up, an antenatal profile or a pre-employment panel.',
+        steps: [
+          { title: 'Create a package', text: 'Open “Test catalog & packages”. In the packages card enter a code, name and description, tick the tests it includes and enter the “Package price (KES)” for each price list. Click “Save package”.' },
+          { title: 'Order a package', text: 'Clinicians and the lab pick packages in the same list as single tests. The patient is charged once at the package price; each test in it still gets its own result.' },
+          { title: 'Unit or package price', text: 'A test ordered on its own is charged at its unit price. The same test inside a package is not charged again.' },
+        ],
+      },
+      {
+        title: 'Walk-in and outside requests',
+        intro: 'For patients who come straight to the lab, or who bring a request form from another doctor or facility.',
+        steps: [
+          { title: 'Start', text: 'On the Laboratory page click “Walk-in request”. Search for the patient; if they are new, register them at the front desk first.' },
+          { title: 'Who sent them', text: 'If the request came from outside, enter the requesting doctor, their facility and the form reference. It is printed on the lab report.' },
+          { title: 'Payer, tests and priority', text: 'Choose the payer (cash, insurance or corporate, with scheme and member number), pick the tests and packages and set the priority (routine, urgent or STAT).' },
+          { title: 'Register and bill', text: 'Click “Register request & bill”. The request joins the lab worklist and the charges go to the cashier. From here it works like any other request.' },
+        ],
+        tips: ['Staff need the “lab walk-in” permission. Lab technologists have it by default.'],
       },
     ],
   },
@@ -515,7 +562,58 @@ export const GUIDE_TOPICS: GuideTopic[] = [
       {
         title: 'Ward requests',
         steps: [
-          { title: 'Ward medication', text: 'Medicines ordered on the wards arrive in the pharmacy the same way. Dispense them to the ward; nurses then record each dose on the medication chart (MAR).' },
+          { title: 'Ward medication', text: 'Medicines ordered on the wards arrive in the pharmacy under “Ward requests”. Dispense them to the ward; nurses then record each dose on the medication chart (MAR).' },
+        ],
+      },
+      {
+        title: 'Discharge drugs (take-home medicines)',
+        steps: [
+          { title: 'Prescribed at discharge', text: 'When a patient is being discharged, the doctor adds take-home medicines on the admission’s Discharge tab.' },
+          { title: 'Dispense', text: 'They arrive in Pharmacy under the “Discharge drugs” tab. Dispense them as usual; they are charged to the admission bill before it is cleared.' },
+          { title: 'On the discharge summary', text: 'The printed discharge summary lists the take-home medicines with dose and duration.' },
+        ],
+      },
+      {
+        title: 'Print a prescription',
+        steps: [
+          { title: 'Prescription note', text: 'Click “Print” next to any prescription for a note on your letterhead, with the patient’s allergies, that the patient can take to another pharmacy.' },
+        ],
+      },
+    ],
+  },
+  {
+    slug: 'pharmacy-pos',
+    title: 'Pharmacy POS, returns and Z-report',
+    group: 'Diagnostics & pharmacy',
+    icon: ShoppingBag,
+    summary: 'Sell over the counter to walk-in customers and outside prescriptions, take returns and close the day with a Z-report.',
+    who: 'Pharmacists and pharmacy managers (the “pharmacy sell” permission)',
+    where: 'Pharmacy → Pharmacy POS',
+    sections: [
+      {
+        title: 'Make a sale',
+        steps: [
+          { title: 'Open the POS', text: 'Go to “Pharmacy POS” in the menu (or “Pharmacy” → “Pharmacy POS”). Choose where you are selling from under “Sell from”.' },
+          { title: 'Add medicines', text: 'Scan the barcode or type the name, brand or code. Use the + and − buttons for quantity. Prices come from the price list; items without a price cannot be sold until one is set.' },
+          { title: 'Customer', text: 'Enter the walk-in customer’s name and phone, or pick a registered patient so the sale goes on their record and their allergies are checked.' },
+          { title: 'Outside prescription', text: 'Tick “Outside prescription” to record the prescriber, their facility and the prescription reference.' },
+          { title: 'Allergy alert', text: 'If a registered patient is allergic to an item you are warned. You can only go ahead by giving a reason, which is recorded.' },
+          { title: 'Payment', text: 'Choose cash (enter “Cash received” to see the change), M-Pesa, card or bank, then “Complete sale”. Or choose “Pay at cashier” and “Send to cashier”: the customer pays at the cashier like any other bill.' },
+          { title: 'Receipt', text: 'Click “Print receipt” for a small receipt with the items, batch numbers and payment.' },
+        ],
+        tips: ['Stock is taken from the batches that expire first (FEFO), and the sale is priced on the server: the screen cannot change what the customer pays.'],
+      },
+      {
+        title: 'Returns',
+        steps: [
+          { title: 'Find the sale', text: 'Open “Sales & Z-report”, find the sale and click “Return items”.' },
+          { title: 'Return to stock', text: 'Enter the quantity for each item and a reason, then “Return to stock”. The items go back to the same batch and the refund due is shown; the cashier pays the refund.' },
+        ],
+      },
+      {
+        title: 'Close the day: Z-report and dispense summary',
+        steps: [
+          { title: 'Print the Z-report', text: 'On “Sales & Z-report” pick the date and click “Z-report”. It shows the number and value of sales, returns, collections by payment method, sales per person, the items sold and the day’s dispensing (outpatient prescriptions and ward requests, per pharmacist).' },
         ],
       },
     ],
@@ -534,14 +632,15 @@ export const GUIDE_TOPICS: GuideTopic[] = [
         steps: [
           { title: 'New item', text: 'Go to “Inventory” → “Items” → “New item”. Enter the code, name, generic name, category, form, strength and unit.' },
           { title: 'Prices', text: 'Enter the selling price for each price list (cash, SHA, insurance, foreigner) and the billing service code.' },
-          { title: 'Reorder level', text: 'Set the reorder level so the item shows under “Low stock items” before it runs out.' },
+          { title: 'Brand and pack', text: 'Enter the brand (trade name), manufacturer and barcode, and how it is bought: the pack unit (for example box) and how many units are in a pack. Stock is always counted in single units.' },
+          { title: 'Reorder level', text: 'Set the reorder level so the item shows under “Low stock items” and on the reorder list before it runs out.' },
           { title: 'Import from Excel', text: 'For a whole drug list use “Import from Excel”: download the template, fill it in and upload. Thousands of rows can be imported at once; any row with a problem is listed so you can fix it and upload again.' },
         ],
       },
       {
         title: 'Receive, move and adjust stock',
         steps: [
-          { title: 'Receive stock', text: 'Click “Receive”, choose the item and location, enter batch number, expiry date, quantity and the invoice / delivery note reference.' },
+          { title: 'Receive stock', text: 'Click “Receive”, choose the item and location, enter batch number, expiry date, quantity and the invoice / delivery note reference. Tick “In packs” to enter boxes and the cost per box; AfeySync works out the units and unit cost.' },
           { title: 'Transfer', text: 'Click “Transfer” to move stock to another location (for example from the main store to the pharmacy). Earliest-expiring stock is moved first (FEFO).' },
           { title: 'Adjust', text: 'For breakages or stock-take differences enter a quantity change (+/−) and a reason. Every adjustment is audited.' },
         ],
@@ -552,6 +651,58 @@ export const GUIDE_TOPICS: GuideTopic[] = [
           { title: 'Stock on hand and value', text: 'The top of the page shows stock value, low stock items and items with expired stock.' },
           { title: 'Batches and expiry', text: 'The “Batches” and “Expiring (90d)” tabs show what will expire soon so you can use it first.' },
           { title: 'Ledger', text: 'The “Ledger” shows every movement: receipts, dispensing, transfers and adjustments.' },
+        ],
+      },
+    ],
+  },
+  {
+    slug: 'stores',
+    title: 'Stores: requisitions, stock takes and reports',
+    group: 'Diagnostics & pharmacy',
+    icon: Warehouse,
+    summary: 'Departments request items, managers approve, the store issues; count stock with printed sheets; see how stock moved.',
+    who: 'Nurses, lab and pharmacy staff (requesting); store keepers and managers (approving, issuing and counting)',
+    where: 'Stores & requisitions',
+    sections: [
+      {
+        title: 'Request items from the store',
+        steps: [
+          { title: 'New requisition', text: 'Go to “Stores & requisitions” → “Requisitions” → “New requisition”. Choose the store to request from and the department to deliver to (for example Ward A), and mark it urgent if needed.' },
+          { title: 'Add items', text: 'Search for each item and enter the quantity in units. Add a note on why it is needed, then “Send requisition”.' },
+          { title: 'Follow it', text: 'Tick “Only mine” to see your own requests and their status: awaiting approval, approved, issued or received.' },
+        ],
+      },
+      {
+        title: 'Approve and issue',
+        steps: [
+          { title: 'Review', text: 'A store or pharmacy manager opens the requisition and clicks “Review”. Leave a quantity blank to approve what was asked, or type a smaller quantity. The person who raised a requisition cannot approve it.' },
+          { title: 'Reject', text: 'To reject, type the reason and click “Reject”. The requester sees it.' },
+          { title: 'Issue', text: 'Click “Issue from store”. Stock moves from the store to the department, earliest expiry first. You can issue part now and the rest later.' },
+          { title: 'Confirm receipt', text: 'The department clicks “Confirm received” when the items arrive. Click “Print” for a requisition and issue note with signature lines.' },
+        ],
+      },
+      {
+        title: 'Stock take (counting stock)',
+        steps: [
+          { title: 'Start', text: 'On the “Stock takes” tab click “Start stock take”, choose the location and, for a big store, one category at a time. The system quantity of every batch is frozen on the sheet.' },
+          { title: 'Print the count sheet', text: 'Click “Count sheet” to print a sheet with every item and batch and blank columns for the counted quantity. Counters write on it on the shelves.' },
+          { title: 'Enter the counts', text: 'Type each counted quantity on the screen; the variance appears straight away. Add a note for differences (for example damaged or expired). Click “Save counts” as you go.' },
+          { title: 'Submit and approve', text: 'Click “Submit for approval” when every line is counted. An inventory manager who did not submit it clicks “Approve and adjust stock”: each variance becomes an audited stock adjustment.' },
+        ],
+        tips: ['Sales and issues can go on during the count. Only the difference you counted is applied, so stock moved during the count is not lost.'],
+      },
+      {
+        title: 'Stock movement report',
+        steps: [
+          { title: 'Run it', text: 'Open “Stock movement report”, choose the dates, location and category. For each item you see the opening stock, received, issued or dispensed, adjusted and closing stock.' },
+          { title: 'Export', text: 'Click “CSV” to open it in Excel, or “Print” for a copy on your letterhead.' },
+        ],
+      },
+      {
+        title: 'Reorder and raise an LPO',
+        steps: [
+          { title: 'See what is low', text: 'The “Reorder & LPO” tab lists drugs, consumables and lab reagents at or below their reorder level, what is already on order and a suggested quantity in whole packs.' },
+          { title: 'Create the LPO', text: 'Tick the items (or “Select all”), adjust quantities and unit costs, choose the supplier and delivery store and click “Create LPO”. It becomes a draft purchase order that a procurement manager approves.' },
         ],
       },
     ],
@@ -574,7 +725,7 @@ export const GUIDE_TOPICS: GuideTopic[] = [
       {
         title: 'Purchase orders',
         steps: [
-          { title: 'Create', text: 'Under “Purchase orders” click “Purchase order”, choose the supplier and “Deliver to” location, add the items and quantities and click “Create draft PO”.' },
+          { title: 'Create', text: 'Under “Purchase orders” click “Purchase order”, choose the supplier and “Deliver to” location, add the items and quantities and click “Create draft PO”. Or click “LPO from low stock” to start from the reorder list.' },
           { title: 'Approve', text: 'A manager reviews it and clicks “Approve” (or “Cancel”).' },
           { title: 'Receive the goods', text: 'When the delivery arrives click “Receive (GRN)”, enter the delivery note, batch numbers, expiry dates and quantities received. Stock is updated straight away.' },
         ],
@@ -624,6 +775,7 @@ export const GUIDE_TOPICS: GuideTopic[] = [
         steps: [
           { title: 'Final diagnosis', text: 'Choose the final diagnosis from the diagnosis list.' },
           { title: 'Discharge summary', text: 'Write the summary, discharge medications, outcome and follow-up.' },
+          { title: 'Take-home medicines', text: 'On the Discharge tab add the discharge prescription. It goes to Pharmacy under “Discharge drugs”, is charged to the admission bill and is printed on the discharge summary.' },
           { title: 'Discharge', text: 'Click “Discharge (bed-day charges posted)”. Bed-day charges are added to the bill and the bed becomes free for cleaning.' },
           { title: 'Print', text: 'Print the discharge summary on your letterhead for the patient.' },
         ],
@@ -773,6 +925,40 @@ export const GUIDE_TOPICS: GuideTopic[] = [
           { title: 'Import from Excel', text: 'Click “Import from Excel”, download the template, fill in your services and prices and upload. Problem rows are listed for you to correct.' },
         ],
         tips: ['Prices are always worked out by the server from these lists. A bill cannot be changed by editing numbers in the browser.'],
+      },
+    ],
+  },
+  {
+    slug: 'corporates-and-schemes',
+    title: 'Corporates, insurance schemes, copay and capitation',
+    group: 'Money & claims',
+    icon: Briefcase,
+    summary: 'Set up each employer and insurance scheme once with its price list, copay and how it pays; reception just picks it at check-in.',
+    who: 'Administrators and finance (setting up); reception (picking the scheme)',
+    where: 'Corporates & Schemes',
+    sections: [
+      {
+        title: 'Set up a scheme',
+        steps: [
+          { title: 'New scheme', text: 'Go to “Corporates & Schemes” → “New scheme”. Enter a code and name, and choose Insurance scheme or Corporate (employer).' },
+          { title: 'Price list', text: 'Enter “insurance” to use your general insurance prices, “cash” for cash prices, or the scheme’s own key (for example jubilee-gold) if it has its own tariff. Set those prices on Services & Prices with “Add scheme-specific price”. A service without a scheme price uses the insurance price, then cash.' },
+          { title: 'How the scheme pays', text: 'Fee for service: the scheme is billed for each visit and you claim from it. Capitation: the scheme pays a fixed monthly fee per member, so visits are not claimed; enter the rate per member per month.' },
+          { title: 'Copay', text: 'No copay, a fixed amount per visit (for example KES 200) or a percentage of the bill. The copay is what the patient pays at the cashier.' },
+        ],
+      },
+      {
+        title: 'At check-in and at the cashier',
+        steps: [
+          { title: 'Pick the scheme', text: 'At check-in choose the payer (Insurance or Corporate), pick the scheme and enter the member or staff number. For capitation schemes a note reminds you the patient pays only the copay.' },
+          { title: 'The bill', text: 'The invoice shows the scheme, what the patient pays (copay) and what the insurer or employer covers. Under capitation, the covered part is shown as “Covered by capitation” and only the copay is due.' },
+          { title: 'Old bills stay the same', text: 'Changing a scheme later does not change bills already opened.' },
+        ],
+      },
+      {
+        title: 'Is the capitation fair? Utilisation',
+        steps: [
+          { title: 'Open utilisation', text: 'Click “Utilisation” next to a scheme and pick a month: visits, patients seen, the value of care at scheme prices, copays, and what was covered by capitation or is to be claimed.' },
+        ],
       },
     ],
   },
@@ -994,12 +1180,12 @@ export const GUIDE_TOPICS: GuideTopic[] = [
   },
   {
     slug: 'sms-and-subscription',
-    title: 'SMS credits and your AfeySync subscription',
+    title: 'SMS credits, bulk SMS and your AfeySync subscription',
     group: 'Management',
     icon: MessageSquareText,
-    summary: 'Top up SMS credits and manage your plan, quotations, invoices and payments.',
+    summary: 'Top up SMS credits, send bulk SMS to patients and manage your plan, quotations, invoices and payments.',
     who: 'Administrators and finance',
-    where: 'SMS wallet, Subscription',
+    where: 'SMS wallet, Bulk SMS, Subscription',
     sections: [
       {
         title: 'SMS credits',
@@ -1007,6 +1193,17 @@ export const GUIDE_TOPICS: GuideTopic[] = [
           { title: 'Check the balance', text: 'Go to “SMS wallet” to see your credit balance and history (welcome gift, top-ups and messages sent). One credit sends one SMS of up to 160 characters.' },
           { title: 'Top up', text: 'Click “Top up”, choose the amount and pay with M-Pesa. Credits are added when the payment is confirmed.' },
         ],
+      },
+      {
+        title: 'Bulk SMS to patients',
+        intro: 'Send health reminders and notices, such as a screening day, immunisation reminders or changed clinic hours.',
+        steps: [
+          { title: 'Write the message', text: 'Go to “Bulk SMS”. Give the campaign a name, pick a template or type your message. Type {firstName} to greet each patient by name; your facility name is added at the start.' },
+          { title: 'Choose who gets it', text: 'Filter patients by branch, sex, age, when they visited, how they paid and their scheme, or paste a list of phone numbers.' },
+          { title: 'Check recipients & cost', text: 'Click “Check recipients & cost” to see how many people will get it, who is left out (patients who declined SMS, no valid phone, duplicates), the credits needed and a preview.' },
+          { title: 'Send or schedule', text: 'Click “Send now”, or set “Send at” and “Schedule”. Follow delivery under “Sent campaigns”; “Stop unsent messages” cancels anything not yet sent.' },
+        ],
+        tips: ['Patients who said no to SMS at registration are always left out, even if you type their number.', 'A campaign is refused if the SMS wallet cannot pay for it.'],
       },
       {
         title: 'Subscription',

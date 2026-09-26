@@ -11,7 +11,7 @@ import { branchFilter, canAccessAnyBranch } from '../../middleware/branchScope';
 import { audit } from '../audit/auditService';
 import { SERVICE_CATEGORIES } from '../../models/tenant/billing';
 import { actor, dayRange, loadScoped, nextNumber, oid, round2 } from '../common/helpers';
-import { assertPayable, completePayment, openInvoiceFor, postCharge, recalcInvoice } from './billingService';
+import { assertPayable, completePayment, openInvoiceFor, postCharge, recalcInvoice, takePayment } from './billingService';
 import { randomToken } from '../../utils/crypto';
 import { forbidden } from '../../utils/errors';
 
@@ -285,25 +285,8 @@ router.post(
     const m = req.tenant!.models;
     const replay = await m.Payment.findOne({ idempotencyKey: body.idempotencyKey }).lean();
     if (replay) return res.status(200).json({ success: true, data: replay, idempotentReplay: true });
-    if (['card', 'bank', 'mpesa', 'insurance'].includes(body.method) && !body.reference) throw badRequest('A transaction reference is required for this payment method');
-    if (body.method === 'mpesa' && (await m.Payment.exists({ 'mpesa.receiptNumber': body.reference!.toUpperCase() }))) throw conflict('This M-Pesa receipt has already been used', undefined, 'DUPLICATE_RECEIPT');
     const inv = await loadScoped(req, m.Invoice, body.invoiceId, 'Invoice');
-    assertPayable(inv, body.amount);
-    const p = await m.Payment.create({
-      invoiceId: inv._id,
-      patientId: inv.patientId,
-      branchId: inv.branchId,
-      method: body.method,
-      amount: round2(body.amount),
-      reference: body.reference,
-      idempotencyKey: body.idempotencyKey,
-      status: 'pending',
-      receivedBy: req.user!.id,
-      receivedByName: req.user!.name,
-      notes: body.notes,
-      ...(body.method === 'mpesa' ? { mpesa: { receiptNumber: body.reference!.toUpperCase() } } : {}),
-    });
-    await completePayment(m, p);
+    const p = await takePayment(req, m, inv, body);
     await audit(req, { action: 'billing.payment', resource: 'payment', resourceId: String(p._id), newValue: { invoice: inv.invoiceNumber, method: body.method, amount: body.amount, receipt: p.receiptNumber } });
     res.status(201).json({ success: true, data: p });
   }),

@@ -45,6 +45,7 @@ const visitSchema = new Schema(
     payer: {
       type: { type: String, enum: ['cash', 'sha', 'insurance', 'corporate'], default: 'cash' },
       scheme: String,
+      schemeId: { type: ObjectId, ref: 'PayerScheme' },
       memberNumber: String,
       shaEligibilityCheckId: ObjectId,
       shaVisitConsentId: ObjectId,
@@ -183,6 +184,47 @@ const referralSchema = new Schema(
   { timestamps: true },
 );
 
+export const MEDICAL_REPORT_TYPES = ['sick_leave', 'medical_report', 'fitness', 'attendance'] as const;
+
+/**
+ * Medical reports: sick notes, medical reports ("to whom it may concern"), fitness certificates and
+ * attendance letters. Like consultations, a signed (final) report is never edited; corrections are
+ * addenda, and a wrong report is voided with a reason and stays on record.
+ */
+const medicalReportSchema = new Schema(
+  {
+    reportNumber: { type: String, required: true, unique: true },
+    type: { type: String, enum: MEDICAL_REPORT_TYPES, required: true },
+    patientId: { type: ObjectId, ref: 'Patient', required: true, index: true },
+    visitId: { type: ObjectId, ref: 'Visit', index: true },
+    admissionId: { type: ObjectId, ref: 'Admission' },
+    branchId: { type: ObjectId, ref: 'Branch', required: true, index: true },
+    addressedTo: String,
+    subject: String,
+    body: String,
+    diagnosis: String,
+    includeDiagnosis: { type: Boolean, default: false },
+    restFrom: Date,
+    restTo: Date,
+    restDays: Number,
+    fitness: { type: String, enum: ['fit', 'fit_with_restrictions', 'unfit'] },
+    fitnessPurpose: String,
+    restrictions: String,
+    reviewDate: Date,
+    status: { type: String, enum: ['draft', 'final', 'void'], default: 'draft', index: true },
+    authorId: { type: ObjectId, required: true },
+    authorName: String,
+    authorCadre: String,
+    authorLicence: String,
+    finalizedAt: Date,
+    voidReason: String,
+    voidedAt: Date,
+    voidedByName: String,
+    addenda: [{ _id: false, text: String, by: ObjectId, byName: String, at: Date }],
+  },
+  { timestamps: true },
+);
+
 export const clinicalSchemas = {
   Appointment: appointmentSchema,
   Visit: visitSchema,
@@ -191,5 +233,6 @@ export const clinicalSchemas = {
   Consultation: consultationSchema,
   Procedure: procedureSchema,
   Referral: referralSchema,
+  MedicalReport: medicalReportSchema,
 };
 export { Mixed };

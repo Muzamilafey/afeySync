@@ -1,6 +1,7 @@
 'use client';
 
 import { useState } from 'react';
+import Link from 'next/link';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { Plus, Trash2 } from 'lucide-react';
 import { api } from '@/services/api';
@@ -33,7 +34,10 @@ export default function ProcurementPage() {
   const receive = useMutation({ mutationFn: () => api(`/procurement/purchase-orders/${grn!._id}/receive`, { method: 'POST', body: { deliveryNote: deliveryNote || undefined, lines: Object.entries(grnLines).filter(([, l]) => l.quantity && l.batchNumber && l.expiryDate).map(([itemId, l]) => ({ itemId, batchNumber: l.batchNumber, expiryDate: l.expiryDate, quantity: Number(l.quantity) })) } }), onSuccess: refresh });
   return (
     <>
-      <PageHeader title="Procurement" crumbs={['Procurement']} actions={can('procurement.manage') && (tab === 'pos' ? <Button onClick={() => setModal('po')}><Plus className="h-4 w-4" /> Purchase order</Button> : <Button onClick={() => setModal('supplier')}><Plus className="h-4 w-4" /> Supplier</Button>)} />
+      <PageHeader title="Procurement" crumbs={['Procurement']} actions={<>
+        {tab === 'pos' && <Link href="/inventory/stores?tab=reorder"><Button variant="outline">LPO from low stock</Button></Link>}
+        {can('procurement.manage') && (tab === 'pos' ? <Button onClick={() => setModal('po')}><Plus className="h-4 w-4" /> Purchase order</Button> : <Button onClick={() => setModal('supplier')}><Plus className="h-4 w-4" /> Supplier</Button>)}
+      </>} />
       <Tabs value={tab} onChange={setTab} tabs={[{ key: 'pos', label: 'Purchase orders' }, { key: 'suppliers', label: 'Suppliers' }]} />
       <ErrorText error={act.error} />
       <Card>

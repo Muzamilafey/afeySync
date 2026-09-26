@@ -1,0 +1,279 @@
+'use client';
+
+import Link from 'next/link';
+import { useEffect, useMemo, useRef, useState } from 'react';
+import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
+import { Minus, Plus, Printer, RotateCcw, ScanLine, ShoppingCart, Trash2, UserRound, Users } from 'lucide-react';
+import { api, ApiError } from '@/services/api';
+import { useCan } from '@/hooks/useMe';
+import { Alert, Badge, Button, Card, ErrorText, Field, Input, Loading, Modal, PageHeader, Select, Table, Tabs, Td } from '@/components/ui';
+import { PatientPicker } from '@/features/patients/PatientPicker';
+import { cn, fmtDateTime } from '@/lib/utils';
+import type { Item, Location } from '@/features/pharmacy/types';
+
+type Tab = 'sell' | 'sales';
+interface CartLine { item: Item; quantity: number }
+interface Sale { _id: string; saleNumber: string; status: 'awaiting_payment' | 'paid' | 'returned'; customerName?: string; customerPhone?: string; walkIn: boolean; total: number; invoiceNumber: string; soldByName?: string; createdAt: string; lines: Array<{ _id: string; name: string; quantity: number; unitPrice: number; amount: number; returnedQuantity?: number }> }
+type Patient = Parameters<typeof PatientPicker>[0]['value'];
+const money = (n: number) => `KES ${n.toLocaleString('en-KE', { minimumFractionDigits: 0, maximumFractionDigits: 2 })}`;
+const newKey = () => `pos-${Date.now()}-${Math.random().toString(36).slice(2, 10)}`;
+
+function Sell({ canPay }: { canPay: boolean }) {
+  const qc = useQueryClient();
+  const locs = useQuery({ queryKey: ['locations'], queryFn: async () => (await api<Location[]>('/pharmacy/locations')).data });
+  const [locationId, setLocationId] = useState('');
+  const loc = locationId || locs.data?.find((l) => l.type === 'pharmacy')?._id || locs.data?.[0]?._id || '';
+  const [q, setQ] = useState('');
+  const search = useQuery({ queryKey: ['pos-items', loc, q], enabled: !!loc, queryFn: async () => (await api<Item[]>('/pharmacy/items', { query: { q: q || undefined, locationId: loc, category: 'drug', limit: 40 } })).data });
+  const [cart, setCart] = useState<CartLine[]>([]);
+  const [who, setWho] = useState<'walkin' | 'patient'>('walkin');
+  const [patient, setPatient] = useState<Patient>(null);
+  const [customer, setCustomer] = useState({ name: '', phone: '' });
+  const [rx, setRx] = useState({ show: false, prescriber: '', facility: '', reference: '' });
+  const [pay, setPay] = useState<{ method: 'cash' | 'mpesa' | 'card' | 'bank' | 'later'; tendered: string; reference: string }>({ method: canPay ? 'cash' : 'later', tendered: '', reference: '' });
+  const [override, setOverride] = useState('');
+  const [done, setDone] = useState<{ sale: Sale; receiptNumber?: string } | null>(null);
+  const searchRef = useRef<HTMLInputElement>(null);
+  useEffect(() => searchRef.current?.focus(), []);
+
+  const nationality = (patient as { nationality?: string } | null)?.nationality;
+  const priceList = who === 'patient' && nationality && !/kenya/i.test(nationality) ? 'foreigner' : 'cash';
+  const priceOf = (i: Item) => i.prices?.[priceList] ?? i.prices?.cash;
+  const total = useMemo(() => cart.reduce((s, l) => s + (priceOf(l.item) ?? 0) * l.quantity, 0), [cart, priceList]); // eslint-disable-line react-hooks/exhaustive-deps
+  const add = (item: Item) => {
+    setCart((c) => (c.some((l) => l.item._id === item._id) ? c.map((l) => (l.item._id === item._id ? { ...l, quantity: l.quantity + 1 } : l)) : [...c, { item, quantity: 1 }]));
+    setQ('');
+    searchRef.current?.focus();
+  };
+  const setQty = (id: string, quantity: number) => setCart((c) => c.map((l) => (l.item._id === id ? { ...l, quantity: Math.max(1, Math.floor(quantity) || 1) } : l)));
+
+  const sell = useMutation({
+    mutationFn: async () =>
+      (await api<{ sale: Sale; receiptNumber?: string }>('/pharmacy/sales', {
+        method: 'POST',
+        body: {
+          locationId: loc,
+          patientId: who === 'patient' ? patient?._id : undefined,
+          customerName: who === 'walkin' ? customer.name : undefined,
+          customerPhone: who === 'walkin' ? customer.phone || undefined : undefined,
+          externalPrescription: rx.show && (rx.prescriber || rx.facility || rx.reference) ? { prescriber: rx.prescriber, facility: rx.facility, reference: rx.reference } : undefined,
+          lines: cart.map((l) => ({ itemId: l.item._id, quantity: l.quantity })),
+          overrideAllergy: override ? { reason: override } : undefined,
+          payment: pay.method !== 'later' ? { method: pay.method, reference: pay.method === 'cash' ? undefined : pay.reference, idempotencyKey: newKey() } : undefined,
+        },
+      })).data,
+    onSuccess: (r) => { setDone(r); setCart([]); setCustomer({ name: '', phone: '' }); setPatient(null); setRx({ show: false, prescriber: '', facility: '', reference: '' }); setOverride(''); setPay((p) => ({ ...p, tendered: '', reference: '' })); qc.invalidateQueries({ queryKey: ['pos-items'] }); qc.invalidateQueries({ queryKey: ['pos-sales'] }); },
+  });
+  const allergyAlert = sell.error instanceof ApiError && sell.error.code === 'ALLERGY_ALERT';
+  const change = pay.method === 'cash' && pay.tendered ? Number(pay.tendered) - total : null;
+  const ready = cart.length > 0 && !!loc && (who === 'walkin' ? customer.name.trim().length > 1 : !!patient) && (pay.method === 'cash' || pay.method === 'later' || pay.reference.trim().length > 3) && (change === null || change >= 0);
+
+  return (
+    <div className="grid gap-4 lg:grid-cols-[1.2fr_1fr]">
+      <div className="space-y-4">
+        <Card>
+          <div className="grid gap-3 sm:grid-cols-[1fr_200px]">
+            <label className="relative block">
+              <ScanLine className="muted pointer-events-none absolute top-2.5 left-3 h-4 w-4" />
+              <input
+                ref={searchRef}
+                className="field pl-9"
+                value={q}
+                onChange={(e) => setQ(e.target.value)}
+                onKeyDown={(e) => { if (e.key === 'Enter' && search.data?.length) { e.preventDefault(); const exact = search.data.find((i) => i.barcode === q.trim() || i.code === q.trim().toUpperCase()); add(exact ?? search.data[0]); } }}
+                placeholder="Scan a barcode or search by name, brand or code, then press Enter"
+              />
+            </label>
+            <Select value={loc} onChange={(e) => setLocationId(e.target.value)} aria-label="Sell from">{locs.data?.map((l) => <option key={l._id} value={l._id}>{l.name}</option>)}</Select>
+          </div>
+          <div className="mt-3 max-h-[420px] overflow-y-auto">
+            {search.isLoading ? <Loading /> : (
+              <ul className="divide-y divide-[var(--border)]">
+                {(search.data ?? []).map((i) => {
+                  const price = priceOf(i);
+                  const usable = i.stock?.usable ?? 0;
+                  return (
+                    <li key={i._id}>
+                      <button type="button" disabled={usable < 1 || price == null} onClick={() => add(i)} className="flex w-full items-center gap-3 px-1 py-2 text-left hover:bg-[var(--surface-2)] disabled:cursor-not-allowed disabled:opacity-50">
+                        <div className="min-w-0 flex-1">
+                          <p className="truncate text-sm font-medium">{i.name}{i.strength ? ` ${i.strength}` : ''}</p>
+                          <p className="muted truncate text-xs">{[i.genericName, i.brand, i.form, i.code].filter(Boolean).join(' · ')}</p>
+                        </div>
+                        <span className={cn('text-xs', usable > 0 ? 'text-emerald-600' : 'text-red-600')}>{usable} {i.unit}</span>
+                        <span className="w-24 text-right text-sm font-semibold">{price != null ? money(price) : <span className="text-xs text-red-600">No price</span>}</span>
+                      </button>
+                    </li>
+                  );
+                })}
+                {search.data?.length === 0 && <li className="muted py-6 text-center text-sm">No medicines found.</li>}
+              </ul>
+            )}
+          </div>
+        </Card>
+      </div>
+
+      <div className="space-y-4">
+        <Card title={<span className="flex items-center gap-2"><ShoppingCart className="h-4 w-4" /> Sale</span>}>
+          {cart.length === 0 ? <p className="muted py-6 text-center text-sm">Scan or pick medicines to start a sale.</p> : (
+            <ul className="divide-y divide-[var(--border)]">
+              {cart.map((l) => {
+                const price = priceOf(l.item) ?? 0;
+                const over = l.quantity > (l.item.stock?.usable ?? 0);
+                return (
+                  <li key={l.item._id} className="flex items-center gap-2 py-2">
+                    <div className="min-w-0 flex-1">
+                      <p className="truncate text-sm font-medium">{l.item.name}{l.item.strength ? ` ${l.item.strength}` : ''}</p>
+                      <p className={cn('text-xs', over ? 'text-red-600' : 'muted')}>{money(price)} × {l.quantity}{over ? ` · only ${l.item.stock?.usable ?? 0} in stock` : ''}</p>
+                    </div>
+                    <button type="button" className="rounded p-1 hover:bg-[var(--surface-2)]" onClick={() => setQty(l.item._id, l.quantity - 1)} aria-label="Less"><Minus className="h-4 w-4" /></button>
+                    <input className="field w-16 text-center" value={l.quantity} onChange={(e) => setQty(l.item._id, Number(e.target.value))} inputMode="numeric" aria-label="Quantity" />
+                    <button type="button" className="rounded p-1 hover:bg-[var(--surface-2)]" onClick={() => setQty(l.item._id, l.quantity + 1)} aria-label="More"><Plus className="h-4 w-4" /></button>
+                    <span className="w-24 text-right text-sm font-semibold">{money(price * l.quantity)}</span>
+                    <button type="button" className="rounded p-1 text-red-600 hover:bg-[var(--surface-2)]" onClick={() => setCart((c) => c.filter((x) => x.item._id !== l.item._id))} aria-label="Remove"><Trash2 className="h-4 w-4" /></button>
+                  </li>
+                );
+              })}
+            </ul>
+          )}
+          <div className="mt-3 flex items-center justify-between border-t border-[var(--border)] pt-3">
+            <span className="text-sm font-semibold">Total</span>
+            <span className="text-2xl font-bold">{money(total)}</span>
+          </div>
+          <p className="muted text-xs">Final prices are confirmed by the system from the {priceList === 'foreigner' ? 'foreigner' : 'cash'} price list.</p>
+        </Card>
+
+        <Card title="Customer">
+          <div className="mb-3 grid grid-cols-2 gap-2">
+            <button type="button" onClick={() => setWho('walkin')} className={cn('flex items-center justify-center gap-2 rounded-lg border px-3 py-2 text-sm', who === 'walkin' ? 'border-brand-600 bg-brand-50 font-semibold text-brand-700 dark:bg-slate-800 dark:text-emerald-300' : 'border-[var(--border)]')}><UserRound className="h-4 w-4" /> Walk-in customer</button>
+            <button type="button" onClick={() => setWho('patient')} className={cn('flex items-center justify-center gap-2 rounded-lg border px-3 py-2 text-sm', who === 'patient' ? 'border-brand-600 bg-brand-50 font-semibold text-brand-700 dark:bg-slate-800 dark:text-emerald-300' : 'border-[var(--border)]')}><Users className="h-4 w-4" /> Registered patient</button>
+          </div>
+          {who === 'walkin' ? (
+            <div className="grid gap-2 sm:grid-cols-2">
+              <Field label="Name *"><Input value={customer.name} onChange={(e) => setCustomer({ ...customer, name: e.target.value })} /></Field>
+              <Field label="Phone"><Input value={customer.phone} onChange={(e) => setCustomer({ ...customer, phone: e.target.value })} placeholder="07xx xxx xxx" /></Field>
+            </div>
+          ) : <PatientPicker value={patient} onChange={setPatient} />}
+          <label className="mt-3 flex items-center gap-2 text-sm"><input type="checkbox" checked={rx.show} onChange={(e) => setRx({ ...rx, show: e.target.checked })} /> Outside prescription</label>
+          {rx.show && (
+            <div className="mt-2 grid gap-2 sm:grid-cols-3">
+              <Input placeholder="Prescriber" value={rx.prescriber} onChange={(e) => setRx({ ...rx, prescriber: e.target.value })} />
+              <Input placeholder="Facility" value={rx.facility} onChange={(e) => setRx({ ...rx, facility: e.target.value })} />
+              <Input placeholder="Prescription no." value={rx.reference} onChange={(e) => setRx({ ...rx, reference: e.target.value })} />
+            </div>
+          )}
+        </Card>
+
+        <Card title="Payment">
+          <div className="grid grid-cols-3 gap-2 sm:grid-cols-5">
+            {(canPay ? (['cash', 'mpesa', 'card', 'bank', 'later'] as const) : (['later'] as const)).map((m) => (
+              <button key={m} type="button" onClick={() => setPay({ ...pay, method: m })} className={cn('rounded-lg border px-2 py-2 text-xs font-semibold', pay.method === m ? 'border-brand-600 bg-brand-600 text-white' : 'border-[var(--border)]')}>
+                {{ cash: 'Cash', mpesa: 'M-Pesa', card: 'Card', bank: 'Bank', later: 'Pay at cashier' }[m]}
+              </button>
+            ))}
+          </div>
+          {pay.method === 'cash' && (
+            <div className="mt-3 grid grid-cols-2 gap-2">
+              <Field label="Cash received"><Input inputMode="decimal" value={pay.tendered} onChange={(e) => setPay({ ...pay, tendered: e.target.value.replace(/[^0-9.]/g, '') })} placeholder={String(total)} /></Field>
+              <Field label="Change"><div className={cn('field font-semibold', change !== null && change < 0 && 'text-red-600')}>{change === null ? '—' : change < 0 ? `Short ${money(-change)}` : money(change)}</div></Field>
+            </div>
+          )}
+          {(pay.method === 'mpesa' || pay.method === 'card' || pay.method === 'bank') && <Field label={pay.method === 'mpesa' ? 'M-Pesa code (e.g. SGH7XXXXXX)' : 'Reference'} className="mt-3"><Input value={pay.reference} onChange={(e) => setPay({ ...pay, reference: e.target.value.toUpperCase() })} /></Field>}
+          {pay.method === 'later' && <p className="muted mt-3 text-xs">The customer pays at the cashier (cash or M-Pesa prompt). The sale shows as awaiting payment until then.</p>}
+          {allergyAlert && (
+            <div className="mt-3 space-y-2">
+              <Alert tone="red" title="Allergy alert">{(sell.error as ApiError).message}</Alert>
+              <Input placeholder="Reason to continue anyway (recorded)" value={override} onChange={(e) => setOverride(e.target.value)} />
+            </div>
+          )}
+          {!allergyAlert && <ErrorText error={sell.error} />}
+          <Button className="mt-4 w-full py-3 text-base" onClick={() => sell.mutate()} loading={sell.isPending} disabled={!ready || (allergyAlert && override.trim().length < 5)}>
+            {pay.method === 'later' ? 'Send to cashier' : `Complete sale · ${money(total)}`}
+          </Button>
+        </Card>
+      </div>
+
+      <Modal open={!!done} onClose={() => setDone(null)} title="Sale complete">
+        {done && (
+          <div className="space-y-3 text-sm">
+            <p><strong>{done.sale.saleNumber}</strong> · {money(done.sale.total)} · {done.sale.customerName}</p>
+            {done.sale.status === 'paid' ? <Alert tone="green">Paid{done.receiptNumber ? `. Receipt ${done.receiptNumber}` : ''}.</Alert> : <Alert tone="amber">Awaiting payment at the cashier (invoice {done.sale.invoiceNumber}).</Alert>}
+            <div className="flex gap-2">
+              <a href={`/print/pos/${done.sale._id}`} target="_blank" rel="noreferrer" className="inline-flex items-center gap-1.5 rounded-md bg-brand-600 px-4 py-2 text-sm font-medium text-white hover:bg-brand-700"><Printer className="h-4 w-4" /> Print receipt</a>
+              <Button variant="outline" onClick={() => setDone(null)}>New sale</Button>
+            </div>
+          </div>
+        )}
+      </Modal>
+    </div>
+  );
+}
+
+function Sales() {
+  const qc = useQueryClient();
+  const [date, setDate] = useState(new Date().toISOString().slice(0, 10));
+  const sales = useQuery({ queryKey: ['pos-sales', date], queryFn: async () => (await api<Sale[]>('/pharmacy/sales', { query: { from: date, limit: 200 } })).data });
+  const [ret, setRet] = useState<{ sale: Sale; qty: Record<string, number>; reason: string } | null>(null);
+  const [msg, setMsg] = useState<string | null>(null);
+  const doReturn = useMutation({
+    mutationFn: async () => (await api<{ message: string }>(`/pharmacy/sales/${ret!.sale._id}/return`, { method: 'POST', body: { reason: ret!.reason, lines: Object.entries(ret!.qty).filter(([, q]) => q > 0).map(([lineId, quantity]) => ({ lineId, quantity })) } })).data,
+    onSuccess: (r) => { setMsg(r.message); setRet(null); qc.invalidateQueries({ queryKey: ['pos-sales'] }); qc.invalidateQueries({ queryKey: ['pos-items'] }); },
+  });
+  return (
+    <Card title="Counter sales" actions={<div className="flex items-center gap-2"><Input type="date" value={date} onChange={(e) => setDate(e.target.value)} /><a href={`/print/z-report?date=${date}`} target="_blank" rel="noreferrer" className="inline-flex items-center gap-1.5 rounded-md border border-[var(--border)] px-3 py-2 text-sm hover:bg-[var(--surface-2)]"><Printer className="h-4 w-4" /> Z-report</a></div>}>
+      {msg && <div className="mb-3"><Alert tone="green">{msg}</Alert></div>}
+      {sales.isLoading ? <Loading /> : (
+        <Table head={['Sale', 'Time', 'Customer', 'Items', 'Total', 'Status', 'By', '']} empty={!sales.data?.length}>
+          {sales.data?.map((s) => (
+            <tr key={s._id}>
+              <Td className="font-mono text-xs">{s.saleNumber}</Td>
+              <Td>{fmtDateTime(s.createdAt)}</Td>
+              <Td>{s.customerName}{s.walkIn && <span className="muted text-xs"> (walk-in)</span>}</Td>
+              <Td className="text-xs">{s.lines.map((l) => `${l.name} × ${l.quantity}`).join(', ')}</Td>
+              <Td className="font-semibold">{money(s.total)}</Td>
+              <Td><Badge tone={s.status === 'paid' ? 'green' : s.status === 'returned' ? 'gray' : 'amber'}>{s.status === 'awaiting_payment' ? 'Awaiting payment' : s.status === 'paid' ? 'Paid' : 'Returned'}</Badge></Td>
+              <Td className="text-xs">{s.soldByName}</Td>
+              <Td>
+                <div className="flex gap-1">
+                  <a href={`/print/pos/${s._id}`} target="_blank" rel="noreferrer" className="rounded p-1.5 hover:bg-[var(--surface-2)]" aria-label="Print receipt"><Printer className="h-4 w-4" /></a>
+                  {s.status !== 'returned' && <button type="button" className="rounded p-1.5 hover:bg-[var(--surface-2)]" onClick={() => setRet({ sale: s, qty: {}, reason: '' })} aria-label="Return items"><RotateCcw className="h-4 w-4" /></button>}
+                </div>
+              </Td>
+            </tr>
+          ))}
+        </Table>
+      )}
+      <Modal open={!!ret} onClose={() => setRet(null)} title={`Return items · ${ret?.sale.saleNumber ?? ''}`}>
+        {ret && (
+          <div className="space-y-3">
+            {ret.sale.lines.map((l) => {
+              const left = l.quantity - (l.returnedQuantity ?? 0);
+              return (
+                <div key={l._id} className="flex items-center justify-between gap-3 text-sm">
+                  <span>{l.name} <span className="muted">(up to {left})</span></span>
+                  <Input type="number" min={0} max={left} className="w-24" value={ret.qty[l._id] ?? 0} onChange={(e) => setRet({ ...ret, qty: { ...ret.qty, [l._id]: Math.min(left, Math.max(0, Number(e.target.value))) } })} />
+                </div>
+              );
+            })}
+            <Field label="Reason *"><Input value={ret.reason} onChange={(e) => setRet({ ...ret, reason: e.target.value })} /></Field>
+            <p className="muted text-xs">Items go back into stock. If the customer had paid, refund them from Billing & Cashier.</p>
+            <ErrorText error={doReturn.error} />
+            <Button onClick={() => doReturn.mutate()} loading={doReturn.isPending} disabled={ret.reason.trim().length < 5 || !Object.values(ret.qty).some((q) => q > 0)}>Return to stock</Button>
+          </div>
+        )}
+      </Modal>
+    </Card>
+  );
+}
+
+export default function PharmacyPosPage() {
+  const can = useCan();
+  const [tab, setTab] = useState<Tab>('sell');
+  if (!can('pharmacy.sell', 'pharmacy.view')) return <Alert tone="amber">You do not have access to pharmacy sales.</Alert>;
+  return (
+    <div>
+      <PageHeader title="Pharmacy POS" subtitle="Counter sales for walk-in customers and outside prescriptions" actions={<Link href="/pharmacy" className="text-sm text-brand-600 hover:underline">Back to dispensing</Link>} />
+      <div className="mb-4"><Tabs<Tab> value={tab} onChange={setTab} tabs={[...(can('pharmacy.sell') ? [{ key: 'sell' as const, label: 'New sale' }] : []), { key: 'sales', label: 'Sales & Z-report' }]} /></div>
+      {tab === 'sell' && can('pharmacy.sell') ? <Sell canPay={can('billing.create')} /> : <Sales />}
+    </div>
+  );
+}

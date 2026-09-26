@@ -63,7 +63,7 @@ router.get(
     const q = String(req.query.q ?? '').trim();
     if (q.length < 2) return res.json({ success: true, data: [] });
     const { Patient, Branch } = req.tenant!.models;
-    const filter: Record<string, unknown> = { ...buildSearchFilter(q), status: { $ne: 'merged' }, ...branchFilter(req, 'branchIds') };
+    const filter: Record<string, unknown> = { ...buildSearchFilter(q), status: { $ne: 'merged' }, walkInAccount: { $ne: true }, ...branchFilter(req, 'branchIds') };
     const items = await Patient.find(filter).select(patientSummaryFields).sort({ updatedAt: -1 }).limit(Math.min(50, Number(req.query.limit) || 20)).lean();
     const branches = await Branch.find({ _id: { $in: [...new Set(items.map((i) => String(i.registeredBranchId)))] } }).select('branchName').lean();
     res.json({
@@ -79,7 +79,7 @@ router.get(
   h(async (req, res) => {
     const { Patient } = req.tenant!.models;
     const { page, limit, skip } = pagination(req.query);
-    const filter: Record<string, unknown> = { status: { $ne: 'merged' }, ...branchFilter(req, 'branchIds') };
+    const filter: Record<string, unknown> = { status: { $ne: 'merged' }, walkInAccount: { $ne: true }, ...branchFilter(req, 'branchIds') };
     const [items, total] = await Promise.all([Patient.find(filter).select(patientSummaryFields).sort({ createdAt: -1 }).skip(skip).limit(limit).lean(), Patient.countDocuments(filter)]);
     res.json({ success: true, data: items, meta: { page, limit, total } });
   }),

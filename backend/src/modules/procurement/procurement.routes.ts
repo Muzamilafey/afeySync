@@ -50,7 +50,8 @@ router.get('/purchase-orders/:id', requireAnyPermission('procurement.view', 'inv
   res.json({ success: true, data: po });
 }));
 
-router.post('/purchase-orders', requirePermission('procurement.manage'), h(async (req, res) => {
+// Store, pharmacy and lab managers may raise a draft LPO (e.g. reagents); only procurement approves it.
+router.post('/purchase-orders', requireAnyPermission('procurement.manage', 'inventory.manage', 'pharmacy.stock', 'lab.manage'), h(async (req, res) => {
   const body = parse(z.object({ supplierId: z.string(), locationId: z.string(), items: z.array(z.object({ itemId: z.string(), quantity: z.number().int().positive(), unitCost: z.number().min(0) })).min(1).max(200), notes: z.string().max(1000).optional() }), req.body);
   const m = req.tenant!.models;
   const loc = await loadScoped(req, m.StockLocation, body.locationId, 'Stock location');

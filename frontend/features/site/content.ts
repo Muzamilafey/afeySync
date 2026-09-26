@@ -1,7 +1,7 @@
 import {
   Baby, BarChart3, BedDouble, Bell, Building2, CalendarDays, ClipboardList, CreditCard, FileCheck2, FileText, FlaskConical,
   HeartPulse, KeyRound, Landmark, Layers, Pill, Printer, Radiation, ScanLine, ShieldCheck, Smartphone, Stethoscope, Upload,
-  UserPlus, Users, Wallet, WifiOff, Smile, Archive, type LucideIcon,
+  UserPlus, Users, Wallet, WifiOff, Smile, Archive, ShoppingBag, Warehouse, FileSignature, Briefcase, Send, Package, type LucideIcon,
 } from 'lucide-react';
 
 export interface Feature { icon: LucideIcon; title: string; text: string }
@@ -27,7 +27,8 @@ export const FEATURE_GROUPS: FeatureGroup[] = [
     items: [
       { icon: HeartPulse, title: 'Triage & vitals', text: 'Vitals with normal ranges, BMI and flags, recorded against the visit.' },
       { icon: Stethoscope, title: 'Consultation', text: 'History, examination, ICD-coded diagnoses, orders and procedures in one clinical note.' },
-      { icon: Pill, title: 'Prescribing', text: 'Pick-list dose, frequency, route and duration, checked on the server, straight to the pharmacy.' },
+      { icon: Pill, title: 'Prescribing', text: 'Pick-list dose, frequency, route and duration, checked on the server, straight to the pharmacy, with a printable prescription note.' },
+      { icon: FileSignature, title: 'Medical reports & certificates', text: 'Sick leave notes, medical reports, fitness certificates and attendance letters, signed with the clinician’s licence number and locked once issued.' },
       { icon: Smile, title: 'Dental & specialist clinics', text: 'Dental charting and procedures alongside general outpatient care.' },
     ],
   },
@@ -36,8 +37,9 @@ export const FEATURE_GROUPS: FeatureGroup[] = [
     title: 'Laboratory & imaging',
     summary: 'Orders arrive from the clinician; results go back to the patient record.',
     items: [
-      { icon: FlaskConical, title: 'Laboratory', text: 'Sample collection, result entry with reference ranges, verification and printable reports.' },
-      { icon: Radiation, title: 'Radiology', text: 'Imaging requests, reporting and results linked to the visit.' },
+      { icon: FlaskConical, title: 'Laboratory', text: 'Sample collection, result entry with normal ranges, verification and printable reports.' },
+      { icon: Package, title: 'Test packages & walk-in requests', text: 'Priced test profiles, plus walk-in patients and requests from outside doctors, billed straight away.' },
+      { icon: Radiation, title: 'Radiology', text: 'Imaging requests, billing, reporting and printable reports linked to the visit.' },
     ],
   },
   {
@@ -45,8 +47,10 @@ export const FEATURE_GROUPS: FeatureGroup[] = [
     title: 'Pharmacy & stores',
     summary: 'Know what is on the shelf, what it costs and what was dispensed.',
     items: [
-      { icon: Pill, title: 'Dispensing', text: 'Prescriptions arrive from the doctor and ward; pharmacists dispense against stock.' },
-      { icon: Layers, title: 'Inventory & procurement', text: 'Items, batches, stock levels, suppliers, purchase orders and goods received.' },
+      { icon: Pill, title: 'Dispensing', text: 'Outpatient, ward and discharge prescriptions in their own queues, dispensed earliest-expiry first.' },
+      { icon: ShoppingBag, title: 'Pharmacy POS', text: 'Counter sales for walk-in customers and outside prescriptions, with barcode scanning, returns and a daily Z-report.' },
+      { icon: Layers, title: 'Inventory & procurement', text: 'Brands and pack units, batches and expiry, suppliers, LPOs from the low-stock list and goods received.' },
+      { icon: Warehouse, title: 'Stores & stock takes', text: 'Requisitions with approval, printed stock-take sheets with variances, and a stock movement report.' },
       { icon: Upload, title: 'Excel import', text: 'Bring in your drug and item lists from Excel, up to thousands of rows at a time.' },
     ],
   },
@@ -70,6 +74,7 @@ export const FEATURE_GROUPS: FeatureGroup[] = [
       { icon: CreditCard, title: 'Cashier & M-Pesa', text: 'Invoices, receipts, deposits, waivers and M-Pesa STK push, confirmed by Safaricom callback.' },
       { icon: Landmark, title: 'SHA claims', text: 'Claim preparation and tracking through the official SHA integration once your facility is onboarded by SHA.' },
       { icon: ShieldCheck, title: 'Private insurance', text: 'Schemes, pre-authorisations and claims, with remittances reconciled against invoices.' },
+      { icon: Briefcase, title: 'Corporates, copay & capitation', text: 'Employer and insurance schemes with their own price lists, fixed or percentage copay, and capitation schemes where the patient pays only the copay.' },
     ],
   },
   {
@@ -81,6 +86,7 @@ export const FEATURE_GROUPS: FeatureGroup[] = [
       { icon: Users, title: 'Staff, roles & HR', text: 'Users with exactly the permissions their role needs, plus staff records and duty rosters.' },
       { icon: Building2, title: 'Multiple branches', text: 'Run several branches under one facility with branch-level access control.' },
       { icon: Printer, title: 'Branded printouts', text: 'Receipts, reports, prescriptions and notifications printed on your own letterhead with your logo.' },
+      { icon: Send, title: 'SMS alerts & bulk SMS', text: 'Appointment and result alerts, plus bulk health reminders to chosen patients. Patients who declined SMS are always left out.' },
     ],
   },
 ];

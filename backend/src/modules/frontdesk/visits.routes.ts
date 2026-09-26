@@ -19,9 +19,9 @@ export const queuesRouter = Router();
 export const referralsRouter = Router();
 for (const r of [visitsRouter, queuesRouter, referralsRouter]) r.use(authenticateTenant);
 
-const payerSchema = z.object({ type: z.enum(['cash', 'sha', 'insurance', 'corporate']).default('cash'), scheme: z.string().max(80).optional(), memberNumber: z.string().max(60).optional() }).default({ type: 'cash' });
+const payerSchema = z.object({ type: z.enum(['cash', 'sha', 'insurance', 'corporate']).default('cash'), scheme: z.string().max(80).optional(), schemeId: z.string().optional(), memberNumber: z.string().max(60).optional() }).default({ type: 'cash' });
 
-async function accessiblePatient(req: Request, id: string) {
+export async function accessiblePatient(req: Request, id: string) {
   const p = await req.tenant!.models.Patient.findById(oid(id, 'Patient'));
   if (!p) throw notFound('Patient not found');
   if (!canAccessAnyBranch(req, p.branchIds ?? [])) throw forbidden('This patient is not registered in your branch', 'BRANCH_FORBIDDEN');
@@ -29,7 +29,7 @@ async function accessiblePatient(req: Request, id: string) {
 }
 
 /** SHA visits require an eligibility check in the last 24 hours showing the member is eligible. */
-async function shaGate(req: Request, patient: { _id: unknown; sha?: { status?: string | null; lastCheckedAt?: Date | null; lastCheckId?: unknown } | null }) {
+export async function shaGate(req: Request, patient: { _id: unknown; sha?: { status?: string | null; lastCheckedAt?: Date | null; lastCheckId?: unknown } | null }) {
   const fresh = patient.sha?.lastCheckedAt && Date.now() - new Date(patient.sha.lastCheckedAt).getTime() < 24 * 3600_000;
   assertShaTransactable(patient as never);
   if (patient.sha?.status !== 'eligible' || !fresh) throw new AppError(422, 'SHA_ELIGIBILITY_REQUIRED', 'Check SHA eligibility (within the last 24 hours) before starting an SHA visit, or register the visit as cash.');
@@ -63,6 +63,15 @@ visitsRouter.post(
     if (open) throw conflict(`Patient already has an open visit (${open.visitNumber})`, { visitId: open._id, visitNumber: open.visitNumber }, 'VISIT_OPEN');
     let shaCheckId: string | undefined;
     if (body.payer.type === 'sha') shaCheckId = String(await shaGate(req, patient));
+    if (body.payer.schemeId) {
+      // The scheme must be active and match the payer type; its name is what the bill shows.
+      if (!['insurance', 'corporate'].includes(body.payer.type)) throw badRequest('Schemes apply to insurance and corporate patients only');
+      const scheme = await m.PayerScheme.findOne({ _id: oid(body.payer.schemeId, 'Scheme'), active: true }).lean();
+      if (!scheme) throw notFound('Scheme not found or inactive');
+      if (scheme.kind !== body.payer.type) throw badRequest(`${scheme.name} is ${scheme.kind === 'corporate' ? 'a corporate' : 'an insurance'} scheme`);
+      if (!body.payer.memberNumber) throw badRequest('Enter the member (staff or card) number for the scheme');
+      body.payer.scheme = scheme.name;
+    }
     const visit = await m.Visit.create({
       visitNumber: await nextNumber(m, 'visit', 'V'),
       patientId: patient._id,

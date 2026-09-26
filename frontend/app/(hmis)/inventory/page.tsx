@@ -1,6 +1,7 @@
 'use client';
 
 import { useState } from 'react';
+import Link from 'next/link';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { Plus, Trash2, FileSpreadsheet } from 'lucide-react';
 import { ExcelImport } from '@/features/imports/ExcelImport';
@@ -19,8 +20,11 @@ interface Row { _id: string; code: string; name: string; unit: string; category:
 function ReceiveForm({ locations, onDone }: { locations: Location[]; onDone: () => void }) {
   const [loc, setLoc] = useState(locations[0]?._id ?? '');
   const [ref, setRef] = useState('');
-  const [lines, setLines] = useState<Array<{ item: Item; batchNumber: string; expiryDate: string; quantity: string; unitCost: string }>>([]);
-  const m = useMutation({ mutationFn: () => api('/pharmacy/stock/receive', { method: 'POST', body: { locationId: loc, reference: ref || undefined, lines: lines.map((l) => ({ itemId: l.item._id, batchNumber: l.batchNumber, expiryDate: l.expiryDate, quantity: Number(l.quantity), unitCost: Number(l.unitCost || 0) })) } }), onSuccess: onDone });
+  const [lines, setLines] = useState<Array<{ item: Item; batchNumber: string; expiryDate: string; quantity: string; unitCost: string; inPacks?: boolean }>>([]);
+  // Entered in packs (e.g. boxes of 100): stock is still kept in single units.
+  const units = (l: (typeof lines)[number]) => (l.inPacks ? Number(l.quantity) * (l.item.packSize ?? 1) : Number(l.quantity));
+  const unitCost = (l: (typeof lines)[number]) => (l.inPacks ? Number(l.unitCost || 0) / (l.item.packSize ?? 1) : Number(l.unitCost || 0));
+  const m = useMutation({ mutationFn: () => api('/pharmacy/stock/receive', { method: 'POST', body: { locationId: loc, reference: ref || undefined, lines: lines.map((l) => ({ itemId: l.item._id, batchNumber: l.batchNumber, expiryDate: l.expiryDate, quantity: units(l), unitCost: Math.round(unitCost(l) * 100) / 100 })) } }), onSuccess: onDone });
   return (
     <div className="space-y-3">
       <div className="grid gap-3 sm:grid-cols-2">
@@ -30,11 +34,16 @@ function ReceiveForm({ locations, onDone }: { locations: Location[]; onDone: () 
       <ItemPicker onPick={(item) => setLines([...lines, { item, batchNumber: '', expiryDate: '', quantity: '', unitCost: '' }])} placeholder="Add item" />
       {lines.map((l, i) => (
         <div key={i} className="grid gap-2 sm:grid-cols-[1.5fr_1fr_1fr_90px_90px_auto]">
-          <span className="text-sm">{l.item.name}</span>
+          <span className="text-sm">
+            {l.item.name}
+            {(l.item.packSize ?? 1) > 1 && (
+              <label className="muted mt-1 flex items-center gap-1 text-xs"><input type="checkbox" checked={!!l.inPacks} onChange={(e) => setLines(lines.map((x, j) => (j === i ? { ...x, inPacks: e.target.checked } : x)))} /> In {l.item.packUnit || 'packs'} of {l.item.packSize}{l.inPacks && l.quantity ? ` = ${units(l)} ${l.item.unit}` : ''}</label>
+            )}
+          </span>
           <Input placeholder="Batch" value={l.batchNumber} onChange={(e) => setLines(lines.map((x, j) => (j === i ? { ...x, batchNumber: e.target.value } : x)))} />
           <Input type="date" value={l.expiryDate} onChange={(e) => setLines(lines.map((x, j) => (j === i ? { ...x, expiryDate: e.target.value } : x)))} />
-          <Input placeholder="Qty" type="number" value={l.quantity} onChange={(e) => setLines(lines.map((x, j) => (j === i ? { ...x, quantity: e.target.value } : x)))} />
-          <Input placeholder="Unit cost" type="number" value={l.unitCost} onChange={(e) => setLines(lines.map((x, j) => (j === i ? { ...x, unitCost: e.target.value } : x)))} />
+          <Input placeholder={l.inPacks ? `No. of ${l.item.packUnit || 'packs'}` : 'Qty'} type="number" value={l.quantity} onChange={(e) => setLines(lines.map((x, j) => (j === i ? { ...x, quantity: e.target.value } : x)))} />
+          <Input placeholder={l.inPacks ? 'Cost per pack' : 'Unit cost'} type="number" value={l.unitCost} onChange={(e) => setLines(lines.map((x, j) => (j === i ? { ...x, unitCost: e.target.value } : x)))} />
           <Button variant="ghost" onClick={() => setLines(lines.filter((_, j) => j !== i))} aria-label="Remove"><Trash2 className="h-4 w-4" /></Button>
         </div>
       ))}
@@ -57,9 +66,9 @@ function ItemForm({ item, onDone }: { item?: Item; onDone: () => void }) {
     }
     return canPrice && Object.keys(out).length ? out : undefined;
   };
-  const [f, setF] = useState({ code: item?.code ?? '', name: item?.name ?? '', genericName: item?.genericName ?? '', form: item?.form ?? '', strength: item?.strength ?? '', unit: item?.unit ?? 'unit', category: item?.category ?? 'drug', reorderLevel: item?.reorderLevel ?? 0, serviceCode: item?.serviceCode ?? '', controlled: item?.controlled ?? false });
+  const [f, setF] = useState({ code: item?.code ?? '', name: item?.name ?? '', genericName: item?.genericName ?? '', form: item?.form ?? '', strength: item?.strength ?? '', unit: item?.unit ?? 'unit', category: item?.category ?? 'drug', reorderLevel: item?.reorderLevel ?? 0, serviceCode: item?.serviceCode ?? '', controlled: item?.controlled ?? false, brand: item?.brand ?? '', manufacturer: item?.manufacturer ?? '', packUnit: item?.packUnit ?? '', packSize: item?.packSize ?? 1, barcode: item?.barcode ?? '' });
   const formIsListed = DOSAGE_FORMS.some((d) => d.form === f.form);
-  const m = useMutation({ mutationFn: () => { const body = { ...f, prices: priceBody(), genericName: f.genericName || undefined, form: f.form.trim() || undefined, unit: f.unit.trim() || 'unit', strength: f.strength || undefined, serviceCode: f.serviceCode || undefined }; return item ? api(`/pharmacy/items/${item._id}`, { method: 'PATCH', body: { ...body, code: undefined } }) : api('/pharmacy/items', { method: 'POST', body }); }, onSuccess: onDone });
+  const m = useMutation({ mutationFn: () => { const body = { ...f, prices: priceBody(), genericName: f.genericName || undefined, form: f.form.trim() || undefined, unit: f.unit.trim() || 'unit', strength: f.strength || undefined, serviceCode: f.serviceCode || undefined, brand: f.brand.trim() || undefined, manufacturer: f.manufacturer.trim() || undefined, packUnit: f.packUnit.trim() || undefined, packSize: Math.max(1, Math.floor(Number(f.packSize) || 1)), barcode: f.barcode.trim() || undefined }; return item ? api(`/pharmacy/items/${item._id}`, { method: 'PATCH', body: { ...body, code: undefined } }) : api('/pharmacy/items', { method: 'POST', body }); }, onSuccess: onDone });
   return (
     <div className="grid gap-3 sm:grid-cols-3">
       <Field label="Code"><Input value={f.code} disabled={!!item} onChange={(e) => setF({ ...f, code: e.target.value.toUpperCase() })} /></Field>
@@ -91,6 +100,11 @@ function ItemForm({ item, onDone }: { item?: Item; onDone: () => void }) {
         {!STOCK_UNITS.includes(f.unit) && <Input className="mt-2" placeholder="Type the unit" value={f.unit} onChange={(e) => setF({ ...f, unit: e.target.value })} />}
       </Field>
       <Field label="Category"><Select value={f.category} onChange={(e) => setF({ ...f, category: e.target.value })}>{['drug', 'consumable', 'reagent', 'equipment', 'other'].map((c) => <option key={c}>{c}</option>)}</Select></Field>
+      <Field label="Brand / trade name"><Input value={f.brand} onChange={(e) => setF({ ...f, brand: e.target.value })} placeholder="e.g. Panadol" /></Field>
+      <Field label="Manufacturer"><Input value={f.manufacturer} onChange={(e) => setF({ ...f, manufacturer: e.target.value })} placeholder="e.g. GSK" /></Field>
+      <Field label="Bought in (pack)" hint={f.packUnit ? `1 ${f.packUnit} = ${f.packSize || 1} ${f.unit || 'unit'}` : 'e.g. box, bottle, strip'}><Input value={f.packUnit} onChange={(e) => setF({ ...f, packUnit: e.target.value })} /></Field>
+      <Field label="Units per pack"><Input type="number" min={1} value={f.packSize} onChange={(e) => setF({ ...f, packSize: Number(e.target.value) })} /></Field>
+      <Field label="Barcode" hint="Scan it here to save; the POS finds the item by scanning."><Input value={f.barcode} onChange={(e) => setF({ ...f, barcode: e.target.value.trim() })} /></Field>
       <Field label="Reorder level"><Input type="number" value={f.reorderLevel} onChange={(e) => setF({ ...f, reorderLevel: Number(e.target.value) })} /></Field>
       <Field label="Billing service code" hint="Defaults to RX-<code>"><Input value={f.serviceCode} onChange={(e) => setF({ ...f, serviceCode: e.target.value.toUpperCase() })} /></Field>
       <label className="flex items-center gap-2 pt-6 text-sm"><input type="checkbox" checked={f.controlled} onChange={(e) => setF({ ...f, controlled: e.target.checked })} /> Controlled drug</label>
@@ -139,6 +153,7 @@ export default function InventoryPage() {
         <Select className="w-56" value={location} onChange={(e) => setLoc(e.target.value)}>{locs.data?.map((l) => <option key={l._id} value={l._id}>{l.name}</option>)}</Select>
         {write && <Button onClick={() => setModal('receive')}><Plus className="h-4 w-4" /> Receive</Button>}
         {write && <Button variant="outline" onClick={() => setModal('transfer')}>Transfer</Button>}
+        <Link href="/inventory/stores"><Button variant="outline">Stores &amp; stock take</Button></Link>
       </>} />
       {summary.data && (
         <div className="mb-4 grid grid-cols-2 gap-4 md:grid-cols-3">
@@ -178,7 +193,7 @@ export default function InventoryPage() {
               </div>
             )}
             <Table head={['Code', 'Item', 'Form / strength', 'Category', 'Stock (usable)', 'Price', 'Reorder', 'Status', '']}>
-              {items.data?.map((i) => <tr key={i._id}><Td className="font-mono text-xs">{i.code}</Td><Td>{i.name}<span className="muted block text-xs">{i.genericName}</span></Td><Td>{i.form} {i.strength}</Td><Td className="capitalize">{i.category}{i.controlled && <Badge tone="red" className="ml-1">controlled</Badge>}</Td><Td><span className={(i.stock?.usable ?? 0) === 0 ? 'font-semibold text-red-600' : (i.stock?.usable ?? 0) <= i.reorderLevel ? 'font-semibold text-amber-600' : ''}>{i.stock?.usable ?? 0} {i.unit}</span>{(i.stock?.expired ?? 0) > 0 && <span className="block text-xs text-red-600">{i.stock!.expired} expired</span>}</Td><Td className="text-xs">{i.prices?.cash != null ? STANDARD_LISTS.filter(([k]) => i.prices?.[k] != null).map(([k, label]) => <span key={k} className="block whitespace-nowrap"><span className="muted">{label.split(' ')[0]}:</span> {money(i.prices![k]!)}</span>) : <Badge tone="amber">no price</Badge>}</Td><Td>{i.reorderLevel}</Td><Td><Badge tone={i.active ? 'green' : 'gray'}>{i.active ? 'active' : 'inactive'}</Badge></Td><Td>{write && <Button size="sm" variant="ghost" onClick={() => { setEditItem(i); setModal('item'); }}>Edit</Button>}</Td></tr>)}
+              {items.data?.map((i) => <tr key={i._id}><Td className="font-mono text-xs">{i.code}</Td><Td>{i.name}<span className="muted block text-xs">{[i.genericName, i.brand, i.manufacturer].filter(Boolean).join(' · ')}{i.packUnit ? ` · ${i.packUnit} of ${i.packSize}` : ''}</span></Td><Td>{i.form} {i.strength}</Td><Td className="capitalize">{i.category}{i.controlled && <Badge tone="red" className="ml-1">controlled</Badge>}</Td><Td><span className={(i.stock?.usable ?? 0) === 0 ? 'font-semibold text-red-600' : (i.stock?.usable ?? 0) <= i.reorderLevel ? 'font-semibold text-amber-600' : ''}>{i.stock?.usable ?? 0} {i.unit}</span>{(i.stock?.expired ?? 0) > 0 && <span className="block text-xs text-red-600">{i.stock!.expired} expired</span>}</Td><Td className="text-xs">{i.prices?.cash != null ? STANDARD_LISTS.filter(([k]) => i.prices?.[k] != null).map(([k, label]) => <span key={k} className="block whitespace-nowrap"><span className="muted">{label.split(' ')[0]}:</span> {money(i.prices![k]!)}</span>) : <Badge tone="amber">no price</Badge>}</Td><Td>{i.reorderLevel}</Td><Td><Badge tone={i.active ? 'green' : 'gray'}>{i.active ? 'active' : 'inactive'}</Badge></Td><Td>{write && <Button size="sm" variant="ghost" onClick={() => { setEditItem(i); setModal('item'); }}>Edit</Button>}</Td></tr>)}
             </Table>
           </>
         )}

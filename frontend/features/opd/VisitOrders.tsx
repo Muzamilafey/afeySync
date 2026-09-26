@@ -9,31 +9,27 @@ import { useCan } from '@/hooks/useMe';
 import { Alert, Badge, Button, Card, ErrorText, Field, Input, Select, statusTone, Table, Td, Textarea } from '@/components/ui';
 import { fmtDateTime } from '@/lib/utils';
 import { ResultsTable } from '@/features/lab/ResultsTable';
+import { LabTestSelector, type LabSelection } from '@/features/lab/LabTestSelector';
 import type { LabOrder, LabTest, RadRequest } from '@/features/lab/types';
 import { PrescriptionPanel } from '@/features/pharmacy/PrescriptionPanel';
 
 function LabPanel({ visitId, open }: { visitId: string; open: boolean }) {
   const can = useCan();
   const qc = useQueryClient();
-  const [q, setQ] = useState('');
-  const [sel, setSel] = useState<LabTest[]>([]);
+  const [sel, setSel] = useState<LabSelection>({ tests: [], packages: [] });
   const [priority, setPriority] = useState('routine');
   const [notes, setNotes] = useState('');
-  const tests = useQuery({ queryKey: ['lab-tests'], queryFn: async () => (await api<LabTest[]>('/laboratory/tests')).data, enabled: can('lab.order') && open });
   const orders = useQuery({ queryKey: ['visit-lab', visitId], queryFn: async () => (await api<LabOrder[]>('/laboratory/orders', { query: { visitId } })).data, enabled: can('lab.view', 'lab.order') });
-  const order = useMutation({ mutationFn: () => api('/laboratory/orders', { method: 'POST', body: { visitId, tests: sel.map((t) => t.code), priority, clinicalNotes: notes || undefined } }), onSuccess: () => { setSel([]); setNotes(''); qc.invalidateQueries({ queryKey: ['visit-lab', visitId] }); qc.invalidateQueries({ queryKey: ['visit', visitId] }); } });
-  const matches = (tests.data ?? []).filter((t) => q.length >= 1 && (t.name.toLowerCase().includes(q.toLowerCase()) || t.code.startsWith(q.toUpperCase())) && !sel.some((s) => s.code === t.code)).slice(0, 8);
+  const order = useMutation({ mutationFn: () => api('/laboratory/orders', { method: 'POST', body: { visitId, tests: sel.tests.map((t) => t.code), packages: sel.packages.map((p) => p.code), priority, clinicalNotes: notes || undefined } }), onSuccess: () => { setSel({ tests: [], packages: [] }); setNotes(''); qc.invalidateQueries({ queryKey: ['visit-lab', visitId] }); qc.invalidateQueries({ queryKey: ['visit', visitId] }); } });
   return (
     <Card title={<span className="flex items-center gap-2"><FlaskConical className="h-4 w-4" /> Laboratory</span>}>
       {open && can('lab.order') && (
         <div className="mb-4 space-y-2 border-b border-[var(--border)] pb-4">
-          <Input placeholder="Search tests (e.g. FBC, malaria)" value={q} onChange={(e) => setQ(e.target.value)} />
-          {matches.length > 0 && <div className="flex flex-wrap gap-1">{matches.map((t) => <button key={t.code} className="rounded border border-[var(--border)] px-2 py-1 text-xs hover:bg-[var(--surface-2)]" onClick={() => { setSel([...sel, t]); setQ(''); }}>+ {t.name}</button>)}</div>}
-          {sel.length > 0 && <div className="flex flex-wrap gap-1">{sel.map((t) => <Badge key={t.code} tone="blue">{t.name} <button onClick={() => setSel(sel.filter((x) => x.code !== t.code))}>×</button></Badge>)}</div>}
+          <LabTestSelector value={sel} onChange={setSel} enabled={can('lab.order') && open} />
           <div className="grid gap-2 sm:grid-cols-[140px_1fr_auto]">
             <Select value={priority} onChange={(e) => setPriority(e.target.value)}><option value="routine">Routine</option><option value="urgent">Urgent</option><option value="stat">STAT</option></Select>
             <Input placeholder="Clinical notes for the lab" value={notes} onChange={(e) => setNotes(e.target.value)} />
-            <Button disabled={!sel.length} onClick={() => order.mutate()} loading={order.isPending}>Order {sel.length || ''}</Button>
+            <Button disabled={!sel.tests.length && !sel.packages.length} onClick={() => order.mutate()} loading={order.isPending}>Order {sel.tests.length + sel.packages.reduce((n, p) => n + p.testCodes.length, 0) || ''}</Button>
           </div>
           <ErrorText error={order.error} />
         </div>

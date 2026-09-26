@@ -24,6 +24,8 @@ export default function InvoicePrint({ params }: { params: Promise<{ id: string 
       </table>
       <div className="mt-3 ml-auto w-64 space-y-1">
         {([['Gross', inv.totals.gross], ['Discounts', inv.totals.discount + inv.totals.waiver], ['Net', inv.totals.net], ['Paid', inv.totals.paid], ['Balance due', inv.totals.balance]] as Array<[string, number]>).map(([k, v]) => <p key={k} className="flex justify-between"><span>{k}</span><span>{money(v)}</span></p>)}
+        {inv.payer.schemeId && <p className="flex justify-between text-xs"><span>{inv.payer.scheme}: patient copay</span><span>{money(inv.totals.patientShare ?? 0)}</span></p>}
+        {inv.payer.schemeId && (inv.payer.coverage === 'capitation' ? <p className="flex justify-between text-xs"><span>Covered by capitation</span><span>{money(inv.totals.capitation ?? 0)}</span></p> : <p className="flex justify-between text-xs"><span>Payable by {inv.payer.type === 'corporate' ? 'employer' : 'insurer'}</span><span>{money(inv.totals.payerShare ?? 0)}</span></p>)}
       </div>
     </div>
   );

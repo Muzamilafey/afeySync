@@ -6,6 +6,7 @@ import { useSearchParams } from 'next/navigation';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { api } from '@/services/api';
 import { useCan } from '@/hooks/useMe';
+import { MedicalReportsPanel } from '@/features/medicalReports/MedicalReportsPanel';
 import { Alert, Badge, Button, Card, ErrorText, Field, Input, Loading, Modal, Select, statusTone, Table, Tabs, Td, Textarea } from '@/components/ui';
 import { age, fmtDateTime, money } from '@/lib/utils';
 import { ConsultationEditor } from '@/features/opd/ConsultationEditor';
@@ -23,7 +24,7 @@ interface VisitBundle {
   procedures: Array<{ _id: string; name: string; status: string; notes?: string; createdAt: string }>;
   referrals: Array<{ _id: string; referralNumber: string; direction: string; toFacility?: string; toDepartment?: string; reason: string; status: string }>;
 }
-type Tab = 'overview' | 'consultation' | 'orders' | 'procedures' | 'billing';
+type Tab = 'overview' | 'consultation' | 'orders' | 'procedures' | 'reports' | 'billing';
 
 function VisitInner({ id }: { id: string }) {
   const params = useSearchParams();
@@ -78,7 +79,7 @@ function VisitInner({ id }: { id: string }) {
         <Alert tone="amber" title="Consultation still in draft">Finalize it first, or <button className="font-semibold underline" onClick={() => close.mutate(true)}>close anyway</button>.</Alert>
       ) : <ErrorText error={close.error} />}
 
-      <Tabs<Tab> value={tab} onChange={setTab} tabs={[{ key: 'overview', label: 'Overview & Vitals' }, ...(can('consultation.view') ? [{ key: 'consultation' as const, label: 'Consultation' }] : []), { key: 'orders', label: 'Orders' }, { key: 'procedures', label: 'Procedures & Referrals' }, ...(can('billing.view') ? [{ key: 'billing' as const, label: 'Billing' }] : [])]} />
+      <Tabs<Tab> value={tab} onChange={setTab} tabs={[{ key: 'overview', label: 'Overview & Vitals' }, ...(can('consultation.view') ? [{ key: 'consultation' as const, label: 'Consultation' }] : []), { key: 'orders', label: 'Orders' }, { key: 'procedures', label: 'Procedures & Referrals' }, ...(can('medicalreports.view', 'medicalreports.create') ? [{ key: 'reports' as const, label: 'Reports & certificates' }] : []), ...(can('billing.view') ? [{ key: 'billing' as const, label: 'Billing' }] : [])]} />
 
       {tab === 'overview' && (
         <div className="grid gap-5 xl:grid-cols-[1fr_360px]">
@@ -104,6 +105,7 @@ function VisitInner({ id }: { id: string }) {
       )}
       {tab === 'consultation' && <ConsultationEditor visitId={id} visitOpen={open} />}
       {tab === 'orders' && <VisitOrders visitId={id} patientId={patient._id} open={open} />}
+      {tab === 'reports' && <MedicalReportsPanel visitId={id} patientId={patient._id} />}
       {tab === 'procedures' && (
         <div className="grid gap-5 lg:grid-cols-2">
           <Card title="Procedures" actions={open && can('consultation.create', 'nursing.record') && <Button size="sm" onClick={() => setModal('procedure')}>Add procedure</Button>}>

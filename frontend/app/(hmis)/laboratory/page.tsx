@@ -3,7 +3,7 @@
 import { useState } from 'react';
 import Link from 'next/link';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
-import { Barcode, FlaskConical } from 'lucide-react';
+import { Barcode, FlaskConical, UserPlus } from 'lucide-react';
 import { api } from '@/services/api';
 import { useCan } from '@/hooks/useMe';
 import { Badge, Button, Card, ErrorText, Field, Input, Loading, Modal, PageHeader, Stat, statusTone, Table, Td } from '@/components/ui';
@@ -11,6 +11,8 @@ import { age, fmtDateTime } from '@/lib/utils';
 import { ITEM_STEPS, type LabItem, type LabOrder } from '@/features/lab/types';
 import { ResultEntry } from '@/features/lab/ResultEntry';
 import { ResultsTable } from '@/features/lab/ResultsTable';
+import { WalkInRequest } from '@/features/lab/WalkInRequest';
+import { useRouter } from 'next/navigation';
 
 export default function LaboratoryPage() {
   const can = useCan();
@@ -21,6 +23,8 @@ export default function LaboratoryPage() {
   const [review, setReview] = useState<{ order: LabOrder; item: LabItem } | null>(null);
   const [reject, setReject] = useState<{ order: LabOrder; item: LabItem } | null>(null);
   const [reason, setReason] = useState('');
+  const [walkIn, setWalkIn] = useState(false);
+  const router = useRouter();
   const q = useQuery({ queryKey: ['lab-worklist', status], queryFn: async () => (await api<LabOrder[]>('/laboratory/orders', { query: { itemStatus: status, limit: 200 } })).data, refetchInterval: 20_000 });
   const counts = useQuery({
     queryKey: ['lab-counts'],
@@ -34,7 +38,8 @@ export default function LaboratoryPage() {
   const rows = (q.data ?? []).flatMap((o) => o.items.filter((i) => i.status === status).map((i) => ({ o, i })));
   return (
     <>
-      <PageHeader title="Laboratory" crumbs={['Laboratory', 'Worklist']} actions={can('lab.manage') && <Link href="/laboratory/tests"><Button variant="outline"><FlaskConical className="h-4 w-4" /> Test catalog</Button></Link>} />
+      <PageHeader title="Laboratory" crumbs={['Laboratory', 'Worklist']} actions={<div className="flex gap-2">{can('lab.walkin') && <Button onClick={() => setWalkIn(true)}><UserPlus className="h-4 w-4" /> Walk-in request</Button>}{can('lab.manage') && <Link href="/laboratory/tests"><Button variant="outline"><FlaskConical className="h-4 w-4" /> Test catalog & packages</Button></Link>}</div>} />
+      <Modal open={walkIn} onClose={() => setWalkIn(false)} title="Walk-in / external lab request" wide>{walkIn && <WalkInRequest onDone={(id) => { setWalkIn(false); router.push(`/laboratory/orders/${id}`); }} />}</Modal>
       <div className="mb-4 grid grid-cols-2 gap-3 md:grid-cols-4 xl:grid-cols-7">
         {ITEM_STEPS.map((s) => (
           <button key={s.status} onClick={() => setStatus(s.status)} className={`text-left ${status === s.status ? 'ring-2 ring-brand-500 rounded-xl' : ''}`}>

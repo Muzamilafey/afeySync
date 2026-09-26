@@ -39,6 +39,7 @@ export default function RadiologyRequestPage({ params }: { params: Promise<{ id:
                 <div className="flex gap-2">
                   <Button onClick={() => act.mutate({ step: 'report', body: { ...report, pacsViewerUrl: report.pacsViewerUrl || undefined } })} loading={act.isPending}>Save report</Button>
                   {r.status === 'reported' && <Button variant="secondary" onClick={() => act.mutate({ step: 'verify' })}>Verify & release</Button>}
+                  {['reported', 'verified'].includes(r.status) && <a href={`/print/radiology/${r._id}`} target="_blank" rel="noreferrer" className="inline-flex items-center rounded-md border border-[var(--border)] px-4 py-2 text-sm hover:bg-[var(--surface-2)]">Print report</a>}
                 </div>
               </div>
             ) : r.report?.findings ? (
@@ -47,6 +48,7 @@ export default function RadiologyRequestPage({ params }: { params: Promise<{ id:
                 <div><p className="label">Impression</p><p className="font-semibold whitespace-pre-wrap">{r.report.impression}</p></div>
                 <p className="muted text-xs">Reported by {r.report.reportedByName} {fmtDateTime(r.report.reportedAt)} {r.report.verifiedByName && `· verified by ${r.report.verifiedByName} ${fmtDateTime(r.report.verifiedAt)}`}</p>
                 {r.pacsViewerUrl && <a className="text-brand-600" href={r.pacsViewerUrl} target="_blank" rel="noreferrer">Open images in PACS viewer</a>}
+                <a className="block text-brand-600 hover:underline" href={`/print/radiology/${r._id}`} target="_blank" rel="noreferrer">Print report</a>
               </div>
             ) : <p className="muted text-sm">Not yet reported.</p>}
           </Card>

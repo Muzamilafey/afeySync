@@ -17,8 +17,24 @@ export const priceListFor = (payerType?: string | null, nationality?: string | n
 export async function resolvePrice(m: TenantModels, serviceCode: string, priceList: string) {
   const item = await m.ServiceItem.findOne({ code: serviceCode.toUpperCase(), active: true }).lean();
   if (!item) return null;
-  const price = item.prices.find((p) => p.priceList === priceList) ?? item.prices.find((p) => p.priceList === 'cash');
+  // A scheme's own list falls back to the general insurance list, then to cash.
+  const chain = (STANDARD_PRICE_LISTS as readonly string[]).includes(priceList) ? [priceList, 'cash'] : [priceList, 'insurance', 'cash'];
+  const price = chain.map((l) => item.prices.find((p) => p.priceList === l)).find(Boolean);
   return { item, unitPrice: price?.amount ?? null };
+}
+
+type PayerTerms = { type?: string | null; schemeId?: unknown; coverage?: string | null; copay?: { type?: string | null; value?: number | null } | null } | null | undefined;
+
+/**
+ * Splits a scheme patient's bill: the copay is the patient's share, the rest is the insurer's or
+ * employer's. Under capitation the scheme's share is covered by its monthly fee, so it is not owed per visit.
+ */
+export function schemeSplit(payer: PayerTerms, amount: number) {
+  if (!payer?.schemeId || !['insurance', 'corporate'].includes(payer.type ?? '')) return { patientShare: amount, payerShare: 0, capitation: 0 };
+  const v = Math.max(0, payer.copay?.value ?? 0);
+  const copay = payer.copay?.type === 'fixed' ? Math.min(v, amount) : payer.copay?.type === 'percent' ? round2((amount * Math.min(v, 100)) / 100) : 0;
+  const covered = round2(amount - copay);
+  return payer.coverage === 'capitation' ? { patientShare: copay, payerShare: 0, capitation: covered } : { patientShare: copay, payerShare: covered, capitation: 0 };
 }
 
 /** Recompute totals and payment status from lines, adjustments, payments and credit notes. */
@@ -27,15 +43,17 @@ export async function recalcInvoice(m: TenantModels, inv: InvoiceDoc) {
   const gross = round2(lines.reduce((s, l) => s + l.amount, 0));
   const discount = round2(inv.adjustments.filter((a) => a.type === 'discount').reduce((s, a) => s + a.amount, 0));
   const waiver = round2(inv.adjustments.filter((a) => a.type === 'waiver').reduce((s, a) => s + a.amount, 0));
-  const net = round2(Math.max(0, gross - discount - waiver));
+  const afterAdjustments = round2(Math.max(0, gross - discount - waiver));
+  const split = schemeSplit(inv.payer, afterAdjustments);
+  const net = round2(afterAdjustments - split.capitation);
   const payments = await m.Payment.find({ invoiceId: inv._id, status: { $in: ['completed', 'partially_refunded', 'refunded'] } }).lean();
   const paid = round2(payments.reduce((s, p) => s + p.amount - (p.refundedAmount ?? 0), 0));
   const credits = await m.CreditNote.find({ invoiceId: inv._id, type: 'credit' }).lean();
   const credited = round2(credits.reduce((s, c) => s + c.amount, 0));
   const balance = round2(net - paid - credited);
-  inv.totals = { gross, discount, waiver, net, paid, credited, balance };
+  inv.totals = { gross, discount, waiver, net, paid, credited, balance, ...split };
   if (inv.status !== 'void') {
-    if (net > 0 && balance <= 0) inv.status = 'paid';
+    if ((net > 0 || split.capitation > 0) && balance <= 0) inv.status = 'paid';
     else if (paid > 0) inv.status = 'partially_paid';
     else if (inv.status === 'paid' || inv.status === 'partially_paid') inv.status = inv.issuedAt ? 'issued' : 'open';
   }
@@ -51,12 +69,15 @@ export async function openInvoiceFor(m: TenantModels, input: { patientId: Id; vi
     const visit = await m.Visit.findById(input.visitId).lean();
     const payerType = visit?.payer?.type ?? 'cash';
     const patient = await m.Patient.findById(input.patientId).select('nationality').lean();
+    const scheme = visit?.payer?.schemeId && ['insurance', 'corporate'].includes(payerType) ? await m.PayerScheme.findById(visit.payer.schemeId).lean() : null;
     const inv = await m.Invoice.create({
       invoiceNumber: await nextNumber(m, 'invoice', 'INV'),
       patientId: input.patientId,
       visitId: input.visitId,
       branchId: input.branchId,
-      payer: { type: payerType, priceList: priceListFor(payerType, patient?.nationality), scheme: visit?.payer?.scheme, memberNumber: visit?.payer?.memberNumber },
+      payer: scheme
+        ? { type: payerType, priceList: scheme.priceList, scheme: scheme.name, schemeId: scheme._id, coverage: scheme.coverage, copay: { type: scheme.copay?.type ?? 'none', value: scheme.copay?.value ?? 0 }, memberNumber: visit?.payer?.memberNumber }
+        : { type: payerType, priceList: priceListFor(payerType, patient?.nationality), scheme: visit?.payer?.scheme, memberNumber: visit?.payer?.memberNumber },
       createdBy: input.createdBy,
     });
     await m.Visit.updateOne({ _id: input.visitId }, { invoiceId: inv._id });
@@ -137,6 +158,29 @@ export async function completePayment(m: TenantModels, payment: NonNullable<Awai
     if (inv) await recalcInvoice(m, inv);
   }
   return payment;
+}
+
+/** Records a cashier payment on an invoice (cash, card, bank, M-Pesa receipt or insurance), with the usual checks. */
+export async function takePayment(req: Request, m: TenantModels, inv: InvoiceDoc, body: { method: 'cash' | 'card' | 'bank' | 'insurance' | 'mpesa'; amount: number; reference?: string; idempotencyKey: string; notes?: string }) {
+  if (['card', 'bank', 'mpesa', 'insurance'].includes(body.method) && !body.reference) throw badRequest('A transaction reference is required for this payment method');
+  if (body.method === 'mpesa' && (await m.Payment.exists({ 'mpesa.receiptNumber': body.reference!.toUpperCase() }))) throw conflict('This M-Pesa receipt has already been used', undefined, 'DUPLICATE_RECEIPT');
+  assertPayable(inv, body.amount);
+  const p = await m.Payment.create({
+    invoiceId: inv._id,
+    patientId: inv.patientId,
+    branchId: inv.branchId,
+    method: body.method,
+    amount: round2(body.amount),
+    reference: body.reference,
+    idempotencyKey: body.idempotencyKey,
+    status: 'pending',
+    receivedBy: req.user!.id,
+    receivedByName: req.user!.name,
+    notes: body.notes,
+    ...(body.method === 'mpesa' ? { mpesa: { receiptNumber: body.reference!.toUpperCase() } } : {}),
+  });
+  await completePayment(m, p);
+  return p;
 }
 
 export function assertPayable(inv: InvoiceDoc, amount: number) {

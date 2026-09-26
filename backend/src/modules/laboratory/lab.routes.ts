@@ -1,11 +1,13 @@
 import { importUpload, sendXlsx } from '../imports/excel';
 import { importLabTests, labTestTemplate } from '../imports/labTestImport';
 import { Router, type Request } from 'express';
+import type { Types } from 'mongoose';
 import { z } from 'zod';
 import { h } from '../../utils/asyncHandler';
 import { escapeRegex, pagination, parse, parsePatch } from '../../utils/validate';
 import { AppError, badRequest, conflict, forbidden, notFound } from '../../utils/errors';
-import { authenticateTenant, requireBranch, requirePermission } from '../../middleware/auth';
+import { authenticateTenant, requireAnyPermission, requireBranch, requirePermission } from '../../middleware/auth';
+import { accessiblePatient, shaGate } from '../frontdesk/visits.routes';
 import { branchFilter } from '../../middleware/branchScope';
 import { audit } from '../audit/auditService';
 import { loadScoped, nextNumber, oid } from '../common/helpers';
@@ -106,34 +108,196 @@ async function orderContext(req: Request, body: { visitId?: string; admissionId?
   throw badRequest('visitId or admissionId is required');
 }
 
+/** Creates a lab order (tests and packages) on a visit or admission, charges it and queues it for the lab. */
+async function createLabOrder(
+  req: Request,
+  ctx: { patientId: Types.ObjectId; branchId: Types.ObjectId; visitId?: Types.ObjectId | null; admissionId?: Types.ObjectId | null },
+  body: { tests: string[]; packages: string[]; priority: 'routine' | 'urgent' | 'stat'; clinicalNotes?: string; source?: 'internal' | 'walk_in' | 'external'; externalRequester?: { name?: string; facility?: string; reference?: string } },
+) {
+  const m = req.tenant!.models;
+  const pkgCodes = [...new Set(body.packages.map((c) => c.toUpperCase()))];
+  const packages = pkgCodes.length ? await m.LabPackage.find({ code: { $in: pkgCodes }, active: true }).lean() : [];
+  const missingPkg = pkgCodes.filter((c) => !packages.some((p) => p.code === c));
+  if (missingPkg.length) throw badRequest(`Unknown lab packages: ${missingPkg.join(', ')}`);
+  const inPackage = new Map<string, string>();
+  for (const p of packages) for (const c of p.testCodes) if (!inPackage.has(c)) inPackage.set(c, p.code);
+  const codes = [...new Set([...body.tests.map((c) => c.toUpperCase()), ...inPackage.keys()])];
+  if (!codes.length) throw badRequest('Choose at least one test or package');
+  if (codes.length > 60) throw badRequest('Too many tests on one request');
+  const tests = await m.LabTest.find({ code: { $in: codes }, active: true }).lean();
+  const missing = codes.filter((c) => !tests.some((t) => t.code === c));
+  if (missing.length) throw badRequest(`Unknown lab tests: ${missing.join(', ')}`);
+  const order = await m.LabOrder.create({
+    orderNumber: await nextNumber(m, 'laborder', 'LO'),
+    ...ctx,
+    orderedBy: req.user!.id,
+    orderedByName: req.user!.name,
+    priority: body.priority,
+    clinicalNotes: body.clinicalNotes,
+    source: body.source ?? 'internal',
+    externalRequester: body.externalRequester,
+    packages: packages.map((p) => ({ code: p.code, name: p.name })),
+    items: codes.map((c) => {
+      const t = tests.find((x) => x.code === c)!;
+      return { testCode: t.code, testName: t.name, specimen: t.specimen, packageCode: inPackage.get(c) };
+    }),
+  });
+  // Tests in a package are charged once, as the package; other tests are charged one by one.
+  for (const p of packages) await postCharge(req, m, { patientId: ctx.patientId, visitId: ctx.visitId, branchId: ctx.branchId, serviceCode: p.serviceCode ?? `LABPKG-${p.code}`, description: `Lab package: ${p.name}`, source: 'lab_package', sourceId: `${order._id}:${p.code}` });
+  for (const item of order.items) {
+    if (item.packageCode) continue;
+    const t = tests.find((x) => x.code === item.testCode)!;
+    await postCharge(req, m, { patientId: ctx.patientId, visitId: ctx.visitId, branchId: ctx.branchId, serviceCode: t.serviceCode ?? `LAB-${t.code}`, description: `Lab: ${t.name}`, source: 'lab', sourceId: String(item._id) });
+  }
+  if (ctx.visitId) await enqueue(m, { visitId: ctx.visitId, patientId: ctx.patientId, branchId: ctx.branchId, stage: 'laboratory', priority: body.priority === 'routine' ? 'normal' : 'urgent' });
+  await audit(req, { action: 'lab.order', resource: 'lab_order', resourceId: String(order._id), newValue: { tests: codes, packages: pkgCodes, priority: body.priority, source: body.source, externalRequester: body.externalRequester } });
+  return order;
+}
+
+const orderBody = { tests: z.array(z.string()).max(60).default([]), packages: z.array(z.string()).max(10).default([]), priority: z.enum(['routine', 'urgent', 'stat']).default('routine'), clinicalNotes: z.string().max(2000).optional() };
+
 router.post(
   '/orders',
   requirePermission('lab.order'),
   requireBranch,
   h(async (req, res) => {
-    const body = parse(z.object({ visitId: z.string().optional(), admissionId: z.string().optional(), tests: z.array(z.string()).min(1).max(40), priority: z.enum(['routine', 'urgent', 'stat']).default('routine'), clinicalNotes: z.string().max(2000).optional() }), req.body);
-    const m = req.tenant!.models;
+    const body = parse(z.object({ visitId: z.string().optional(), admissionId: z.string().optional(), ...orderBody }), req.body);
     const ctx = await orderContext(req, body);
-    const codes = [...new Set(body.tests.map((c) => c.toUpperCase()))];
-    const tests = await m.LabTest.find({ code: { $in: codes }, active: true }).lean();
-    const missing = codes.filter((c) => !tests.some((t) => t.code === c));
-    if (missing.length) throw badRequest(`Unknown lab tests: ${missing.join(', ')}`);
-    const order = await m.LabOrder.create({
-      orderNumber: await nextNumber(m, 'laborder', 'LO'),
-      ...ctx,
-      orderedBy: req.user!.id,
-      orderedByName: req.user!.name,
-      priority: body.priority,
-      clinicalNotes: body.clinicalNotes,
-      items: tests.map((t) => ({ testCode: t.code, testName: t.name, specimen: t.specimen })),
-    });
-    for (const item of order.items) {
-      const t = tests.find((x) => x.code === item.testCode)!;
-      await postCharge(req, m, { patientId: ctx.patientId, visitId: ctx.visitId, branchId: ctx.branchId, serviceCode: t.serviceCode ?? `LAB-${t.code}`, description: `Lab: ${t.name}`, source: 'lab', sourceId: String(item._id) });
+    res.status(201).json({ success: true, data: await createLabOrder(req, ctx, body) });
+  }),
+);
+
+/**
+ * Walk-in and external lab requests: a patient comes straight to the lab (self-request or sent by an
+ * outside clinician). Opens (or reuses) a lab visit, orders and charges the tests, and queues them.
+ */
+router.post(
+  '/walk-in',
+  requirePermission('lab.walkin'),
+  requireBranch,
+  h(async (req, res) => {
+    const body = parse(
+      z.object({
+        patientId: z.string(),
+        payer: z.object({ type: z.enum(['cash', 'sha', 'insurance', 'corporate']).default('cash'), scheme: z.string().max(80).optional(), memberNumber: z.string().max(60).optional() }).default({ type: 'cash' }),
+        externalRequester: z.object({ name: z.string().trim().max(120).optional(), facility: z.string().trim().max(160).optional(), reference: z.string().trim().max(60).optional() }).optional(),
+        ...orderBody,
+      }),
+      req.body,
+    );
+    const m = req.tenant!.models;
+    const patient = await accessiblePatient(req, body.patientId);
+    let visit = await m.Visit.findOne({ patientId: patient._id, branchId: req.branch!.id, status: { $in: ['open', 'in_progress'] } });
+    if (!visit) {
+      const shaCheckId = body.payer.type === 'sha' ? await shaGate(req, patient) : undefined;
+      visit = await m.Visit.create({
+        visitNumber: await nextNumber(m, 'visit', 'V'),
+        patientId: patient._id,
+        branchId: req.branch!.id,
+        type: 'walk_in_lab',
+        payer: { ...body.payer, shaEligibilityCheckId: shaCheckId as never },
+        department: 'Laboratory',
+        complaint: body.clinicalNotes,
+        referralIn: body.externalRequester?.name || body.externalRequester?.facility ? { from: [body.externalRequester.name, body.externalRequester.facility].filter(Boolean).join(', '), referenceNumber: body.externalRequester.reference } : undefined,
+        createdBy: req.user!.id,
+      });
+      if (!patient.branchIds.some((b) => String(b) === req.branch!.id)) {
+        patient.branchIds.push(req.branch!.id as never);
+        await patient.save();
+      }
+      await audit(req, { action: 'visit.create', resource: 'visit', resourceId: String(visit._id), newValue: { visitNumber: visit.visitNumber, type: 'walk_in_lab', payer: body.payer.type } });
     }
-    if (ctx.visitId) await enqueue(m, { visitId: ctx.visitId, patientId: ctx.patientId, branchId: ctx.branchId, stage: 'laboratory', priority: body.priority === 'routine' ? 'normal' : 'urgent' });
-    await audit(req, { action: 'lab.order', resource: 'lab_order', resourceId: String(order._id), newValue: { tests: codes, priority: body.priority } });
-    res.status(201).json({ success: true, data: order });
+    const external = !!(body.externalRequester?.name || body.externalRequester?.facility);
+    const order = await createLabOrder(req, { patientId: patient._id, branchId: visit.branchId, visitId: visit._id }, { ...body, source: external ? 'external' : 'walk_in' });
+    res.status(201).json({ success: true, data: { order, visit: { _id: visit._id, visitNumber: visit.visitNumber } } });
+  }),
+);
+
+/* ------------------------------------------------------------ Packages */
+const packageSchema = z.object({
+  code: z.string().trim().min(2).max(30).regex(/^[A-Za-z0-9-_]+$/, 'can only contain letters, numbers, - and _'),
+  name: z.string().trim().min(2).max(160),
+  description: z.string().trim().max(500).optional(),
+  testCodes: z.array(z.string().trim().min(1).max(30)).min(2, 'A package needs at least two tests').max(40),
+  active: z.boolean().default(true),
+  /** The package price on each price list; needs billing.prices. */
+  prices: z.record(z.string().max(30), z.number().min(0).max(10_000_000)).optional(),
+});
+
+router.get(
+  '/packages',
+  requireAnyPermission('lab.view', 'lab.order', 'lab.walkin'),
+  h(async (req, res) => {
+    const m = req.tenant!.models;
+    const pkgs = await m.LabPackage.find(req.query.all === 'true' ? {} : { active: true }).sort({ name: 1 }).lean();
+    const services = await m.ServiceItem.find({ code: { $in: pkgs.map((p) => p.serviceCode ?? `LABPKG-${p.code}`) } }).select('code prices').lean();
+    const tests = await m.LabTest.find({ code: { $in: pkgs.flatMap((p) => p.testCodes) } }).select('code name serviceCode').lean();
+    const testServices = await m.ServiceItem.find({ code: { $in: tests.map((t) => t.serviceCode ?? `LAB-${t.code}`) } }).select('code prices').lean();
+    const cash = (code: string, list: typeof services) => list.find((sv) => sv.code === code)?.prices.find((p) => p.priceList === 'cash')?.amount;
+    res.json({
+      success: true,
+      data: pkgs.map((p) => {
+        const code = p.serviceCode ?? `LABPKG-${p.code}`;
+        const separately = p.testCodes.reduce((sum, c) => { const t = tests.find((x) => x.code === c); return sum + (t ? cash(t.serviceCode ?? `LAB-${t.code}`, testServices) ?? 0 : 0); }, 0);
+        return { ...p, serviceCode: code, prices: Object.fromEntries((services.find((sv) => sv.code === code)?.prices ?? []).map((x) => [x.priceList, x.amount])), tests: p.testCodes.map((c) => ({ code: c, name: tests.find((t) => t.code === c)?.name ?? c })), priceIfSeparate: separately };
+      }),
+    });
+  }),
+);
+
+async function savePackagePrices(req: Request, pkg: { code: string; name: string; serviceCode?: string | null }, prices?: Record<string, number>) {
+  if (!prices || !Object.keys(prices).length) return;
+  if (!req.user!.permissions.has('billing.prices')) throw forbidden('Only users who manage prices (billing.prices) can set package prices');
+  const m = req.tenant!.models;
+  const code = (pkg.serviceCode ?? `LABPKG-${pkg.code}`).toUpperCase();
+  const svc = (await m.ServiceItem.findOne({ code })) ?? new m.ServiceItem({ code, name: `Lab package: ${pkg.name}`, category: 'laboratory', prices: [] });
+  for (const [priceList, amount] of Object.entries(prices)) {
+    const existing = svc.prices.find((p) => p.priceList === priceList);
+    if (existing) existing.amount = amount;
+    else svc.prices.push({ priceList, amount } as never);
+  }
+  svc.name = `Lab package: ${pkg.name}`;
+  await svc.save();
+  await audit(req, { action: 'billing.price_update', resource: 'service_item', resourceId: code, newValue: prices });
+}
+
+router.post(
+  '/packages',
+  requirePermission('lab.manage'),
+  h(async (req, res) => {
+    const body = parse(packageSchema, req.body);
+    const m = req.tenant!.models;
+    const code = body.code.toUpperCase();
+    if (await m.LabPackage.exists({ code })) throw conflict('A package with this code exists');
+    const testCodes = [...new Set(body.testCodes.map((c) => c.toUpperCase()))];
+    const found = await m.LabTest.countDocuments({ code: { $in: testCodes } });
+    if (found !== testCodes.length) throw badRequest('Some tests in the package do not exist');
+    const { prices, ...fields } = body;
+    const pkg = await m.LabPackage.create({ ...fields, code, testCodes, serviceCode: `LABPKG-${code}` });
+    await savePackagePrices(req, pkg, prices);
+    await audit(req, { action: 'lab.package_create', resource: 'lab_package', resourceId: code, newValue: fields });
+    res.status(201).json({ success: true, data: pkg });
+  }),
+);
+
+router.patch(
+  '/packages/:code',
+  requirePermission('lab.manage'),
+  h(async (req, res) => {
+    const body = parse(packageSchema.omit({ code: true }).partial(), req.body);
+    const m = req.tenant!.models;
+    const pkg = await m.LabPackage.findOne({ code: String(req.params.code).toUpperCase() });
+    if (!pkg) throw notFound('Package not found');
+    const { prices, ...fields } = body;
+    if (fields.testCodes) {
+      fields.testCodes = [...new Set(fields.testCodes.map((c) => c.toUpperCase()))];
+      if ((await m.LabTest.countDocuments({ code: { $in: fields.testCodes } })) !== fields.testCodes.length) throw badRequest('Some tests in the package do not exist');
+    }
+    pkg.set(fields);
+    await pkg.save();
+    await savePackagePrices(req, pkg, prices);
+    await audit(req, { action: 'lab.package_update', resource: 'lab_package', resourceId: pkg.code, newValue: body });
+    res.json({ success: true, data: pkg });
   }),
 );
 
@@ -177,7 +341,7 @@ router.get(
     const o = await loadScoped(req, m.LabOrder, req.params.id, 'Lab order');
     const [patient, branch] = await Promise.all([m.Patient.findById(o.patientId).select('patientNumber firstName middleName lastName gender dateOfBirth').lean(), m.Branch.findById(o.branchId).select('branchName phone physicalAddress').lean()]);
     await audit(req, { action: 'lab.report_view', resource: 'lab_order', resourceId: String(o._id) });
-    res.json({ success: true, data: { orderNumber: o.orderNumber, orderedByName: o.orderedByName, createdAt: o.createdAt, priority: o.priority, clinicalNotes: o.clinicalNotes, items: o.items.filter((i) => i.status === 'released'), pending: o.items.filter((i) => !TERMINAL.includes(i.status)).map((i) => i.testName), patient, branch, facility: req.tenant!.name } });
+    res.json({ success: true, data: { orderNumber: o.orderNumber, orderedByName: o.orderedByName, source: o.source, externalRequester: o.externalRequester, createdAt: o.createdAt, priority: o.priority, clinicalNotes: o.clinicalNotes, items: o.items.filter((i) => i.status === 'released'), pending: o.items.filter((i) => !TERMINAL.includes(i.status)).map((i) => i.testName), patient, branch, facility: req.tenant!.name } });
   }),
 );
 

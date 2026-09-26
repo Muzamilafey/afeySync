@@ -11,7 +11,7 @@ import { fmtDateTime, money } from '@/lib/utils';
 import { ServicePicker } from '@/features/billing/ServicePicker';
 import { CreateClaimButton } from '@/features/sha/CreateClaimButton';
 import { MpesaPayout } from '@/features/billing/MpesaPayout';
-import type { Invoice, Payment } from '@/features/billing/types';
+import { copayLabel, coverageLabel, type Invoice, type Payment } from '@/features/billing/types';
 
 const key = () => (typeof crypto !== 'undefined' && 'randomUUID' in crypto ? crypto.randomUUID() : `${Date.now()}-${Math.random()}`);
 
@@ -176,6 +176,16 @@ export default function InvoicePage({ params }: { params: Promise<{ id: string }
               {([['Gross', inv.totals.gross], ['Discount', -inv.totals.discount], ['Waiver', -inv.totals.waiver], ['Net', inv.totals.net], ['Paid', -inv.totals.paid], ['Credited', -inv.totals.credited]] as Array<[string, number]>).map(([k, v]) => <div key={k} className="flex justify-between"><dt className="muted">{k}</dt><dd>{money(v)}</dd></div>)}
               <div className="flex justify-between border-t border-[var(--border)] pt-2 text-lg font-bold"><dt>Balance</dt><dd>{money(inv.totals.balance)}</dd></div>
             </dl>
+            {inv.payer.schemeId && (
+              <div className="mt-3 rounded-md bg-[var(--surface-2)] p-3 text-sm">
+                <p className="font-semibold">{inv.payer.scheme} <span className="muted font-normal">· {coverageLabel(inv.payer.coverage)} · {copayLabel(inv.payer.copay)}</span></p>
+                <div className="mt-1 flex justify-between"><span className="muted">Patient pays (copay)</span><span className="font-semibold">{money(inv.totals.patientShare ?? 0)}</span></div>
+                {inv.payer.coverage === 'capitation'
+                  ? <div className="flex justify-between"><span className="muted">Covered by capitation</span><span>{money(inv.totals.capitation ?? 0)}</span></div>
+                  : <div className="flex justify-between"><span className="muted">To claim from {inv.payer.type === 'corporate' ? 'employer' : 'insurer'}</span><span>{money(inv.totals.payerShare ?? 0)}</span></div>}
+                {inv.payer.memberNumber && <p className="muted mt-1 text-xs">Member no. {inv.payer.memberNumber}</p>}
+              </div>
+            )}
             <div className="mt-4 flex flex-wrap gap-2">
               {can('billing.waive') && inv.totals.balance > 0 && <Button size="sm" variant="outline" onClick={() => setModal({ kind: 'adjust' })}>Discount / waiver</Button>}
               {can('billing.refund') && inv.totals.balance > 0 && <Button size="sm" variant="outline" onClick={() => setModal({ kind: 'credit' })}>Credit note</Button>}

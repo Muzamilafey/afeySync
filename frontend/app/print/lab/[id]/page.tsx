@@ -8,7 +8,7 @@ import { PrintButton } from '@/components/PrintButton';
 import { Letterhead } from '@/features/branding/Letterhead';
 import type { LabItem } from '@/features/lab/types';
 
-interface Report { orderNumber: string; orderedByName?: string; createdAt: string; clinicalNotes?: string; items: LabItem[]; pending: string[]; patient: { patientNumber: string; firstName: string; middleName?: string; lastName: string; gender: string; dateOfBirth?: string }; branch: { branchName: string; phone?: string; physicalAddress?: string }; facility: string }
+interface Report { orderNumber: string; orderedByName?: string; source?: string; externalRequester?: { name?: string; facility?: string; reference?: string }; createdAt: string; clinicalNotes?: string; items: LabItem[]; pending: string[]; patient: { patientNumber: string; firstName: string; middleName?: string; lastName: string; gender: string; dateOfBirth?: string }; branch: { branchName: string; phone?: string; physicalAddress?: string }; facility: string }
 
 export default function LabReportPrint({ params }: { params: Promise<{ id: string }> }) {
   const { id } = use(params);
@@ -24,7 +24,7 @@ export default function LabReportPrint({ params }: { params: Promise<{ id: strin
         <p>Patient No: {r.patient.patientNumber}</p>
         <p>Sex/Age: {r.patient.gender} / {age(r.patient.dateOfBirth)}</p>
         <p>Order: {r.orderNumber} · {fmtDateTime(r.createdAt)}</p>
-        <p>Requested by: {r.orderedByName}</p>
+        <p>Requested by: {r.externalRequester?.name || r.externalRequester?.facility ? [r.externalRequester.name, r.externalRequester.facility].filter(Boolean).join(', ') + (r.externalRequester.reference ? ` (ref ${r.externalRequester.reference})` : '') : r.source === 'walk_in' ? 'Self (walk-in)' : r.orderedByName}</p>
         <p>Clinical notes: {r.clinicalNotes ?? '—'}</p>
       </div>
       {r.items.map((i) => (

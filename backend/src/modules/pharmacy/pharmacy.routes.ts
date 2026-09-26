@@ -38,6 +38,11 @@ const itemSchema = z.object({
   form: z.string().max(60).optional(),
   strength: z.string().max(60).optional(),
   unit: z.string().max(30).default('unit'),
+  brand: z.string().trim().max(120).optional(),
+  manufacturer: z.string().trim().max(120).optional(),
+  packUnit: z.string().trim().max(30).optional(),
+  packSize: z.number().int().min(1).max(100_000).default(1),
+  barcode: z.string().trim().max(60).regex(/^[A-Za-z0-9-]*$/, 'can only contain letters, numbers and -').optional(),
   category: z.enum(['drug', 'consumable', 'reagent', 'equipment', 'other']).default('drug'),
   controlled: z.boolean().default(false),
   reorderLevel: z.number().int().min(0).default(0),
@@ -54,10 +59,11 @@ router.get(
     const m = req.tenant!.models;
     const q = String(req.query.q ?? '').trim();
     const filter: Record<string, unknown> = req.query.all === 'true' ? {} : { active: true };
-    if (q) filter.$or = [{ code: new RegExp(`^${escapeRegex(q.toUpperCase())}`) }, { name: new RegExp(escapeRegex(q), 'i') }, { genericName: new RegExp(escapeRegex(q), 'i') }];
+    if (q) filter.$or = [{ code: new RegExp(`^${escapeRegex(q.toUpperCase())}`) }, { name: new RegExp(escapeRegex(q), 'i') }, { genericName: new RegExp(escapeRegex(q), 'i') }, { brand: new RegExp(escapeRegex(q), 'i') }, { barcode: q }];
     if (req.query.category) filter.category = String(req.query.category);
     const items = await m.Item.find(filter).sort({ name: 1 }).limit(Math.min(500, Number(req.query.limit) || 100)).lean();
-    const locs = await m.StockLocation.find(req.branch ? { branchId: req.branch.id } : branchFilter(req)).select('_id').lean();
+    // Stock at one location (e.g. the pharmacy counter) when asked, otherwise across the branch.
+    const locs = req.query.locationId ? [await location(req, req.query.locationId)] : await m.StockLocation.find(req.branch ? { branchId: req.branch.id } : branchFilter(req)).select('_id').lean();
     const soh = await stockOnHand(m, { locationIds: locs.map((l) => l._id), itemIds: items.map((i) => i._id) });
     const services = await m.ServiceItem.find({ code: { $in: items.map(billingCodeOf) } }).select('code prices active').lean();
     const priceOf = new Map(services.map((sv) => [sv.code, Object.fromEntries(sv.prices.map((p) => [p.priceList, p.amount]))]));
@@ -166,7 +172,8 @@ router.get(
   h(async (req, res) => {
     const days = Math.min(365, Number(req.query.days) || 90);
     const m = req.tenant!.models;
-    const locs = await m.StockLocation.find(req.branch ? { branchId: req.branch.id } : branchFilter(req)).select('_id').lean();
+    // Stock at one location (e.g. the pharmacy counter) when asked, otherwise across the branch.
+    const locs = req.query.locationId ? [await location(req, req.query.locationId)] : await m.StockLocation.find(req.branch ? { branchId: req.branch.id } : branchFilter(req)).select('_id').lean();
     const rows = await m.Batch.find({ locationId: { $in: locs.map((l) => l._id) }, quantity: { $gt: 0 }, expiryDate: { $lte: new Date(Date.now() + days * 86400_000) } }).populate('itemId', 'code name unit').populate('locationId', 'name').sort({ expiryDate: 1 }).lean();
     res.json({ success: true, data: rows });
   }),
@@ -279,7 +286,7 @@ router.post(
   '/prescriptions',
   requirePermission('prescription.create'),
   h(async (req, res) => {
-    const body = parse(z.object({ visitId: z.string().optional(), admissionId: z.string().optional(), urgency: z.enum(['routine', 'urgent', 'stat']).default('routine'), items: z.array(rxItem).min(1).max(30), overrideAllergy: z.object({ reason: z.string().min(5).max(300) }).optional() }), req.body);
+    const body = parse(z.object({ visitId: z.string().optional(), admissionId: z.string().optional(), urgency: z.enum(['routine', 'urgent', 'stat']).default('routine'), purpose: z.enum(['treatment', 'discharge']).default('treatment'), items: z.array(rxItem).min(1).max(30), overrideAllergy: z.object({ reason: z.string().min(5).max(300) }).optional() }), req.body);
     const m = req.tenant!.models;
     let ctx: { patientId: Types.ObjectId; branchId: Types.ObjectId; visitId?: Types.ObjectId | null; admissionId?: Types.ObjectId; ward?: { wardId: Types.ObjectId; name?: string; bedNumber?: string } };
     if (body.visitId) {
@@ -301,13 +308,14 @@ router.post(
       for (const sub of allergyConflicts(patient?.allergies ?? [], [i.drugName, item?.name ?? '', item?.genericName ?? ''])) hits.push(`${i.drugName} ↔ allergy to ${sub}`);
     }
     if (hits.length && !body.overrideAllergy) throw new AppError(422, 'ALLERGY_ALERT', `Possible allergy conflict: ${hits.join('; ')}`, hits);
-    const rx = await m.Prescription.create({ rxNumber: await nextNumber(m, 'rx', 'RX'), ...ctx, urgency: ctx.admissionId ? body.urgency : 'routine', prescriberId: req.user!.id, prescriberName: req.user!.name, items: body.items });
+    if (body.purpose === 'discharge' && !ctx.admissionId) throw badRequest('Discharge (take-home) drugs are prescribed from the admission');
+    const rx = await m.Prescription.create({ rxNumber: await nextNumber(m, 'rx', 'RX'), ...ctx, purpose: body.purpose, urgency: ctx.admissionId ? body.urgency : 'routine', prescriberId: req.user!.id, prescriberName: req.user!.name, items: body.items });
     if (ctx.admissionId) {
       // Ward request: tell the pharmacy team (in-app); STAT/urgent requests are flagged.
       const roleIds = (await m.Role.find({ permissions: 'pharmacy.dispense' }).select('_id').lean()).map((r) => r._id);
       const staff = await m.User.find({ status: 'active', roleIds: { $in: roleIds } }).select('_id').lean();
       const tag = rx.urgency === 'stat' ? 'STAT ' : rx.urgency === 'urgent' ? 'Urgent ' : '';
-      await notifyStaff(m, staff.map((u) => u._id), { event: 'Prescription', title: `${tag}ward request ${rx.rxNumber}: ${ctx.ward?.name ?? 'ward'}${ctx.ward?.bedNumber ? `, bed ${ctx.ward.bedNumber}` : ''}`, body: body.items.map((i) => i.drugName).join(', '), link: '/pharmacy?view=ward', branchId: ctx.branchId });
+      await notifyStaff(m, staff.map((u) => u._id), { event: 'Prescription', title: `${tag}${rx.purpose === 'discharge' ? 'discharge (take-home) drugs' : 'ward request'} ${rx.rxNumber}: ${ctx.ward?.name ?? 'ward'}${ctx.ward?.bedNumber ? `, bed ${ctx.ward.bedNumber}` : ''}`, body: body.items.map((i) => i.drugName).join(', '), link: rx.purpose === 'discharge' ? '/pharmacy?view=discharge' : '/pharmacy?view=ward', branchId: ctx.branchId });
     } else if (ctx.visitId) await enqueue(m, { visitId: ctx.visitId, patientId: ctx.patientId, branchId: ctx.branchId, stage: 'pharmacy' });
     await audit(req, { action: 'prescription.create', resource: 'prescription', resourceId: String(rx._id), newValue: { items: body.items.map((i) => i.drugName), allergyOverride: body.overrideAllergy?.reason, allergyHits: hits } });
     res.status(201).json({ success: true, data: rx });
@@ -324,8 +332,10 @@ router.get(
     for (const k of ['visitId', 'admissionId', 'patientId'] as const) if (req.query[k]) filter[k] = oid(req.query[k], k);
     if (req.query.status) filter.status = { $in: String(req.query.status).split(',') };
     // source=ward: inpatient requests; source=opd: outpatient prescriptions.
-    if (req.query.source === 'ward') filter.admissionId = { $ne: null };
+    if (req.query.source === 'ward') Object.assign(filter, { admissionId: { $ne: null }, purpose: { $ne: 'discharge' } });
+    else if (req.query.source === 'discharge') Object.assign(filter, { admissionId: { $ne: null }, purpose: 'discharge' });
     else if (req.query.source === 'opd') filter.admissionId = null;
+    if (req.query.purpose) filter.purpose = String(req.query.purpose) === 'discharge' ? 'discharge' : { $ne: 'discharge' };
     const [rows, total] = await Promise.all([m.Prescription.find(filter).populate('patientId', 'patientNumber firstName lastName gender dateOfBirth allergies').sort({ createdAt: -1 }).skip(skip).limit(limit).lean(), m.Prescription.countDocuments(filter)]);
     // Outstanding ward requests: STAT first, then urgent, then oldest first.
     const rank = { stat: 0, urgent: 1, routine: 2 } as Record<string, number>;

@@ -8,7 +8,7 @@ import { WhatsNew } from '@/features/announcements/WhatsNew';
 import { usePathname, useRouter } from 'next/navigation';
 import { useEffect, useRef, useState, type ReactNode } from 'react';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
-import { Activity, Baby, Banknote, BedDouble, Bell, Cross, HeartHandshake, Smile, Boxes, Pill, ShoppingCart, FlaskConical, ScanLine, CalendarDays, ListOrdered, Stethoscope, Receipt, Building2, ChevronDown, ClipboardList, FileSearch, HeartPulse, LayoutDashboard, LogOut, Menu, Network, Search, Settings, ShieldCheck, UserPlus, Users, X, Wallet, BarChart3, IdCard, Umbrella, CreditCard, Palette, UserRound, KeyRound, MessageSquareText } from 'lucide-react';
+import { Activity, Baby, Banknote, BedDouble, Bell, Cross, HeartHandshake, Smile, Boxes, Pill, ShoppingCart, FlaskConical, ScanLine, CalendarDays, ListOrdered, Stethoscope, Receipt, Building2, ChevronDown, ClipboardList, FileSearch, HeartPulse, LayoutDashboard, LogOut, Menu, Network, Search, Settings, ShieldCheck, UserPlus, Users, X, Wallet, BarChart3, IdCard, Umbrella, CreditCard, Palette, UserRound, KeyRound, MessageSquareText, ShoppingBag, Warehouse, Briefcase, Send } from 'lucide-react';
 import { useMe } from '@/hooks/useMe';
 import { useBranding } from '@/features/branding/branding';
 import { api } from '@/services/api';
@@ -36,6 +36,7 @@ const NAV: Array<{ section: string; items: NavItem[] }> = [
     { href: '/laboratory', label: 'Laboratory', icon: FlaskConical, any: ['lab.view'] },
     { href: '/radiology', label: 'Radiology', icon: ScanLine, any: ['radiology.view'] },
     { href: '/pharmacy', label: 'Pharmacy', icon: Pill, any: ['pharmacy.view'] },
+    { href: '/pharmacy/pos', label: 'Pharmacy POS', icon: ShoppingBag, any: ['pharmacy.sell'] },
     { href: '/inpatient', label: 'Inpatient', icon: BedDouble, any: ['inpatient.view', 'nursing.view'] },
     { href: '/maternity', label: 'Maternity', icon: Baby, any: ['maternity.view'] },
     { href: '/mch', label: 'MCH / FP', icon: HeartHandshake, any: ['mch.view', 'fp.view'] },
@@ -57,7 +58,9 @@ const NAV: Array<{ section: string; items: NavItem[] }> = [
   { section: 'Finance', items: [
     { href: '/billing', label: 'Billing & Cashier', icon: Banknote, any: ['billing.view'] },
     { href: '/billing/services', label: 'Services & Prices', icon: Receipt, any: ['billing.prices'] },
+    { href: '/billing/schemes', label: 'Corporates & Schemes', icon: Briefcase, any: ['billing.prices', 'billing.view', 'insurance.view'] },
     { href: '/inventory', label: 'Inventory', icon: Boxes, any: ['inventory.view', 'pharmacy.stock', 'pharmacy.view'] },
+    { href: '/inventory/stores', label: 'Stores & requisitions', icon: Warehouse, any: ['inventory.view', 'inventory.manage', 'pharmacy.stock', 'pharmacy.dispense', 'nursing.record', 'lab.sample', 'lab.manage', 'dental.manage', 'radiology.manage'] },
     { href: '/procurement', label: 'Procurement', icon: ShoppingCart, any: ['procurement.view'] },
     { href: '/finance', label: 'Finance', icon: Wallet, any: ['finance.view'] },
     { href: '/reports', label: 'Reports', icon: BarChart3, any: ['reports.view'] },
@@ -71,6 +74,7 @@ const NAV: Array<{ section: string; items: NavItem[] }> = [
     { href: '/admin/security', label: 'Security', icon: Settings, any: ['admin.support_access', 'admin.settings'] },
     { href: '/admin/branding', label: 'Branding', icon: Palette, any: ['admin.settings'] },
     { href: '/admin/diagnoses', label: 'Diagnoses', icon: ClipboardList, any: ['admin.settings'] },
+    { href: '/sms', label: 'Bulk SMS', icon: Send, any: ['sms.bulk'] },
     { href: '/admin/sms', label: 'SMS wallet', icon: MessageSquareText, any: ['subscription.view', 'admin.settings'] },
     { href: '/admin/subscription', label: 'Subscription', icon: CreditCard, any: ['subscription.view'] },
   ] },
@@ -296,7 +300,9 @@ export function AppShell({ children }: { children: ReactNode }) {
         <div key={s.section}>
           <p className="muted px-2 pb-1 text-[11px] font-semibold tracking-wider uppercase">{s.section}</p>
           {s.items.map((i) => {
-            const active = pathname === i.href || (!['/dashboard', '/sha', '/billing', '/insurance'].includes(i.href) && pathname.startsWith(i.href)) || (['/sha', '/billing', '/insurance'].includes(i.href) && (pathname === i.href || (i.href === '/billing' && pathname.startsWith('/billing/invoices'))));
+            // A more specific menu entry (e.g. /inventory/stores) wins over its parent (/inventory).
+            const deeper = nav.some((x) => x.items.some((o) => o.href !== i.href && o.href.startsWith(`${i.href}/`) && (pathname === o.href || pathname.startsWith(`${o.href}/`))));
+            const active = pathname === i.href || (!deeper && !['/dashboard', '/sha', '/billing', '/insurance'].includes(i.href) && pathname.startsWith(`${i.href}/`)) || (['/sha', '/billing', '/insurance'].includes(i.href) && (pathname === i.href || (i.href === '/billing' && pathname.startsWith('/billing/invoices'))));
             return (
               <Link key={i.href} href={i.href} onClick={() => setMobileOpen(false)} className={cn('flex items-center gap-2.5 rounded-md px-2 py-2 text-sm font-medium transition', active ? 'bg-brand-600 text-white' : 'hover:bg-[var(--surface-2)]')}>
                 <i.icon className="h-4 w-4" />

@@ -35,24 +35,24 @@ function lineProblems(l: Line) {
   return p;
 }
 
-export function PrescriptionPanel({ visitId, admissionId, patientId, open }: { visitId?: string; admissionId?: string; patientId: string; open: boolean }) {
+export function PrescriptionPanel({ visitId, admissionId, patientId, open, purpose }: { visitId?: string; admissionId?: string; patientId: string; open: boolean; purpose?: 'discharge' }) {
   void patientId;
   const can = useCan();
   const qc = useQueryClient();
   const [lines, setLines] = useState<Line[]>([]);
   const [override, setOverride] = useState('');
   const [urgency, setUrgency] = useState<'routine' | 'urgent' | 'stat'>('routine');
-  const receive = useMutation({ mutationFn: (rxId: string) => api(`/pharmacy/prescriptions/${rxId}/receive`, { method: 'POST', body: {} }), onSuccess: () => qc.invalidateQueries({ queryKey: ['rx', visitId ?? admissionId] }) });
-  const list = useQuery({ queryKey: ['rx', visitId ?? admissionId], queryFn: async () => (await api<Prescription[]>('/pharmacy/prescriptions', { query: { visitId, admissionId } })).data, enabled: can('pharmacy.view', 'prescription.create', 'nursing.view') });
+  const receive = useMutation({ mutationFn: (rxId: string) => api(`/pharmacy/prescriptions/${rxId}/receive`, { method: 'POST', body: {} }), onSuccess: () => qc.invalidateQueries({ queryKey: ['rx', visitId ?? admissionId, purpose ?? 'treatment'] }) });
+  const list = useQuery({ queryKey: ['rx', visitId ?? admissionId, purpose ?? 'treatment'], queryFn: async () => (await api<Prescription[]>('/pharmacy/prescriptions', { query: { visitId, admissionId, purpose: admissionId ? purpose ?? 'treatment' : undefined } })).data, enabled: can('pharmacy.view', 'prescription.create', 'nursing.view') });
   const m = useMutation({
-    mutationFn: () => api('/pharmacy/prescriptions', { method: 'POST', body: { visitId, admissionId, urgency: admissionId ? urgency : undefined, overrideAllergy: override ? { reason: override } : undefined, items: lines.map((l) => ({ itemId: l.itemId, drugName: l.drugName, dose: `${l.amount} ${l.unit}`, frequency: l.frequency, route: l.route, durationDays: l.days === '' ? undefined : l.days, quantity: Number(l.quantity), instructions: [...l.tags, l.note.trim()].filter(Boolean).join('. ') || undefined })) } }),
-    onSuccess: () => { setLines([]); setOverride(''); setUrgency('routine'); qc.invalidateQueries({ queryKey: ['rx', visitId ?? admissionId] }); },
+    mutationFn: () => api('/pharmacy/prescriptions', { method: 'POST', body: { visitId, admissionId, purpose, urgency: admissionId ? urgency : undefined, overrideAllergy: override ? { reason: override } : undefined, items: lines.map((l) => ({ itemId: l.itemId, drugName: l.drugName, dose: `${l.amount} ${l.unit}`, frequency: l.frequency, route: l.route, durationDays: l.days === '' ? undefined : l.days, quantity: Number(l.quantity), instructions: [...l.tags, l.note.trim()].filter(Boolean).join('. ') || undefined })) } }),
+    onSuccess: () => { setLines([]); setOverride(''); setUrgency('routine'); qc.invalidateQueries({ queryKey: ['rx', visitId ?? admissionId, purpose ?? 'treatment'] }); },
   });
   const allergy = m.error instanceof ApiError && m.error.code === 'ALLERGY_ALERT';
   const up = (i: number, p: Partial<Line>) => setLines(lines.map((x, j) => (j === i ? withQuantity({ ...x, ...p }) : x)));
   const problems = lines.map(lineProblems);
   return (
-    <Card title={<span className="flex items-center gap-2"><Pill className="h-4 w-4" /> {admissionId ? 'Medication orders (sent to pharmacy)' : 'Prescriptions'}</span>}>
+    <Card title={<span className="flex items-center gap-2"><Pill className="h-4 w-4" /> {purpose === 'discharge' ? 'Take-home (discharge) drugs, sent to pharmacy' : admissionId ? 'Medication orders (sent to pharmacy)' : 'Prescriptions'}</span>}>
       {open && can('prescription.create') && (
         <div className="mb-4 space-y-2 border-b border-[var(--border)] pb-4">
           <ItemPicker
@@ -134,7 +134,7 @@ export function PrescriptionPanel({ visitId, admissionId, patientId, open }: { v
       {list.data?.map((rx) => (
         <div key={rx._id} className="mb-3">
           <p className="mb-1 flex flex-wrap items-center justify-between gap-2 text-xs">
-            <span className="font-mono">{rx.rxNumber} · {rx.prescriberName} · {fmtDateTime(rx.createdAt)}</span>
+            <span className="font-mono">{rx.rxNumber} · {rx.prescriberName} · {fmtDateTime(rx.createdAt)} · <a href={`/print/prescription/${rx._id}`} target="_blank" rel="noreferrer" className="font-sans text-brand-600 hover:underline">Print</a></span>
             <span className="flex items-center gap-1">
               {rx.urgency && rx.urgency !== 'routine' && <Badge tone={rx.urgency === 'stat' ? 'red' : 'amber'}>{rx.urgency === 'stat' ? 'STAT' : 'Urgent'}</Badge>}
               <Badge tone={statusTone(rx.status === 'dispensed' ? 'completed' : rx.status === 'cancelled' ? 'failed' : 'pending')}>{rx.status === 'pending' && admissionId ? 'waiting for pharmacy' : rx.status.replace('_', ' ')}</Badge>

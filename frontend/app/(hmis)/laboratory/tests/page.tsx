@@ -7,6 +7,7 @@ import { ExcelImport } from '@/features/imports/ExcelImport';
 import { api } from '@/services/api';
 import { useCan } from '@/hooks/useMe';
 import { Alert, Badge, Button, Card, ErrorText, Field, Input, Loading, Modal, PageHeader, Select, Table, Td } from '@/components/ui';
+import { PackagesCard } from '@/features/lab/PackagesCard';
 import type { LabTest } from '@/features/lab/types';
 
 type Param = LabTest['parameters'][number];
@@ -80,6 +81,7 @@ export default function LabTestsPage() {
       <PageHeader title="Lab Test Catalog" crumbs={['Laboratory', 'Catalog']} actions={can('lab.manage') && <><Button variant="outline" onClick={() => setImporting(true)}><FileSpreadsheet className="h-4 w-4" /> Import from Excel</Button><Button onClick={() => setEdit('new')}><Plus className="h-4 w-4" /> Add test</Button></>} />
       <ExcelImport open={importing} onClose={() => setImporting(false)} onDone={() => qcImport.invalidateQueries()} title="Import lab tests from Excel" noun="tests" templatePath="/laboratory/tests/import-template" templateName="lab-tests-template.xlsx" importPath="/laboratory/tests/import" />
       <div className="mb-4"><Alert tone="amber">Seeded reference ranges are generic defaults. Your laboratory must review and adjust them for its analysers and population before clinical use.</Alert></div>
+      <PackagesCard />
       <Card>
         {q.isLoading && <Loading />}
         <Table head={['Code', 'Test', 'Department', 'Specimen', 'Parameters', 'TAT', 'Status', '']}>

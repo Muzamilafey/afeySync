@@ -199,7 +199,41 @@ const diagnosisSchema = new Schema(
 );
 diagnosisSchema.index({ code: 1 });
 
+/** A bulk SMS to patients (or a typed list of numbers). Each recipient is its own queued SMS job. */
+const smsCampaignSchema = new Schema(
+  {
+    campaignNumber: { type: String, required: true, unique: true },
+    name: { type: String, required: true, trim: true },
+    message: { type: String, required: true },
+    audience: {
+      kind: { type: String, enum: ['patients', 'numbers'], required: true },
+      branchId: ObjectId,
+      visitedFrom: Date,
+      visitedTo: Date,
+      gender: String,
+      ageMin: Number,
+      ageMax: Number,
+      payerType: String,
+      schemeId: ObjectId,
+    },
+    status: { type: String, enum: ['scheduled', 'sending', 'cancelled'], default: 'sending', index: true },
+    scheduledAt: Date,
+    recipientCount: Number,
+    excluded: { noConsent: Number, noPhone: Number, duplicate: Number },
+    segments: Number,
+    credits: Number,
+    recipients: [{ _id: false, phone: String, patientId: ObjectId, jobId: ObjectId }],
+    createdBy: ObjectId,
+    createdByName: String,
+    cancelledByName: String,
+    cancelledAt: Date,
+  },
+  { timestamps: true },
+);
+smsCampaignSchema.index({ createdAt: -1 });
+
 export const miscSchemas = {
+  SmsCampaign: smsCampaignSchema,
   DentalChart: dentalChartSchema,
   DentalVisit: dentalVisitSchema,
   MortuaryCase: mortuaryCaseSchema,

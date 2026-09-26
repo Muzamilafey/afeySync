@@ -84,6 +84,8 @@ const labOrderItemSchema = new Schema({
   rejectionReason: String,
   critical: { type: Boolean, default: false },
   criticalNotifiedAt: Date,
+  /** Set when the test was ordered as part of a package (charged once for the package). */
+  packageCode: String,
 });
 
 const labOrderSchema = new Schema(
@@ -97,6 +99,10 @@ const labOrderSchema = new Schema(
     orderedByName: String,
     priority: { type: String, enum: ['routine', 'urgent', 'stat'], default: 'routine' },
     clinicalNotes: String,
+    /** Walk-in / external requests: who sent the patient (another clinician or facility). */
+    source: { type: String, enum: ['internal', 'walk_in', 'external'], default: 'internal' },
+    externalRequester: { name: String, facility: String, reference: String },
+    packages: [{ _id: false, code: String, name: String }],
     items: [labOrderItemSchema],
     status: { type: String, enum: ['open', 'completed', 'cancelled'], default: 'open', index: true },
   },
@@ -147,7 +153,21 @@ const radiologyRequestSchema = new Schema(
   { timestamps: true },
 );
 
+/** A group of tests ordered and priced together (e.g. a full antenatal profile). */
+const labPackageSchema = new Schema(
+  {
+    code: { type: String, required: true, unique: true, uppercase: true },
+    name: { type: String, required: true },
+    description: String,
+    testCodes: [{ type: String, uppercase: true }],
+    serviceCode: String,
+    active: { type: Boolean, default: true },
+  },
+  { timestamps: true },
+);
+
 export const labSchemas = {
+  LabPackage: labPackageSchema,
   LabTest: labTestSchema,
   LabOrder: labOrderSchema,
   ImagingExam: imagingExamSchema,

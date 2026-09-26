@@ -12,6 +12,8 @@ interface B { admission: { admissionNumber: string; admittedAt: string; admissio
 export default function DischargePrint({ params }: { params: Promise<{ id: string }> }) {
   const { id } = use(params);
   const q = useQuery({ queryKey: ['admission', id], queryFn: async () => (await api<B>(`/inpatient/admissions/${id}`)).data });
+  const tto = useQuery({ queryKey: ['rx', id, 'discharge'], queryFn: async () => (await api<Array<{ status: string; items: Array<{ drugName: string; dose?: string; frequency?: string; route?: string; durationDays?: number; quantity: number; instructions?: string; status: string }> }>>('/pharmacy/prescriptions', { query: { admissionId: id, purpose: 'discharge' } })).data, retry: false });
+  const takeHome = (tto.data ?? []).filter((r) => r.status !== 'cancelled').flatMap((r) => r.items.filter((i) => i.status !== 'cancelled'));
   if (!q.data) return <p>{q.error ? (q.error as Error).message : 'Loading…'}</p>;
   const { admission: a, patient: p } = q.data;
   const d = a.discharge;
@@ -29,6 +31,14 @@ export default function DischargePrint({ params }: { params: Promise<{ id: strin
       <p><strong>Final diagnosis:</strong> {d?.finalDiagnosis}</p>
       <p><strong>Outcome:</strong> {d?.outcome}</p>
       <div><strong>Summary</strong><p className="whitespace-pre-wrap">{d?.summary}</p></div>
+      {takeHome.length > 0 && (
+        <div>
+          <strong>Take-home medicines</strong>
+          <table className="mt-1 w-full text-xs"><thead><tr className="border-b text-left"><th>Medicine</th><th>Dose</th><th>How often</th><th>Route</th><th>Days</th><th>Qty</th></tr></thead>
+            <tbody>{takeHome.map((i, k) => <tr key={k} className="border-b"><td className="py-0.5">{i.drugName}{i.instructions ? ` (${i.instructions})` : ''}</td><td>{i.dose}</td><td>{i.frequency}</td><td>{i.route}</td><td>{i.durationDays ?? '—'}</td><td>{i.quantity}</td></tr>)}</tbody>
+          </table>
+        </div>
+      )}
       {d?.dischargeMedications && <div><strong>Discharge medications</strong><p className="whitespace-pre-wrap">{d.dischargeMedications}</p></div>}
       {d?.followUp && <div><strong>Follow-up</strong><p className="whitespace-pre-wrap">{d.followUp}</p></div>}
       <p className="pt-8">Clinician: {d?.byName} ______________________</p>

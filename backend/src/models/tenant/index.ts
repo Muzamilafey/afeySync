@@ -203,6 +203,8 @@ const patientSchema = new Schema(
     },
     allergies: [{ _id: false, substance: String, reaction: String, severity: String, recordedAt: Date }],
     registeredBranchId: { type: ObjectId, required: true },
+    /** The shared “walk-in customer” account each branch uses for counter sales; hidden from patient lists. */
+    walkInAccount: { type: Boolean, default: false },
     /** Mother–baby linkage for newborns registered at delivery. */
     motherId: { type: ObjectId, ref: 'Patient', index: true, sparse: true },
     deceasedAt: Date,

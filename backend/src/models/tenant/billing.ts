@@ -52,6 +52,10 @@ const invoiceSchema = new Schema(
       priceList: { type: String, default: 'cash' },
       scheme: String,
       memberNumber: String,
+      /** Snapshot of the scheme's terms when the invoice was opened, so later edits to the scheme do not change old bills. */
+      schemeId: { type: ObjectId, ref: 'PayerScheme' },
+      coverage: { type: String, enum: ['fee_for_service', 'capitation'] },
+      copay: { type: { type: String, enum: ['none', 'fixed', 'percent'] }, value: Number },
     },
     status: { type: String, enum: ['open', 'issued', 'partially_paid', 'paid', 'void'], default: 'open', index: true },
     lines: [invoiceLineSchema],
@@ -73,6 +77,11 @@ const invoiceSchema = new Schema(
       paid: { type: Number, default: 0 },
       credited: { type: Number, default: 0 },
       balance: { type: Number, default: 0 },
+      /** Scheme split: what the patient pays (copay) and what the insurer or employer covers. */
+      patientShare: Number,
+      payerShare: Number,
+      /** Capitation: covered by the scheme's fixed monthly fee, so it is not billed to anyone per visit. */
+      capitation: { type: Number, default: 0 },
     },
     issuedAt: Date,
     shaTransactionId: ObjectId,
@@ -165,7 +174,34 @@ const expenseSchema = new Schema(
   { timestamps: true },
 );
 
+/**
+ * A corporate (employer) or insurance scheme the facility serves. The scheme decides the price list,
+ * the patient's copay, and whether services are billed per visit (fee for service) or covered by a
+ * fixed monthly fee per member (capitation), in which case only the copay is collected.
+ */
+const payerSchemeSchema = new Schema(
+  {
+    code: { type: String, required: true, unique: true, uppercase: true, trim: true },
+    name: { type: String, required: true, trim: true },
+    kind: { type: String, enum: ['insurance', 'corporate'], required: true },
+    payerId: { type: ObjectId, ref: 'InsurancePayer' },
+    /** Price list used for this scheme's patients: 'insurance', 'cash' or a scheme list such as 'aar-gold'. */
+    priceList: { type: String, required: true, default: 'insurance' },
+    coverage: { type: String, enum: ['fee_for_service', 'capitation'], default: 'fee_for_service' },
+    copay: { type: { type: String, enum: ['none', 'fixed', 'percent'], default: 'none' }, value: { type: Number, default: 0, min: 0 } },
+    /** Capitation: agreed monthly amount per member, for reconciliation of the scheme's payments. */
+    capitationRate: Number,
+    contactPerson: String,
+    phone: String,
+    email: String,
+    notes: String,
+    active: { type: Boolean, default: true, index: true },
+  },
+  { timestamps: true },
+);
+
 export const billingSchemas = {
+  PayerScheme: payerSchemeSchema,
   ServiceItem: serviceItemSchema,
   Invoice: invoiceSchema,
   Payment: paymentSchema,
