@@ -16,6 +16,7 @@ import { randomToken, sha256 } from '../../utils/crypto';
 import { env } from '../../config/env';
 import { assertShaTransactable } from './shaWorkflow';
 import { IntegrationSecretService } from '../integrations/secretService';
+import { callbackStatus, registerCallbacks, setCallbacksActive } from './shaCallbacks';
 
 const router = Router();
 router.use(authenticateTenant);
@@ -83,12 +84,12 @@ router.post(
         identificationNumberMasked: masked,
         eligible: result.eligible ?? undefined,
         status,
-        summary: { statusText: result.statusText, memberName: result.memberName, clientRegistryId: result.clientRegistryId, scheme: result.scheme, reason: result.reason, isAlive: result.isAlive, whitelistedForOTP: result.whitelistedForOTP, facilityBiometricsEnforced: result.facilityBiometricsEnforced, schemes: result.schemes.map(({ raw: _r, ...x }) => x), pomsf: result.pomsf },
+        summary: { statusText: result.statusText, memberName: result.memberName, clientRegistryId: result.clientRegistryId, scheme: result.scheme, reason: result.reason, isAlive: result.isAlive, whitelistedForOTP: result.whitelistedForOTP, facilityBiometricsEnforced: result.facilityBiometricsEnforced, useSilBiometrics: result.useSilBiometrics, schemes: result.schemes.map(({ raw: _r, ...x }) => x), pomsf: result.pomsf },
         raw: result.raw,
         checkedBy: req.user!.id,
       });
       if (patient) {
-        await Patient.updateOne({ _id: patient._id }, { 'sha.status': status, 'sha.lastCheckedAt': new Date(), 'sha.lastCheckId': check._id, 'sha.isAlive': result.isAlive ?? undefined, 'sha.whitelistedForOTP': result.whitelistedForOTP ?? undefined, 'sha.facilityBiometricsEnforced': result.facilityBiometricsEnforced ?? undefined, 'sha.schemes': result.schemes.map(({ raw: _r, ...x }) => x), 'sha.pomsf': result.pomsf });
+        await Patient.updateOne({ _id: patient._id }, { 'sha.status': status, 'sha.lastCheckedAt': new Date(), 'sha.lastCheckId': check._id, 'sha.isAlive': result.isAlive ?? undefined, 'sha.whitelistedForOTP': result.whitelistedForOTP ?? undefined, 'sha.facilityBiometricsEnforced': result.facilityBiometricsEnforced ?? undefined, 'sha.useSilBiometrics': result.useSilBiometrics ?? undefined, 'sha.schemes': result.schemes.map(({ raw: _r, ...x }) => x), 'sha.pomsf': result.pomsf });
         if (result.isAlive === false) await audit(req, { action: 'sha.beneficiary_deceased', resource: 'patient', resourceId: String(patient._id), newValue: { source: 'SHA eligibility isAlive=false' } });
       }
       await audit(req, { action: 'sha.eligibility.check', resource: 'patient', resourceId: patient ? String(patient._id) : null, newValue: { identificationType: ident.type, status } });
@@ -278,6 +279,22 @@ router.post(
     res.status(201).json({ success: true, data: { id: ep._id, url: `${env.API_URL.replace(/\/$/, '')}/api/v1/${body.provider}/callbacks/${token}` } });
   }),
 );
+
+/* ---------------- HIE Status Callbacks registration (facilities with their own SHA credentials) */
+router.get('/hie-callbacks', requirePermission('admin.integrations'), h(async (req, res) => {
+  res.json({ success: true, data: await callbackStatus({ tenantId: req.tenant!.id, userId: req.user!.id, requestId: req.requestId }) });
+}));
+router.post('/hie-callbacks/register', requirePermission('admin.integrations'), h(async (req, res) => {
+  const regs = await registerCallbacks({ tenantId: req.tenant!.id, userId: req.user!.id, requestId: req.requestId });
+  await audit(req, { action: 'sha.callbacks.register', resource: 'callback_endpoint', newValue: { entities: regs.map((r) => r.entityType) } });
+  res.json({ success: true, data: regs });
+}));
+router.post('/hie-callbacks/active', requirePermission('admin.integrations'), h(async (req, res) => {
+  const { active } = parse(z.object({ active: z.boolean() }), req.body);
+  await setCallbacksActive({ tenantId: req.tenant!.id, userId: req.user!.id, requestId: req.requestId }, active);
+  await audit(req, { action: active ? 'sha.callbacks.resume' : 'sha.callbacks.pause', resource: 'callback_endpoint' });
+  res.json({ success: true, data: { active } });
+}));
 
 router.get(
   '/callback-events',

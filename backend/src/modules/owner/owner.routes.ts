@@ -28,6 +28,7 @@ import { randomToken } from '../../utils/crypto';
 import { getConnectionStats } from '../health/health.routes';
 import { ALL_TENANT_PERMISSIONS } from '../rbac/catalog';
 import { clearEntitlementCache } from '../plans/planService';
+import { callbackStatus, registerCallbacks, setCallbacksActive } from '../sha/shaCallbacks';
 import { sendAccountEmail } from '../users/accountEmails';
 import { facilityLoginUrl } from '../onboarding/onboarding.routes';
 import { brandingSchema, editorBranding, logoUploadSchema, removeLogo, setLogo, updateBranding } from '../branding/brandingService';
@@ -460,6 +461,22 @@ const configUpdateSchema = z.object({
   secrets: z.record(z.string(), z.string().max(8000)).optional(),
   allowTenantCredentials: z.boolean().optional(),
 });
+
+/* SHA status callbacks for facilities on AfeySync's own SHA connection (one registration for the platform). */
+router.get('/sha-callbacks', requirePermission('owner.integrations'), h(async (req, res) => {
+  res.json({ success: true, data: await callbackStatus({ tenantId: null, userId: req.platformUser!.id, requestId: req.requestId }) });
+}));
+router.post('/sha-callbacks/register', requirePermission('owner.integrations'), h(async (req, res) => {
+  const regs = await registerCallbacks({ tenantId: null, userId: req.platformUser!.id, requestId: req.requestId });
+  await platformAudit(req, { action: 'sha.callbacks.register', resource: 'callback_endpoint', newValue: { entities: regs.map((r) => r.entityType) } });
+  res.json({ success: true, data: regs });
+}));
+router.post('/sha-callbacks/active', requirePermission('owner.integrations'), h(async (req, res) => {
+  const { active } = parse(z.object({ active: z.boolean() }), req.body);
+  await setCallbacksActive({ tenantId: null, userId: req.platformUser!.id, requestId: req.requestId }, active);
+  await platformAudit(req, { action: active ? 'sha.callbacks.resume' : 'sha.callbacks.pause', resource: 'callback_endpoint' });
+  res.json({ success: true, data: { active } });
+}));
 
 router.put(
   '/integrations/:provider',

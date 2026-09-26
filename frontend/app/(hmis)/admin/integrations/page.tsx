@@ -4,6 +4,7 @@ import { useState } from 'react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { api } from '@/services/api';
 import { DhaConnectionCard } from '@/features/sha/DhaConnectionCard';
+import { ShaCallbacksCard } from '@/features/sha/ShaCallbacksCard';
 import { Alert, Button, Card, ErrorText, Field, Input, Loading, PageHeader, StatusDot } from '@/components/ui';
 import type { IntegrationFlag } from '@/types/api';
 
@@ -60,7 +61,7 @@ export default function FacilityIntegrationsPage() {
   return (
     <>
       <PageHeader title="Integrations" crumbs={['Admin', 'Integrations']} subtitle="Provider credentials are managed by AfeySync platform administration unless facility credentials are explicitly permitted." />
-      <div className="mb-5 max-w-3xl"><DhaConnectionCard /></div>
+      <div className="mb-5 grid max-w-6xl gap-4 xl:grid-cols-2"><DhaConnectionCard /><ShaCallbacksCard mode="facility" /></div>
       {q.isLoading && <Loading />}
       <ErrorText error={q.error} />
       <div className="grid gap-4 lg:grid-cols-2">

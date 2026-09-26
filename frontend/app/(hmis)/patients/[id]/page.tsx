@@ -11,6 +11,8 @@ import { CoveragePanel } from '@/features/insurance/CoveragePanel';
 import { Alert, Badge, Button, Card, ErrorText, Field, Input, KV, Loading, Tabs, statusTone } from '@/components/ui';
 import { MedicalReportsPanel } from '@/features/medicalReports/MedicalReportsPanel';
 import { EligibilityResultCard, type EligibilityResult } from '@/features/sha/EligibilityChecker';
+import { ChildEnrollmentPanel } from '@/features/sha/biometrics/ChildEnrollmentPanel';
+import { OtpWhitelistPanel } from '@/features/sha/biometrics/OtpWhitelistPanel';
 import { BenefitsPanel } from '@/features/sha/BenefitsPanel';
 import { CheckInForm } from '@/features/frontdesk/CheckInForm';
 import { Modal, Table, Td, statusTone as tone } from '@/components/ui';
@@ -144,7 +146,17 @@ function Profile({ id }: { id: string }) {
           </Card>
         </div>
       )}
-      {tab === 'sha' && <BenefitsPanel patientId={id} hasCrId={!!p.clientRegistryId} initialView={params.get('view') ?? undefined} />}
+      {tab === 'sha' && (
+        <div className="space-y-5">
+          <BenefitsPanel patientId={id} hasCrId={!!p.clientRegistryId} initialView={params.get('view') ?? undefined} />
+          {p.clientRegistryId && can('sha.view', 'sha.authorization') && (
+            <>
+              {(p as { sha?: { useSilBiometrics?: boolean } }).sha?.useSilBiometrics !== undefined && <ChildEnrollmentPanel patientId={id} childFlag={(p as { sha?: { useSilBiometrics?: boolean } }).sha?.useSilBiometrics} />}
+              <OtpWhitelistPanel patientId={id} />
+            </>
+          )}
+        </div>
+      )}
       {tab === 'insurance' && (
         <div className="space-y-5">
           {can('insurance.view') ? <CoveragePanel patientId={id} /> : (p.insurance ?? []).length > 0 && <Card title="Insurance">{p.insurance!.map((i) => <KV key={i.memberNumber} items={[['Provider', i.provider], ['Scheme', i.scheme], ['Member number', i.memberNumber]]} />)}</Card>}

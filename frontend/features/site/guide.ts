@@ -1,7 +1,7 @@
 import {
   Archive, Baby, BarChart3, BedDouble, Boxes, CalendarDays, ClipboardList, CreditCard, FlaskConical, HeartHandshake, HeartPulse,
   IdCard, KeyRound, Landmark, LifeBuoy, MessageSquareText, Pill, Printer, Receipt, Rocket, ScanLine, Settings, ShieldCheck, ShoppingCart,
-  Smile, Stethoscope, UserPlus, UserRound, Users, Wallet, Warehouse, ShoppingBag, FileSignature, Briefcase, type LucideIcon,
+  Smile, Stethoscope, UserPlus, UserRound, Users, Wallet, Warehouse, ShoppingBag, FileSignature, Briefcase, Fingerprint, type LucideIcon,
 } from 'lucide-react';
 
 /**
@@ -1054,6 +1054,63 @@ export const GUIDE_TOPICS: GuideTopic[] = [
           { title: 'Submit', text: 'Click “Submit to SHA”. For inpatients, discharging the patient sends the inpatient claim.' },
           { title: 'Status', text: 'Use “Refresh status”. If a claim needs correction click “Reopen for correction”, fix it and submit again.' },
           { title: 'Payment', text: 'When SHA pays, click “Record remittance” and enter the amount received. A claim is only marked paid when the money is received, never just because it was approved.' },
+        ],
+      },
+    ],
+  },
+  {
+    slug: 'sha-fingerprints',
+    title: 'SHA fingerprints: HealthID, adult and child consent',
+    group: 'Money & claims',
+    icon: Fingerprint,
+    summary: 'Set up the fingerprint scanner with HealthID, capture adult consent in SHA\'s capture screen, enrol children\'s fingers and let them consent with their own print.',
+    who: 'Reception, SHA officers, nurses and administrators',
+    where: 'SHA visit → Patient consent; Patient → SHA tab; Administration → Integrations',
+    sections: [
+      {
+        title: 'One-time setup on each workstation',
+        steps: [
+          { title: 'Install HealthID', text: 'Install HealthID (Windows or Android) on the computer the fingerprint scanner will be plugged into. On Windows it keeps running in the background even when its window is closed.' },
+          { title: 'Get a HealthID account', text: 'The HIE team creates the account against an email address you give them and emails a temporary password. Sign in with it, then set a permanent password.' },
+          { title: 'Plug in and test the scanner', text: 'Plug the scanner in by USB; HealthID should detect it. Click Test in HealthID and capture a test fingerprint before using it with patients.' },
+          { title: 'Check it in AfeySync', text: 'Open an SHA visit and choose Fingerprint. The workstation box shows "HealthID is running" with the scanner found. Enter the agent ID number (the ID number of the person signed in to HealthID) once; this computer remembers it.' },
+          { title: 'Register SHA callbacks', text: 'An administrator opens Administration → Integrations → SHA status callbacks and clicks "Register with SHA" (facilities on AfeySync\'s own SHA connection have this done by AfeySync). Children\'s fingerprint results can only arrive once this is set up.' },
+        ],
+        tips: ['If HealthID runs but AfeySync cannot find it, the browser may be blocking local access: enter the workstation ID shown in HealthID in the workstation box.'],
+      },
+      {
+        title: 'Adult fingerprint consent',
+        steps: [
+          { title: 'Start', text: 'In the SHA visit, under Patient consent, choose Fingerprint and click "Start fingerprint verification". AfeySync creates the authorization with this workstation\'s ID.' },
+          { title: 'Capture', text: 'SHA\'s capture screen opens inside the page with a countdown. Click Start in it; the scanner wakes and the patient places their finger. It is matched against the patient\'s SHA-registered prints.' },
+          { title: 'Continue automatically', text: 'AfeySync checks with SHA every few seconds and moves on as soon as the authorization is AUTHORIZED, or AUTHORIZED_PENDING_VISIT for an elective case waiting for its preauthorization.' },
+          { title: 'If the time runs out', text: 'If no finger is captured before the countdown ends, the authorization stays pending and blocks a new one. Click "Cancel it and start again": AfeySync rejects the stuck authorization with SHA so you can capture again straight away.' },
+        ],
+      },
+      {
+        title: 'Children: enrol their fingers first',
+        intro: 'A child has no fingerprints registered with SHA. When SHA marks a child for minors biometrics (you see this after checking eligibility), enrol the child\'s fingers once at the facility.',
+        steps: [
+          { title: 'Open enrollment', text: 'Open the child\'s patient record → SHA tab → Child fingerprint enrollment. Green fingers are verified, amber are enrolled but still need verifying.' },
+          { title: 'Enrol a finger', text: 'Choose a finger and click "Enrol finger". The child places it on the scanner. SHA sends the result back on its own; the finger turns amber.' },
+          { title: 'Verify it', text: 'With the same finger chosen, click "Verify finger" and capture it again. When it matches it turns green. If it does not, the screen shows how many attempts are left; after the last one the finger must be enrolled again.' },
+          { title: 'Until fully enrolled', text: 'Repeat for the fingers the child needs until the badge shows "Fully enrolled". SHA decides how many are needed; it can be done over more than one visit.' },
+        ],
+        tips: ['Always use the child\'s own CR code: siblings on one policy differ only by the number after the dash.'],
+      },
+      {
+        title: 'Child fingerprint consent at a visit',
+        steps: [
+          { title: 'Capture', text: 'In the child\'s SHA visit choose "Child fingerprint" and click "Capture the child\'s fingerprint". The child places an enrolled finger on the scanner.' },
+          { title: 'Wait for SHA', text: 'The result comes back from SHA by itself. When it says "Fingerprint matched", start the visit within 10 minutes: a match works once and expires 10 minutes after the capture.' },
+          { title: 'If it does not match', text: 'Capture again; there is no limit. If a child keeps failing, request OTP whitelisting (below) so a guardian can receive an OTP instead.' },
+        ],
+      },
+      {
+        title: 'OTP whitelisting and discharge',
+        steps: [
+          { title: 'Request OTP whitelisting', text: 'Patient → SHA tab → OTP whitelist requests → "New request". Choose the reason (for example fingerprints repeatedly fail, amputee, elderly), explain, give the number of attempts and attach supporting documents. SHA\'s review shows here; after approval, check eligibility again.' },
+          { title: 'Discharge', text: 'For an inpatient SHA visit, the Discharge authorization card sends a discharge OTP to the beneficiary, or captures a fingerprint discharge authorization the same way as at admission.' },
         ],
       },
     ],

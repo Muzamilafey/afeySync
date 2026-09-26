@@ -30,6 +30,21 @@ export interface ContractOperation {
 
 const doc = (section: string) => `https://hie-docs.dha.go.ke/ — ${section}`;
 
+/** Operation whose method and path are quoted from the official HIE API reference (Consent Services, Status Callbacks). */
+const documented = (key: string, group: string, description: string, method: ContractOperation['method'], path: string, page: string, extra: Partial<ContractOperation> = {}): ContractOperation => ({
+  key,
+  group,
+  description,
+  method,
+  path,
+  documented: true,
+  verification: 'documented',
+  idempotent: method === 'GET',
+  requiresFacilityHeaders: true,
+  documentationRef: `https://hie-docs.dha.go.ke/docs/${page}`,
+  ...extra,
+});
+
 const declared = (key: string, group: string, description: string, method: ContractOperation['method']): ContractOperation => ({
   key,
   group,
@@ -56,7 +71,7 @@ const specified = (key: string, group: string, description: string, method: Cont
   ...extra,
 });
 
-export const DEFAULT_HIE_CONTRACT_VERSION = '2026-09-spec-eclaims';
+export const DEFAULT_HIE_CONTRACT_VERSION = '2026-09-consent-biometrics';
 
 export const DEFAULT_HIE_OPERATIONS: ContractOperation[] = [
   // AUTHENTICATION
@@ -79,12 +94,20 @@ export const DEFAULT_HIE_OPERATIONS: ContractOperation[] = [
   specified('sha.pomsf.balances', 'Benefits', 'POMSF balances', 'GET', '/patients/benefits/pomsf-balances', 'eclaims/eligibility'),
   specified('sha.coverage.effective', 'Billing', 'Effective POMSF coverage (consent_token, policy_number, principal_cr_id)', 'POST', '/claims/effective-coverage', 'eclaims/billing'),
 
-  // eCLAIMS — consent & authorization
-  specified('sha.contacts', 'Consent', 'Masked beneficiary contacts for OTP', 'GET', '/patients/contacts', 'eclaims/authorizations'),
-  specified('sha.otp.send', 'Consent', 'Send consent OTP (optional beneficiary_contact_id)', 'POST', '/claims/otp', 'eclaims/authorizations'),
-  specified('sha.authorization.create', 'Authorizations', 'Create authorization (OTP or biometric); returns consent token / GUID', 'POST', '/claims/authorize', 'eclaims/authorizations'),
-  specified('sha.biometrics.match.create', 'Biometrics', 'Minor fingerprint match', 'POST', '/biometrics/matches', 'eclaims/authorizations'),
-  specified('sha.biometrics.match.get', 'Biometrics', 'Fingerprint match status', 'GET', '/biometrics/matches/{match_id}', 'eclaims/authorizations'),
+  // CONSENT SERVICES — OTP, authorizations, biometrics (Consent Services API reference)
+  documented('sha.contacts', 'Consent', 'Beneficiary contacts for OTP (patient_id)', 'GET', '/patients/contacts', 'consent/process/getBeneficiaryValidContact'),
+  documented('sha.otp.send', 'Consent', 'Send visit OTP (patient_id, intervention_codes, optional contact_id)', 'POST', '/claims/otp', 'consent/process/sendOTP'),
+  documented('sha.otp.discharge', 'Consent', 'Send discharge OTP (consent_token, patient_id)', 'POST', '/claims/otp/discharge', 'consent/process/sendDischargeOTP'),
+  documented('sha.authorization.create', 'Authorizations', 'Create authorization (OTP, biometrics or minors biometrics)', 'POST', '/claims/authorize', 'consent/process/biometricsConsent'),
+  documented('sha.authorization.get', 'Authorizations', 'Get authorizations by token, patient_id or guid', 'GET', '/claims/authorizations', 'consent/process/getAuthorizations'),
+  documented('sha.authorization.reject', 'Authorizations', 'Reject a pending biometrics authorization (expired capture)', 'POST', '/claims/authorizations/{consent_token}/reject', 'consent/process/rejectAuthorization'),
+  documented('sha.biometrics.match.create', 'Minors Biometrics', 'Dispatch a minor fingerprint match (202, verdict by callback)', 'POST', '/biometrics/matches', 'consent/process/minorsBiometricsConsent'),
+  documented('sha.biometrics.match.get', 'Minors Biometrics', 'Read a minor fingerprint match (reconciliation only)', 'GET', '/biometrics/matches/{match_id}', 'consent/process/minorsBiometricsConsent'),
+  documented('sha.biometrics.enrollment.create', 'Minors Biometrics', 'Enrol a minor finger (202, outcome by callback)', 'POST', '/biometrics/enrollments', 'consent/process/minorsBiometricsEnrollment'),
+  documented('sha.biometrics.verification.create', 'Minors Biometrics', 'Verify an enrolled minor finger (202, outcome by callback)', 'POST', '/biometrics/verifications', 'consent/process/minorsBiometricsEnrollment'),
+  documented('sha.biometrics.enrollment.status', 'Minors Biometrics', 'Fingerprint enrollment status (beneficiary_code)', 'GET', '/biometrics/enrollment-status', 'consent/process/minorsBiometricsEnrollment'),
+  documented('sha.otpWhitelist.create', 'OTP Whitelist', 'Create OTP whitelist request (multipart/form-data)', 'POST', '/patients/otp-whitelists', 'consent/process/createOTPWhitelistRequest', { contentType: 'multipart/form-data' }),
+  documented('sha.otpWhitelist.list', 'OTP Whitelist', 'OTP whitelist requests by beneficiary_cr_id or guid', 'GET', '/patients/otp-whitelists/callback', 'consent/process/getOTPWhitelistRequest'),
 
   // eCLAIMS — visit / virtual claim
   specified('sha.visit.consent.start', 'Visit Consent', 'Start visit / create virtual claim', 'POST', '/claims/visit', 'eclaims/start-visit-consent'),
@@ -126,16 +149,16 @@ export const DEFAULT_HIE_OPERATIONS: ContractOperation[] = [
   declared('eprescription.dispense', 'ePrescription', 'Create dispense', 'POST'),
   declared('eprescription.doctor.remove', 'ePrescription', 'Remove doctor from prescription', 'DELETE'),
 
-  // Status callbacks
-  declared('callbacks.endpoints.list', 'Status Callbacks', 'GET callback endpoints', 'GET'),
-  declared('callbacks.endpoints.register', 'Status Callbacks', 'POST register callback endpoint', 'POST'),
-  declared('callbacks.endpoints.update', 'Status Callbacks', 'PATCH callback endpoint', 'PATCH'),
-  declared('callbacks.endpoints.delete', 'Status Callbacks', 'DELETE callback endpoint', 'DELETE'),
-  declared('callbacks.operations.list', 'Status Callbacks', 'GET callback operations', 'GET'),
-  declared('callbacks.operations.get', 'Status Callbacks', 'GET callback operation', 'GET'),
-  declared('callbacks.operations.register', 'Status Callbacks', 'POST register callback operation', 'POST'),
-  declared('callbacks.operations.update', 'Status Callbacks', 'PATCH callback operation', 'PATCH'),
-  declared('callbacks.operations.delete', 'Status Callbacks', 'DELETE callback operation', 'DELETE'),
+  // Status callbacks (where the HIE pushes claim, preauth and authorization status changes and biometric verdicts)
+  documented('callbacks.endpoints.list', 'Status Callbacks', 'List callback endpoints (tenant ID or FR code)', 'GET', '/tenants/{tenant_id}/endpoints', 'claims/process/callbacks/manageCallbackEndpoints', { requiresFacilityHeaders: false }),
+  documented('callbacks.endpoints.register', 'Status Callbacks', 'Register a callback endpoint (one per entity_type)', 'POST', '/tenants/{tenant_id}/endpoints', 'claims/process/callbacks/registerCallbackEndpoint', { requiresFacilityHeaders: false }),
+  documented('callbacks.endpoints.update', 'Status Callbacks', 'Update a callback endpoint (e.g. is_active)', 'PATCH', '/tenants/endpoints/{endpoint_id}', 'claims/process/callbacks/manageCallbackEndpoints', { requiresFacilityHeaders: false }),
+  documented('callbacks.endpoints.delete', 'Status Callbacks', 'Delete a callback endpoint and its operations', 'DELETE', '/tenants/endpoints/{endpoint_id}', 'claims/process/callbacks/manageCallbackEndpoints', { requiresFacilityHeaders: false }),
+  documented('callbacks.operations.list', 'Status Callbacks', 'List operations on an endpoint', 'GET', '/tenants/{tenant_id}/endpoints/{endpoint_id}/operations', 'claims/process/callbacks/manageCallbackEndpoints', { requiresFacilityHeaders: false }),
+  documented('callbacks.operations.get', 'Status Callbacks', 'Read a callback operation (includes paused)', 'GET', '/tenants/endpoints/operations/{operation_id}', 'claims/process/callbacks/manageCallbackEndpoints', { requiresFacilityHeaders: false }),
+  documented('callbacks.operations.register', 'Status Callbacks', 'Register the status_changed operation on an endpoint', 'POST', '/tenants/{tenant_id}/endpoints/{endpoint_id}/operations', 'claims/process/callbacks/registerCallbackOperation', { requiresFacilityHeaders: false }),
+  documented('callbacks.operations.update', 'Status Callbacks', 'Update a callback operation', 'PATCH', '/tenants/endpoints/operations/{operation_id}', 'claims/process/callbacks/manageCallbackEndpoints', { requiresFacilityHeaders: false }),
+  documented('callbacks.operations.delete', 'Status Callbacks', 'Delete a callback operation', 'DELETE', '/tenants/endpoints/operations/{operation_id}', 'claims/process/callbacks/manageCallbackEndpoints', { requiresFacilityHeaders: false }),
 
   // Consent services
   declared('consent.otp.send', 'Consent', 'Send consent OTP', 'POST'),

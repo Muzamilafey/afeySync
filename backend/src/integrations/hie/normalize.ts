@@ -99,6 +99,13 @@ export function normalizeRegistryPatient(o: Obj): RegistryPatient {
   };
 }
 
+/** biometric_status.use_sil_biometrics from an eligibility response (snake or camel case), or null when absent. */
+function silFlag(o: Record<string, unknown>): boolean | null {
+  const bs = (o.biometric_status ?? o.biometricStatus) as Record<string, unknown> | undefined;
+  const v = bs && typeof bs === 'object' ? (bs.use_sil_biometrics ?? bs.useSilBiometrics) : undefined;
+  return typeof v === 'boolean' ? v : typeof v === 'string' ? v.toLowerCase() === 'true' : null;
+}
+
 export function normalizeEligibility(body: unknown) {
   const o = unwrapList(body)[0] ?? {};
   const statusText = pick(o, 'eligibility_status', 'status', 'eligibility', 'coverage_status');
@@ -136,6 +143,8 @@ export function normalizeEligibility(body: unknown) {
     isAlive: bool('isAlive', 'is_alive'),
     whitelistedForOTP: bool('whitelistedForOTP', 'whitelisted_for_otp'),
     facilityBiometricsEnforced: bool('facilityBiometricsEnforced', 'facility_biometrics_enforced'),
+    // The payer decides the minors route; never derive it from the patient's age.
+    useSilBiometrics: silFlag(o),
     age: pick(o, 'age'),
     dateOfBirth: pick(o, 'dateOfBirth', 'date_of_birth'),
     gender: pick(o, 'gender'),

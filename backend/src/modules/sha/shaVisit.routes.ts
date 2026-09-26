@@ -16,6 +16,7 @@ import { IntegrationSecretService } from '../integrations/secretService';
 import { localStorageDriver } from '../documents/storage';
 import { pick } from '../../integrations/hie/normalize';
 import { assertShaTransactable, decideWorkflow, interventionFlags, type InterventionFlags } from './shaWorkflow';
+import { dispatchBiometric } from './shaBiometrics';
 
 /**
  * SHA eClaims visit workflow (DHA HIE): consent (OTP / biometrics) → authorization → start visit (virtual claim) →
@@ -35,7 +36,7 @@ const num = (v: string | undefined) => (v !== undefined && !Number.isNaN(Number(
 const extraSchema = z.record(z.string().regex(/^[a-z][a-z0-9_]{1,60}$/), z.union([z.string().max(500), z.number(), z.boolean(), z.array(z.union([z.string().max(200), z.number()])).max(50)])).optional();
 
 /** Consent tokens, OTPs and access tokens never reach the database, even inside stored DHA responses. */
-const SECRET_KEYS = /^(token|consent_token|consentToken|access_token|accessToken|otp|client_secret|refresh_token)$/i;
+const SECRET_KEYS = /^(token|consent_token|consentToken|access_token|accessToken|otp|client_secret|refresh_token|embededToken|embeddedToken|embedded_token|ekycToken|ekyc_token)$/i;
 export function redact(v: unknown, depth = 0): unknown {
   if (depth > 8) return '[…]';
   if (Array.isArray(v)) return v.map((x) => redact(x, depth + 1));
@@ -184,7 +185,7 @@ router.post('/visits', requirePermission('sha.authorization'), requireBranch, h(
     serviceType: body.serviceType ?? decision.serviceType,
     interventions: flags.map((f) => ({ ...f, raw: f.raw })),
     decision,
-    eligibility: { checkId: p.sha?.lastCheckId, schemes: p.sha?.schemes, whitelistedForOTP: p.sha?.whitelistedForOTP ?? undefined, facilityBiometricsEnforced: p.sha?.facilityBiometricsEnforced ?? undefined, pomsf: p.sha?.pomsf },
+    eligibility: { checkId: p.sha?.lastCheckId, schemes: p.sha?.schemes, whitelistedForOTP: p.sha?.whitelistedForOTP ?? undefined, facilityBiometricsEnforced: p.sha?.facilityBiometricsEnforced ?? undefined, useSilBiometrics: p.sha?.useSilBiometrics ?? undefined, pomsf: p.sha?.pomsf },
     history: [{ at: new Date(), action: 'created', by: req.user!.id, byName: req.user!.name, note: decision.steps.join(' → ') }],
     createdBy: req.user!.id,
   } as never) as unknown as Visit;
@@ -198,21 +199,30 @@ router.get('/visits/:id/contacts', requirePermission('sha.authorization'), h(asy
   res.json({ success: true, data: await call(req, v, 'sha.contacts', { query: { patient_id: v.patientCrId } }) });
 }));
 
+/** Biometrics are required when the facility enforces them, unless SHA has whitelisted this beneficiary for OTP. */
+const otpBlocked = (v: Visit) => v.eligibility?.facilityBiometricsEnforced === true && v.eligibility.whitelistedForOTP !== true;
+const activeCodes = (v: Visit) => v.interventions.filter((i) => i.state === 'active').map((i) => i.code);
+
 router.post('/visits/:id/otp', requirePermission('sha.authorization'), h(async (req, res) => {
-  const { beneficiaryContactId } = parse(z.object({ beneficiaryContactId: z.string().max(80).optional() }), req.body ?? {});
+  const { contactId } = parse(z.object({ contactId: z.coerce.number().int().positive().optional() }), req.body ?? {});
   const v = await loadVisit(req);
-  if (v.eligibility?.facilityBiometricsEnforced === true && v.eligibility.whitelistedForOTP !== true) throw new AppError(422, 'SHA_BIOMETRICS_REQUIRED', 'SHA requires biometric verification for this beneficiary at this facility (not whitelisted for OTP).');
-  const data = await call(req, v, 'sha.otp.send', { body: { patient_id: v.patientCrId, ...(beneficiaryContactId ? { beneficiary_contact_id: beneficiaryContactId } : {}) } });
+  if (otpBlocked(v)) throw new AppError(422, 'SHA_BIOMETRICS_REQUIRED', v.eligibility?.useSilBiometrics ? 'This child consents by fingerprint (minors biometrics). If the child cannot match, request OTP whitelisting.' : 'SHA requires biometric verification for this beneficiary at this facility (not whitelisted for OTP).');
+  const data = await call(req, v, 'sha.otp.send', { body: { patient_id: v.patientCrId, intervention_codes: activeCodes(v), ...(contactId ? { contact_id: contactId } : {}) } });
   v.set('consent.method', 'otp');
-  v.set('consent.beneficiaryContactId', beneficiaryContactId);
+  v.set('consent.beneficiaryContactId', contactId ? String(contactId) : undefined);
   history(v, req, 'otp_sent');
   await v.save();
   await audit(req, { action: 'sha.consent.otp_sent', resource: 'sha_visit', resourceId: String(v._id) });
   res.json({ success: true, data: { sent: true, response: redact(data) } });
 }));
 
+/** Authorization statuses that mean consent was captured: AUTHORIZED, or AUTHORIZED_PENDING_VISIT for an elective case. */
+const AUTHORIZED = /^AUTHORI[SZ]ED(_PENDING_VISIT)?$/i;
 const mapAuth = (d: unknown) => {
   const o = body0(d);
+  const vr = isObj(o.shaVerificationRequest) ? o.shaVerificationRequest : isObj(o.sha_verification_request) ? o.sha_verification_request : {};
+  const expiry = pick(vr as Obj, 'embedExpiry', 'embed_expiry');
+  const expNum = expiry !== undefined ? Number(expiry) : NaN;
   return {
     authCode: pick(o, 'authCode', 'auth_code'),
     guid: pick(o, 'guid'),
@@ -220,68 +230,196 @@ const mapAuth = (d: unknown) => {
     status: pick(o, 'status'),
     expiry: pick(o, 'expiry', 'expires_at'),
     shaGuid: pick(o, 'shaGuid', 'sha_guid'),
-    verificationRequestId: pick(o, 'shaVerificationRequestId', 'sha_verification_request_id'),
-    verificationUrl: pick(o, 'shaVerificationRequest', 'sha_verification_request', 'shaVerificationRequest.url', 'shaVerificationRequest.iframe_url', 'ekyc_url'),
+    workstationId: pick(o, 'workStationId', 'work_station_id'),
+    verificationRequestId: pick(o, 'shaVerificationRequestId', 'sha_verification_request_id') ?? pick(vr as Obj, 'requestId', 'request_id'),
+    verificationUrl: pick(vr as Obj, 'requestUrl', 'request_url'),
+    /** Passed to the screen only (never stored): the embedded capture page may need it. */
+    embeddedToken: pick(vr as Obj, 'embededToken', 'embeddedToken', 'embedded_token'),
+    // embedExpiry may be seconds from now, or an epoch in seconds / milliseconds.
+    verificationExpiresAt: Number.isNaN(expNum) ? undefined : new Date(expNum > 1e12 ? expNum : expNum > 1e9 ? expNum * 1000 : Date.now() + expNum * 1000),
   };
 };
+
+/** Records an authorization response on the visit: consent is only "authorized" when SHA says so. */
+function applyAuth(v: Visit, req: Request, method: string, a: ReturnType<typeof mapAuth>) {
+  if (a.token) v.consentToken = IntegrationSecretService.encrypt(a.token) as never;
+  const authorized = !!a.status && AUTHORIZED.test(a.status);
+  const fields: Record<string, unknown> = {
+    method,
+    status: a.status,
+    authCode: a.authCode ?? v.consent?.authCode,
+    authGuid: a.guid ?? v.consent?.authGuid,
+    shaGuid: a.shaGuid ?? v.consent?.shaGuid,
+    expiry: a.expiry ? new Date(a.expiry) : v.consent?.expiry,
+    verificationRequestId: a.verificationRequestId ?? v.consent?.verificationRequestId,
+    verificationUrl: a.verificationUrl ?? v.consent?.verificationUrl,
+    verificationExpiresAt: a.verificationExpiresAt ?? v.consent?.verificationExpiresAt,
+    workstationId: a.workstationId ?? v.consent?.workstationId,
+    authorizedAt: authorized ? v.consent?.authorizedAt ?? new Date() : undefined,
+    authorizedBy: authorized ? v.consent?.authorizedBy ?? req.user!.id : undefined,
+  };
+  for (const [k, val] of Object.entries(fields)) v.set(`consent.${k}`, val);
+  // A biometric authorization starts PENDING until the finger is matched inside SHA's capture page.
+  v.status = authorized ? 'authorized' : method === 'biometric' ? 'biometric_pending' : v.status;
+  return authorized;
+}
+
+/** Discharge authorizations are stored apart from the visit consent: the claim keeps using its own consent token. */
+function applyDischargeAuth(v: Visit, a: ReturnType<typeof mapAuth>) {
+  if (a.token) v.set('dischargeToken', IntegrationSecretService.encrypt(a.token));
+  const authorized = !!a.status && AUTHORIZED.test(a.status);
+  const d = v.dischargeAuth;
+  const fields: Record<string, unknown> = { status: a.status, authCode: a.authCode ?? d?.authCode, authGuid: a.guid ?? d?.authGuid, verificationUrl: a.verificationUrl ?? d?.verificationUrl, verificationExpiresAt: a.verificationExpiresAt ?? d?.verificationExpiresAt, authorizedAt: authorized ? d?.authorizedAt ?? new Date() : undefined };
+  for (const [k, val] of Object.entries(fields)) v.set(`dischargeAuth.${k}`, val);
+  return authorized;
+}
 
 router.post('/visits/:id/authorize', requirePermission('sha.authorization'), h(async (req, res) => {
   const body = parse(z.discriminatedUnion('method', [
     z.object({ method: z.literal('otp'), otp: z.string().regex(/^\d{4,8}$/) }),
-    z.object({ method: z.literal('biometric'), agentId: z.string().max(80).optional(), deviceOs: z.enum(['windows', 'android']), ekycProviderId: z.string().max(80).optional(), workStationId: z.string().max(80).optional(), isDischargeAuthorization: z.boolean().default(false) }),
-    z.object({ method: z.literal('minor_biometric'), matchId: z.string().min(4).max(100) }),
+    z.object({ method: z.literal('biometric'), agentId: z.string().min(1).max(80), deviceOs: z.enum(['windows', 'android']), ekycProviderId: z.string().max(80).optional(), workStationId: z.string().min(4).max(120), isDischargeAuthorization: z.boolean().default(false) }),
   ]), req.body);
   const v = await loadVisit(req, true);
-  if (body.method === 'otp' && v.eligibility?.facilityBiometricsEnforced === true && v.eligibility.whitelistedForOTP !== true) throw new AppError(422, 'SHA_BIOMETRICS_REQUIRED', 'SHA requires biometric verification for this beneficiary at this facility.');
-  if (body.method === 'minor_biometric') {
-    const s = await req.tenant!.models.FacilitySetting.findOne({ key: 'sha.minorBiometrics' }).lean();
-    if (s?.value !== true) throw forbidden('The minors fingerprint workflow is not enabled for this facility (requires DHA-approved hardware).', 'SHA_MINOR_BIOMETRICS_DISABLED');
+  const discharge = body.method === 'biometric' && body.isDischargeAuthorization;
+  if (discharge && (v.serviceType !== 'INPATIENT' || !v.dha?.claimId)) throw conflict('Discharge authorization applies to a started inpatient visit', undefined, 'SHA_USE_SUBMIT');
+  if (discharge && v.dischargeAuth?.status && !AUTHORIZED.test(v.dischargeAuth.status) && !v.dischargeAuth.rejectedAt) throw conflict('A fingerprint discharge authorization is already waiting for a capture. Check its status, or cancel it to start again.', undefined, 'SHA_AUTHORIZATION_PENDING');
+  if (body.method === 'otp' && otpBlocked(v)) throw new AppError(422, 'SHA_BIOMETRICS_REQUIRED', 'SHA requires biometric verification for this beneficiary at this facility.');
+  if (body.method === 'biometric' && !discharge && v.status === 'biometric_pending' && v.consent?.method === 'biometric') {
+    throw conflict('A fingerprint authorization is already waiting for a capture. Check its status, or cancel it to start again.', undefined, 'SHA_AUTHORIZATION_PENDING');
   }
   const t = await meta().Tenant.findById(req.tenant!.id).select('dhaRegistry').lean();
-  const interventions = v.interventions.filter((i) => i.state === 'active').map((i) => i.code);
   const authServiceType = v.serviceType === 'INPATIENT' ? 'INPATIENT' : 'OUTPATIENT';
   const payload = body.method === 'otp'
-    ? { patient_id: v.patientCrId, service_type: authServiceType, otp: body.otp, interventions }
-    : body.method === 'biometric'
-      ? { agent_id: body.agentId, authorizing_device_os: body.deviceOs, ekyc_provider_id: body.ekycProviderId, factors: ['SHA'], interventions, is_biometrics_discharge_authorization: body.isDischargeAuthorization, is_emergency: v.serviceType === 'EMERGENCY', is_integration: true, patient_id: v.patientCrId, provider: t?.dhaRegistry?.facilityRegistryCode, service_type: authServiceType, work_station_id: body.workStationId }
-      : { match_id: body.matchId, patient_id: v.patientCrId, service_type: authServiceType, interventions };
+    ? { patient_id: v.patientCrId, service_type: authServiceType, otp: body.otp, interventions: activeCodes(v) }
+    : { agent_id: body.agentId, authorizing_device_os: body.deviceOs, ekyc_provider_id: body.ekycProviderId, factors: ['SHA'], interventions: activeCodes(v), is_biometrics_discharge_authorization: body.isDischargeAuthorization, is_emergency: v.serviceType === 'EMERGENCY', is_integration: true, patient_id: v.patientCrId, provider: t?.dhaRegistry?.facilityRegistryCode, service_type: authServiceType, work_station_id: body.workStationId };
   const data = await call(req, v, 'sha.authorization.create', { body: payload });
   const a = mapAuth(data);
-  if (a.token) v.consentToken = IntegrationSecretService.encrypt(a.token) as never;
-  v.set('consent', { ...v.consent, method: body.method, status: a.status, authCode: a.authCode, authGuid: a.guid, shaGuid: a.shaGuid, expiry: a.expiry ? new Date(a.expiry) : undefined, verificationRequestId: a.verificationRequestId, verificationUrl: a.verificationUrl, authorizedAt: a.token ? new Date() : undefined, authorizedBy: req.user!.id });
-  // Biometric eKYC completes on DHA's side; never assume success locally.
-  v.status = a.token ? 'authorized' : body.method === 'biometric' ? 'biometric_pending' : v.status;
-  history(v, req, `authorize_${body.method}`, a.status);
+  if (discharge) v.set('dischargeAuth.rejectedAt', undefined);
+  const authorized = discharge ? applyDischargeAuth(v, a) : applyAuth(v, req, body.method, a);
+  history(v, req, `authorize_${body.method}${body.method === 'biometric' && body.isDischargeAuthorization ? '_discharge' : ''}`, a.status);
   await v.save();
   await audit(req, { action: 'sha.consent.authorize', resource: 'sha_visit', resourceId: String(v._id), newValue: { method: body.method, status: a.status, authCode: a.authCode } });
-  res.json({ success: true, data: { status: v.status, consent: v.consent, verificationUrl: a.verificationUrl } });
+  res.json({ success: true, data: { status: v.status, authorized, consent: v.consent, dischargeAuth: v.dischargeAuth, capture: body.method === 'biometric' && !authorized ? { url: a.verificationUrl, embeddedToken: a.embeddedToken, expiresAt: discharge ? v.dischargeAuth?.verificationExpiresAt : v.consent?.verificationExpiresAt } : null } });
 }));
 
-/* ---- Minor fingerprint matching (only with DHA-approved hardware) */
-router.post('/biometrics/matches', requirePermission('sha.authorization'), h(async (req, res) => {
-  const s = await req.tenant!.models.FacilitySetting.findOne({ key: 'sha.minorBiometrics' }).lean();
-  if (s?.value !== true) throw forbidden('The minors fingerprint workflow is not enabled for this facility.', 'SHA_MINOR_BIOMETRICS_DISABLED');
-  const body = parse(z.record(z.string(), z.unknown()), req.body);
-  const r = await hieRequest('sha', ctx(req), { operation: 'sha.biometrics.match.create', body });
-  await audit(req, { action: 'sha.biometrics.match', resource: 'patient', resourceId: String(body.health_id ?? '') });
-  res.json({ success: true, data: r.data });
-}));
-router.get('/biometrics/matches/:matchId', requirePermission('sha.authorization'), h(async (req, res) => {
-  const r = await hieRequest('sha', ctx(req), { operation: 'sha.biometrics.match.get', pathParams: { match_id: String(req.params.matchId) } });
-  res.json({ success: true, data: r.data });
+/** Get Authorizations: confirms whether the capture matched (status moves to AUTHORIZED / AUTHORIZED_PENDING_VISIT). */
+router.post('/visits/:id/authorization/refresh', requirePermission('sha.authorization'), h(async (req, res) => {
+  const discharge = req.query.discharge === 'true' || (req.body ?? {}).discharge === true;
+  if (discharge) {
+    const v = await req.tenant!.models.ShaVisit.findById(oid(req.params.id, 'SHA visit')).select('+dischargeToken');
+    if (!v || !canAccessAnyBranch(req, [v.branchId])) throw notFound('SHA visit not found');
+    if (!v.dischargeAuth?.authGuid) throw conflict('There is no discharge authorization on this visit', undefined, 'SHA_CONSENT_REQUIRED');
+    const data = await call(req, v, 'sha.authorization.get', { query: { guid: v.dischargeAuth.authGuid } });
+    const list = Array.isArray(data) ? data : isObj(data) && Array.isArray(data.results) ? (data.results as unknown[]) : [data];
+    const rec = list.filter(isObj).find((x) => pick(x, 'guid') === v.dischargeAuth!.authGuid) ?? list.find(isObj);
+    const authorized = rec ? applyDischargeAuth(v, mapAuth(rec)) : false;
+    await v.save();
+    return res.json({ success: true, data: { authorized, dischargeAuth: v.dischargeAuth, captureExpired: !authorized && !!v.dischargeAuth?.verificationExpiresAt && v.dischargeAuth.verificationExpiresAt.getTime() < Date.now() } });
+  }
+  const v = await loadVisit(req, true);
+  if (!v.consent?.authGuid && !v.consentToken?.ciphertext) throw conflict('There is no authorization on this visit yet', undefined, 'SHA_CONSENT_REQUIRED');
+  const query = v.consent?.authGuid ? { guid: v.consent.authGuid } : { token: consentToken(v) };
+  const data = await call(req, v, 'sha.authorization.get', { query });
+  const list = Array.isArray(data) ? data : isObj(data) && Array.isArray(data.results) ? (data.results as unknown[]) : isObj(data) && Array.isArray(data.data) ? (data.data as unknown[]) : [data];
+  const rec = list.filter(isObj).find((x) => !v.consent?.authGuid || pick(x, 'guid') === v.consent.authGuid) ?? list.find(isObj);
+  if (!rec) throw notFound('SHA did not return this authorization');
+  const before = v.consent?.status;
+  const authorized = applyAuth(v, req, v.consent?.method ?? 'biometric', mapAuth(rec));
+  if (before !== v.consent?.status) history(v, req, 'authorization_status', `${before ?? '—'} → ${v.consent?.status}`);
+  await v.save();
+  res.json({ success: true, data: { status: v.status, authorized, consent: v.consent, captureExpired: !authorized && !!v.consent?.verificationExpiresAt && v.consent.verificationExpiresAt.getTime() < Date.now() } });
 }));
 
+/**
+ * Reject Authorization: a biometric authorization whose capture window expired stays PENDING and blocks a new one
+ * for the same context. Rejecting it clears the way to create a fresh authorization and capture again.
+ */
+router.post('/visits/:id/authorization/reject', requirePermission('sha.authorization'), h(async (req, res) => {
+  const { reason, discharge } = parse(z.object({ reason: z.string().trim().max(200).optional(), discharge: z.boolean().optional() }), req.body ?? {});
+  if (discharge) {
+    const v = await req.tenant!.models.ShaVisit.findById(oid(req.params.id, 'SHA visit')).select('+dischargeToken');
+    if (!v || !canAccessAnyBranch(req, [v.branchId])) throw notFound('SHA visit not found');
+    if (!v.dischargeToken?.ciphertext || (v.dischargeAuth?.status && AUTHORIZED.test(v.dischargeAuth.status))) throw conflict('There is no pending discharge authorization to reject', undefined, 'SHA_CONSENT_REQUIRED');
+    await call(req, v, 'sha.authorization.reject', { pathParams: { consent_token: IntegrationSecretService.decrypt(v.dischargeToken.ciphertext) } });
+    v.set('dischargeAuth', { rejectedAt: new Date() });
+    v.set('dischargeToken', undefined);
+    history(v, req, 'discharge_authorization_rejected', reason || 'Capture window expired');
+    await v.save();
+    return res.json({ success: true, data: { dischargeAuth: v.dischargeAuth } });
+  }
+  const v = await loadVisit(req, true);
+  if (v.consent?.status && AUTHORIZED.test(v.consent.status)) throw conflict('This authorization has already been captured and cannot be rejected here', undefined, 'SHA_AUTHORIZATION_COMPLETE');
+  if (!v.consentToken?.ciphertext) throw conflict('There is no pending authorization to reject', undefined, 'SHA_CONSENT_REQUIRED');
+  await call(req, v, 'sha.authorization.reject', { pathParams: { consent_token: consentToken(v) } });
+  v.set('consent.rejected', [...(v.consent?.rejected ?? []), { authGuid: v.consent?.authGuid, at: new Date(), byName: req.user!.name, reason: reason || 'Capture window expired' }]);
+  for (const k of ['status', 'authCode', 'authGuid', 'shaGuid', 'expiry', 'verificationRequestId', 'verificationUrl', 'verificationExpiresAt', 'authorizedAt', 'authorizedBy']) v.set(`consent.${k}`, undefined);
+  v.consentToken = undefined as never;
+  v.status = 'consent_pending';
+  history(v, req, 'authorization_rejected', reason || 'Capture window expired');
+  await v.save();
+  await audit(req, { action: 'sha.consent.reject', resource: 'sha_visit', resourceId: String(v._id), newValue: { reason: reason || 'Capture window expired' } });
+  res.json({ success: true, data: { status: v.status, consent: v.consent } });
+}));
+
+/** Discharge OTP: sent to the beneficiary to authorize discharging an inpatient (OTP flow). */
+router.post('/visits/:id/discharge-otp', requirePermission('sha.authorization'), h(async (req, res) => {
+  const v = await loadVisit(req, true);
+  if (v.serviceType !== 'INPATIENT') throw conflict('Discharge authorization applies to inpatient visits', undefined, 'SHA_USE_SUBMIT');
+  if (otpBlocked(v)) throw new AppError(422, 'SHA_BIOMETRICS_REQUIRED', 'SHA requires biometric discharge authorization for this beneficiary.');
+  const data = await call(req, v, 'sha.otp.discharge', { body: { consent_token: consentToken(v), patient_id: v.patientCrId } });
+  history(v, req, 'discharge_otp_sent');
+  await v.save();
+  await audit(req, { action: 'sha.consent.discharge_otp_sent', resource: 'sha_visit', resourceId: String(v._id) });
+  res.json({ success: true, data: { sent: true, response: redact(data) } });
+}));
+
+/* ---- Minors biometrics: the child's own enrolled finger instead of a guardian OTP */
+router.post('/visits/:id/minor-match', requirePermission('sha.authorization'), h(async (req, res) => {
+  const body = parse(z.object({ workstationId: z.string().min(4).max(120), deviceId: z.string().min(1).max(120), agentId: z.string().min(1).max(80), position: z.number().int().min(0).max(10).optional() }), req.body);
+  const v = await loadVisit(req, true);
+  if (v.eligibility?.useSilBiometrics !== true) throw new AppError(422, 'SHA_MINOR_BIOMETRICS_NOT_ELIGIBLE', 'SHA did not mark this beneficiary for minors biometrics (use_sil_biometrics). Use guardian OTP, or check eligibility again.');
+  const job = await dispatchBiometric(req, 'match', { patientId: v.patientId, beneficiaryCode: v.patientCrId, shaVisitId: v._id, ...body });
+  v.set('consent.method', 'minor_biometric');
+  v.set('consent.match', { matchId: job.externalId, jobId: job._id, status: 'pending' });
+  v.status = 'biometric_pending';
+  history(v, req, 'minor_match_dispatched');
+  await v.save();
+  res.status(202).json({ success: true, data: { job, visitStatus: v.status } });
+}));
+
+/* ---- Start visit / virtual claim */
 /* ---- Start visit / virtual claim */
 router.post('/visits/:id/start', requirePermission('sha.authorization'), h(async (req, res) => {
   const body = parse(z.object({ otp: z.string().regex(/^\d{4,8}$/).optional(), practitionerIdentificationType: z.string().min(2).max(60), practitionerIdentificationNumber: z.string().min(2).max(60), practitionerRegulationBody: z.string().min(2).max(60), practitionerUserId: z.string().optional() }), req.body);
   const v = await loadVisit(req, true);
   if (!['authorized', 'biometric_pending', 'consent_pending'].includes(v.status)) throw conflict(`Visit is already ${v.status.replace('_', ' ')}`, undefined, 'INVALID_SHA_TRANSITION');
-  const auth: Obj = body.otp ? { otp: body.otp } : v.consent?.authGuid ? { auth_guid: v.consent.authGuid } : {};
+  const match = v.consent?.method === 'minor_biometric' ? v.consent.match : undefined;
+  if (match && !body.otp) {
+    if (match.status !== 'matched') throw conflict('The child\'s fingerprint has not matched yet', undefined, 'SHA_MATCH_REQUIRED');
+    if (match.usedAt) throw conflict('This fingerprint match has already been used; capture again', undefined, 'SHA_MATCH_ALREADY_USED');
+    if (match.expiresAt && match.expiresAt.getTime() < Date.now()) throw conflict('The fingerprint match has expired (valid for 10 minutes from the capture). Capture again.', undefined, 'SHA_MATCH_EXPIRED');
+  }
+  if (!match && v.consent?.status && !AUTHORIZED.test(v.consent.status) && !body.otp) throw conflict('SHA has not confirmed the authorization yet. Check the authorization status first.', undefined, 'SHA_AUTHORIZATION_PENDING');
+  // Minors biometrics present match_id where the adult flow presents auth_guid.
+  const auth: Obj = body.otp ? { otp: body.otp } : match?.matchId ? { match_id: match.matchId } : v.consent?.authGuid ? { auth_guid: v.consent.authGuid } : {};
   if (!Object.keys(auth).length) throw conflict('Obtain patient consent (OTP or biometrics) first', undefined, 'SHA_CONSENT_REQUIRED');
-  const data = await call(req, v, 'sha.visit.consent.start', {
+  let data: unknown;
+  try {
+    data = await call(req, v, 'sha.visit.consent.start', {
     body: { intervention_codes: v.interventions.filter((i) => i.state === 'active').map((i) => i.code), patient_id: v.patientCrId, service_type: v.serviceType, ...auth, practitioner_identification_type: body.practitionerIdentificationType, practitioner_identification_number: body.practitionerIdentificationNumber, practitioner_regulation_body: body.practitionerRegulationBody },
     idempotencyKey: `shavisit:${v._id}:start`,
-  });
+    });
+  } catch (err) {
+    const code = (err as AppError).details && ((err as AppError).details as { upstreamCode?: string }).upstreamCode;
+    if (match && code === 'match_already_used') {
+      v.set('consent.match.usedAt', new Date());
+      await v.save();
+      throw conflict('SHA says this fingerprint match was already used. If an earlier attempt created the authorization, check SHA before capturing again.', undefined, 'SHA_MATCH_ALREADY_USED');
+    }
+    if (code === 'match_subject_mismatch') throw conflict('The fingerprint was captured for a different beneficiary code (check the dependant suffix).', undefined, 'SHA_MATCH_SUBJECT_MISMATCH');
+    throw err;
+  }
+  if (match) v.set('consent.match.usedAt', new Date());
   const o = body0(data);
   const g = (...k: string[]) => pick(o, ...k);
   v.set('dha', {

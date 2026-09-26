@@ -44,6 +44,7 @@ export const PROVIDER_DEFINITIONS: Record<Provider, ProviderDefinition> = {
       { key: 'facilityRegistryCode', label: 'Facility Registry Code' },
       { key: 'facilityIdType', label: 'Facility ID Type', default: 'fr-code' },
       { key: 'callbackUrl', label: 'Callback URL' },
+      { key: 'tenantCode', label: 'HIE tenant ID or tenant code (for status callbacks; normally the client ID)' },
     ],
     secrets: [
       { key: 'clientId', label: 'Client ID', required: true },

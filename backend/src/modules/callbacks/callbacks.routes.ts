@@ -9,6 +9,7 @@ import { loadTenant } from '../tenants/tenantLoader';
 import { pick } from '../../integrations/hie/normalize';
 import { logger } from '../../utils/logger';
 import { enqueueJob } from '../../jobs/queue';
+import { applyBiometricCallback } from '../sha/shaBiometrics';
 
 /**
  * Public HIE status-callback receiver: POST /api/v1/{sha|dha}/callbacks/:token
@@ -38,10 +39,28 @@ export function mapExternalStatus(s?: string): string | undefined {
 export async function processCallbackEvent(eventId: string) {
   const { CallbackEvent } = meta();
   const ev = await CallbackEvent.findById(eventId);
-  if (!ev || !ev.tenantId) return;
+  if (!ev) return;
+  if (!ev.tenantId) {
+    ev.processing = { state: 'unmatched', processedAt: new Date(), error: 'Facility not identified (no known Facility Registry code in the callback)' } as never;
+    await ev.save();
+    return;
+  }
   const tenant = await loadTenant(String(ev.tenantId), { requireActive: false });
   const m = tenant.models;
   const payload = (ev.payload ?? {}) as Record<string, unknown>;
+  // Minors biometrics outcomes (match_id / job_id) and authorization status changes are applied first.
+  const bio = await applyBiometricCallback(m, payload);
+  if (bio) {
+    ev.processing = { state: 'processed', processedAt: new Date(), matchedResource: 'sha_biometric_job', matchedId: bio.jobId } as never;
+    await ev.save();
+    return;
+  }
+  const authVisit = await applyAuthorizationCallback(m, payload);
+  if (authVisit) {
+    ev.processing = { state: 'processed', processedAt: new Date(), matchedResource: 'sha_visit', matchedId: authVisit } as never;
+    await ev.save();
+    return;
+  }
   const refs = [ev.externalReference, pick(payload, 'reference', 'claim_reference', 'preauth_reference', 'authorization_reference', 'claim_id', 'preauth_id', 'authorization_id', 'id', 'data.reference', 'data.id')].filter(Boolean) as string[];
   const tx = refs.length ? await m.ShaTransaction.findOne({ $or: [{ externalReference: { $in: refs } }, { reference: { $in: refs } }] }) : null;
   if (!tx) {
@@ -65,6 +84,34 @@ export async function processCallbackEvent(eventId: string) {
   if (tx.createdBy) await m.Notification.create({ userId: tx.createdBy, branchId: tx.branchId, event: tx.kind === 'claim' ? 'Claim' : tx.kind === 'preauthorization' ? 'Preauthorization' : 'Authorization', title: `${tx.reference}: ${tx.status.replace('_', ' ')}`, body: `SHA status update received (${ev.status ?? 'status change'})`, link: `/sha/transactions/${tx._id}` });
   ev.processing = { state: 'processed', processedAt: new Date(), matchedResource: 'sha_transaction', matchedId: tx._id } as never;
   await ev.save();
+}
+
+/** An authorization status_changed callback (e.g. a biometric capture completed): updates the SHA visit holding it. */
+async function applyAuthorizationCallback(m: Awaited<ReturnType<typeof loadTenant>>['models'], payload: Record<string, unknown>) {
+  const guid = pick(payload, 'guid', 'authorization_guid', 'authorizationGuid', 'auth_guid', 'data.guid');
+  if (!guid) return null;
+  const v = await m.ShaVisit.findOne({ 'consent.authGuid': guid });
+  if (!v) return null;
+  const status = pick(payload, 'status', 'data.status');
+  if (status && status !== v.consent?.status) {
+    v.set('consent.status', status);
+    if (/^AUTHORI[SZ]ED(_PENDING_VISIT)?$/i.test(status)) {
+      v.set('consent.authorizedAt', new Date());
+      if (v.status === 'biometric_pending' || v.status === 'consent_pending') v.status = 'authorized';
+    }
+    v.history.push({ at: new Date(), action: 'authorization_status', note: `${status} (SHA callback)` } as never);
+    await v.save();
+    if (v.createdBy) await m.Notification.create({ userId: v.createdBy, branchId: v.branchId, event: 'Authorization', title: `${v.reference}: authorization ${status.toLowerCase().replace(/_/g, ' ')}`, link: `/sha/visits/${v._id}` });
+  }
+  return v._id;
+}
+
+/** Platform-level endpoints serve every facility: the facility is identified by its Facility Registry code. */
+async function tenantForFacility(req: Request, body: Record<string, unknown>) {
+  const fr = pick(body, 'facility_fr_code', 'facilityFrCode', 'providerFid', 'provider_fid', 'facility_code', 'data.facility_fr_code', 'data.providerFid') ?? req.get('x-facility-id') ?? undefined;
+  if (!fr) return null;
+  const t = await meta().Tenant.findOne({ 'dhaRegistry.facilityRegistryCode': fr }).select('_id').lean();
+  return t?._id ?? null;
 }
 
 function verify(req: Request, ep: { hmacHeader?: string | null; hmacSecret?: { ciphertext?: string | null } | null }) {
@@ -97,13 +144,14 @@ for (const provider of ['sha', 'dha'] as const) {
       const dedupeKey = sha256(`${ep._id}:${eventId ?? raw}`);
       const existing = await CallbackEvent.findOne({ dedupeKey }).select('_id').lean();
       if (existing) return res.status(200).json({ success: true, duplicate: true });
+      const tenantId = ep.tenantId ?? (await tenantForFacility(req, body));
       const ev = await CallbackEvent.create({
         provider,
-        tenantId: ep.tenantId,
+        tenantId,
         endpointId: ep._id,
         dedupeKey,
         eventType: pick(body, 'event', 'event_type', 'type', 'operation'),
-        resourceType: pick(body, 'resource_type', 'resourceType', 'entity'),
+        resourceType: pick(body, 'resource_type', 'resourceType', 'entity', 'entity_type') ?? req.get('x-afeysync-entity') ?? undefined,
         externalReference: pick(body, 'reference', 'claim_reference', 'preauth_reference', 'authorization_reference', 'id'),
         status: pick(body, 'status', 'claim_status', 'state', 'data.status'),
         verified: true,
@@ -118,7 +166,7 @@ for (const provider of ['sha', 'dha'] as const) {
       } catch (err) {
         logger.error({ err }, 'Callback processing failed; queued for retry');
         await CallbackEvent.updateOne({ _id: ev._id }, { 'processing.state': 'failed', 'processing.error': (err as Error).message.slice(0, 300) });
-        await enqueueJob('SHA_CALLBACK', `callback:${ev._id}`, { eventId: String(ev._id) }, ep.tenantId ? String(ep.tenantId) : undefined);
+        await enqueueJob('SHA_CALLBACK', `callback:${ev._id}`, { eventId: String(ev._id) }, tenantId ? String(tenantId) : undefined);
       }
       // Acknowledge quickly; processing state is tracked on the event.
       res.status(200).json({ success: true });

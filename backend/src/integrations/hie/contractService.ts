@@ -37,8 +37,9 @@ export async function seedHieContracts() {
         } else if (!cur.path && def.path) {
           Object.assign(cur, { path: def.path, method: def.method, contentType: def.contentType, verification: def.verification, documentationRef: def.documentationRef, requiresFacilityHeaders: def.requiresFacilityHeaders, idempotent: def.idempotent });
           changed = true;
-        } else if (cur.verification === undefined && def.verification === 'documented' && cur.path === def.path) {
-          cur.verification = 'documented';
+        } else if (def.verification === 'documented' && cur.path === def.path && cur.verification !== 'documented' && cur.verification !== 'owner_verified') {
+          // The same path is now quoted from the official reference: record it as documented.
+          Object.assign(cur, { verification: 'documented', documented: true, documentationRef: def.documentationRef, description: def.description, requiresFacilityHeaders: def.requiresFacilityHeaders });
           changed = true;
         }
       }

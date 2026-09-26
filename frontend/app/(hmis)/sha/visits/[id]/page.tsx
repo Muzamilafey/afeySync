@@ -12,6 +12,7 @@ import { humanize, pickStr, unwrapList } from '@/features/sha/hieDisplay';
 import { InterventionBadges } from '@/features/sha/InterventionBadges';
 import { VISIT_STATUS_LABEL, type ShaVisit } from '@/features/sha/shaVisitTypes';
 import { DocumentsPanel, type DocumentRow } from '@/features/documents/DocumentsPanel';
+import { AdultFingerprint, ChildFingerprint, OtpConsent } from '@/features/sha/biometrics/ConsentFlows';
 
 const NOT_CONFIGURED = (e: unknown) => e instanceof ApiError && e.code === 'INTEGRATION_OPERATION_NOT_CONFIGURED';
 function StepError({ error }: { error: unknown }) {
@@ -19,68 +20,46 @@ function StepError({ error }: { error: unknown }) {
   return <ErrorText error={error} />;
 }
 
+type Method = 'otp' | 'biometric' | 'minor_biometric';
+const AUTHORIZED = /^AUTHORI[SZ]ED(_PENDING_VISIT)?$/i;
+
 function Consent({ v, refresh }: { v: ShaVisit; refresh: () => void }) {
-  const [method, setMethod] = useState<'otp' | 'biometric'>(v.eligibility?.facilityBiometricsEnforced && !v.eligibility?.whitelistedForOTP ? 'biometric' : 'otp');
-  const [contact, setContact] = useState('');
+  const otpBlocked = v.eligibility?.facilityBiometricsEnforced === true && v.eligibility?.whitelistedForOTP !== true;
+  const child = v.eligibility?.useSilBiometrics === true;
+  // The payer decides the route (eligibility flags); never the patient's age.
+  const [method, setMethod] = useState<Method>((v.consent?.method as Method | undefined) ?? (child ? 'minor_biometric' : otpBlocked ? 'biometric' : 'otp'));
   const [otp, setOtp] = useState('');
-  const [device, setDevice] = useState({ deviceOs: 'windows', workStationId: '', agentId: '' });
   const [prac, setPrac] = useState({ practitionerIdentificationType: 'LICENCE', practitionerIdentificationNumber: '', practitionerRegulationBody: 'KMPDC', practitionerUserId: '' });
   const doctors = useQuery({ queryKey: ['sha-er-doctors'], queryFn: async () => (await api<Array<{ _id: string; name: string; registrationNumber: string | null; cadre?: string }>>('/sha/emergency/doctors')).data });
-  const contacts = useQuery({ queryKey: ['sha-contacts', v._id], queryFn: async () => (await api<unknown>(`/sha/visits/${v._id}/contacts`)).data, enabled: method === 'otp' && !v.consent?.authorizedAt, retry: false });
-  const send = useMutation({ mutationFn: () => api(`/sha/visits/${v._id}/otp`, { method: 'POST', body: contact ? { beneficiaryContactId: contact } : {} }) });
-  const authorize = useMutation({ mutationFn: () => api(`/sha/visits/${v._id}/authorize`, { method: 'POST', body: method === 'otp' ? { method, otp } : { method, ...device, workStationId: device.workStationId || undefined, agentId: device.agentId || undefined } }), onSuccess: refresh });
   const start = useMutation({ mutationFn: () => api(`/sha/visits/${v._id}/start`, { method: 'POST', body: { ...prac, practitionerUserId: prac.practitionerUserId || undefined, otp: v.consent?.method === 'otp' && otp ? otp : undefined } }), onSuccess: refresh });
-  const authorized = !!v.consent?.authorizedAt;
-  const started = !!v.dha?.claimId;
-  const contactList = unwrapList(contacts.data);
-  if (started) return null;
+  const match = v.consent?.method === 'minor_biometric' ? v.consent.match : undefined;
+  const matchUsable = match?.status === 'matched' && !match.usedAt && (!match.expiresAt || new Date(match.expiresAt).getTime() > Date.now());
+  const authorized = (!!v.consent?.status && AUTHORIZED.test(v.consent.status)) || matchUsable;
+  const busy = v.status === 'biometric_pending';
+  if (v.dha?.claimId) return null;
+  const choice = (m: Method, label: string, icon: React.ReactNode, disabled?: boolean, hint?: string) => (
+    <Button size="sm" variant={method === m ? 'primary' : 'outline'} onClick={() => setMethod(m)} disabled={disabled || busy} title={hint}>{icon} {label}</Button>
+  );
   return (
     <Card title="1 · Patient consent & start visit">
       <div className="space-y-4">
-        {!authorized && v.status !== 'biometric_pending' && (
+        {!authorized && (
           <>
-            <div className="flex gap-2" role="radiogroup">
-              <Button size="sm" variant={method === 'otp' ? 'primary' : 'outline'} onClick={() => setMethod('otp')} disabled={v.eligibility?.facilityBiometricsEnforced === true && v.eligibility?.whitelistedForOTP !== true}><MessageSquare className="h-4 w-4" /> OTP</Button>
-              <Button size="sm" variant={method === 'biometric' ? 'primary' : 'outline'} onClick={() => setMethod('biometric')}><Fingerprint className="h-4 w-4" /> Biometrics (SHA eKYC)</Button>
+            <div className="flex flex-wrap gap-2" role="radiogroup" aria-label="Consent method">
+              {choice('otp', 'OTP', <MessageSquare className="h-4 w-4" />, otpBlocked, otpBlocked ? 'SHA requires fingerprints for this beneficiary here (not whitelisted for OTP)' : undefined)}
+              {choice('biometric', 'Fingerprint', <Fingerprint className="h-4 w-4" />, child, child ? 'Children consent with their own enrolled finger' : undefined)}
+              {child && choice('minor_biometric', 'Child fingerprint', <Fingerprint className="h-4 w-4" />)}
             </div>
-            {method === 'otp' ? (
-              <div className="space-y-3">
-                <Field label="Send the OTP to">
-                  {contacts.isLoading ? <Loading /> : (
-                    <Select value={contact} onChange={(e) => setContact(e.target.value)}>
-                      <option value="">Default contact on SHA record</option>
-                      {contactList.map((c, i) => { const id = pickStr(c, 'id', 'beneficiary_contact_id', 'contact_id') ?? String(i); return <option key={id} value={id}>{pickStr(c, 'phone', 'phone_number', 'contact', 'masked_phone') ?? id}</option>; })}
-                    </Select>
-                  )}
-                </Field>
-                <StepError error={contacts.error} />
-                <p className="muted text-xs">Ask the patient to confirm which number to use. The OTP is never stored.</p>
-                <Button size="sm" variant="secondary" onClick={() => send.mutate()} loading={send.isPending}><Send className="h-4 w-4" /> Send OTP</Button>
-                {send.isSuccess && <Alert tone="green">OTP sent to the patient&apos;s phone.</Alert>}
-                <StepError error={send.error} />
-                <Field label="OTP"><Input value={otp} onChange={(e) => setOtp(e.target.value.replace(/\D/g, ''))} inputMode="numeric" maxLength={8} autoComplete="one-time-code" className="font-mono tracking-widest" /></Field>
-                <Button onClick={() => authorize.mutate()} loading={authorize.isPending} disabled={otp.length < 4}>Verify & continue</Button>
-              </div>
-            ) : (
-              <div className="grid gap-3 sm:grid-cols-3">
-                <Field label="Device OS"><Select value={device.deviceOs} onChange={(e) => setDevice({ ...device, deviceOs: e.target.value })}><option value="windows">Windows</option><option value="android">Android</option></Select></Field>
-                <Field label="Workstation ID"><Input value={device.workStationId} onChange={(e) => setDevice({ ...device, workStationId: e.target.value })} /></Field>
-                <Field label="Agent ID (optional)"><Input value={device.agentId} onChange={(e) => setDevice({ ...device, agentId: e.target.value })} /></Field>
-                <div className="sm:col-span-3"><Button onClick={() => authorize.mutate()} loading={authorize.isPending}>Request SHA biometric verification</Button></div>
-              </div>
-            )}
-            <StepError error={authorize.error} />
+            {otpBlocked && method !== 'otp' && <p className="muted text-xs">SHA requires fingerprint consent for this beneficiary at this facility.{child ? ' SHA marked this child for minors biometrics.' : ''}</p>}
+            {method === 'otp' && <OtpConsent v={v} otp={otp} setOtp={setOtp} onAuthorized={refresh} />}
+            {method === 'biometric' && <AdultFingerprint v={v} refresh={refresh} />}
+            {method === 'minor_biometric' && <ChildFingerprint v={v} refresh={refresh} />}
           </>
         )}
-        {v.status === 'biometric_pending' && (
+        {authorized && (
           <div className="space-y-3">
-            <Alert tone="amber" title="Complete SHA biometric verification">The patient must complete verification in SHA&apos;s eKYC screen. AfeySync never marks biometrics as verified on its own.</Alert>
-            {v.consent?.verificationUrl && /^https:\/\//.test(v.consent.verificationUrl) && <iframe title="SHA eKYC verification" src={v.consent.verificationUrl} className="h-[480px] w-full rounded-lg border border-[var(--border)]" sandbox="allow-scripts allow-same-origin allow-forms" allow="camera" referrerPolicy="no-referrer" />}
-          </div>
-        )}
-        {(authorized || v.status === 'biometric_pending') && (
-          <div className="space-y-3 border-t border-[var(--border)] pt-3">
-            {authorized && <Alert tone="green">Consent obtained ({v.consent?.method}) · Auth code {v.consent?.authCode ?? '—'}{v.consent?.expiry ? ` · expires ${fmtDateTime(v.consent.expiry)}` : ''}</Alert>}
+            {method === 'minor_biometric' ? <ChildFingerprint v={v} refresh={refresh} /> : <Alert tone="green">Consent obtained ({v.consent?.method === 'biometric' ? 'fingerprint' : v.consent?.method}) · {v.consent?.status}{v.consent?.authCode ? ` · Auth code ${v.consent.authCode}` : ''}{v.consent?.expiry ? ` · expires ${fmtDateTime(v.consent.expiry)}` : ''}</Alert>}
+            {v.consent?.status === 'AUTHORIZED_PENDING_VISIT' && <p className="muted text-xs">Elective case: the fingerprint is matched and waits for the visit, which starts once the preauthorization is approved.</p>}
             <p className="text-sm font-medium">Attending practitioner</p>
             <div className="grid gap-3 sm:grid-cols-2">
               <Field label="Practitioner">
@@ -98,6 +77,32 @@ function Consent({ v, refresh }: { v: ShaVisit; refresh: () => void }) {
             <StepError error={start.error} />
           </div>
         )}
+        {(v.consent?.rejected?.length ?? 0) > 0 && <p className="muted text-xs">{v.consent!.rejected!.length} expired fingerprint authorization(s) cancelled on this visit.</p>}
+      </div>
+    </Card>
+  );
+}
+
+/** Inpatient discharge needs the patient's consent again: a discharge OTP, or a fingerprint discharge authorization. */
+function DischargeConsent({ v, refresh }: { v: ShaVisit; refresh: () => void }) {
+  const [mode, setMode] = useState<'otp' | 'biometric'>(v.eligibility?.facilityBiometricsEnforced && !v.eligibility?.whitelistedForOTP ? 'biometric' : 'otp');
+  const send = useMutation({ mutationFn: () => api(`/sha/visits/${v._id}/discharge-otp`, { method: 'POST' }) });
+  if (v.serviceType !== 'INPATIENT' || !v.dha?.claimId || ['discharged', 'closed', 'cancelled'].includes(v.status)) return null;
+  return (
+    <Card title="Discharge authorization">
+      <div className="space-y-3">
+        <div className="flex gap-2">
+          <Button size="sm" variant={mode === 'otp' ? 'primary' : 'outline'} onClick={() => setMode('otp')}><MessageSquare className="h-4 w-4" /> Discharge OTP</Button>
+          <Button size="sm" variant={mode === 'biometric' ? 'primary' : 'outline'} onClick={() => setMode('biometric')}><Fingerprint className="h-4 w-4" /> Fingerprint</Button>
+        </div>
+        {mode === 'otp' ? (
+          <>
+            <p className="muted text-sm">SHA sends a one-time password to the beneficiary to authorize the discharge.</p>
+            <Button size="sm" variant="secondary" onClick={() => send.mutate()} loading={send.isPending}><Send className="h-4 w-4" /> Send discharge OTP</Button>
+            {send.isSuccess && <Alert tone="green">Discharge OTP sent.</Alert>}
+            <StepError error={send.error} />
+          </>
+        ) : <AdultFingerprint v={v} refresh={refresh} discharge />}
       </div>
     </Card>
   );
@@ -280,6 +285,7 @@ export default function ShaVisitPage({ params }: { params: Promise<{ id: string 
       <div className="grid gap-5 xl:grid-cols-[1fr_360px]">
         <div className="space-y-5">
           {open && <Consent v={v} refresh={refresh} />}
+          {open && <DischargeConsent v={v} refresh={refresh} />}
           <Preauths v={v} refresh={refresh} docs={docs.data ?? []} />
           <ClaimSteps v={v} refresh={refresh} docs={docs.data ?? []} />
           <Interventions v={v} refresh={refresh} editable={open && !!v.dha?.claimId} />

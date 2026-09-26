@@ -192,6 +192,8 @@ const patientSchema = new Schema(
       isAlive: Boolean,
       whitelistedForOTP: Boolean,
       facilityBiometricsEnforced: Boolean,
+      /** Payer's biometric_status.use_sil_biometrics: true means this child consents by their own enrolled fingerprint. */
+      useSilBiometrics: Boolean,
       schemes: Mixed,
       pomsf: Mixed,
     },

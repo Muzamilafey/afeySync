@@ -343,6 +343,8 @@ const callbackEndpointSchema = new Schema(
     active: { type: Boolean, default: true },
     externalEndpointId: String,
     registeredOperations: [String],
+    /** Registrations made with the HIE Status Callbacks API (one endpoint + status_changed operation per entity type). */
+    hieRegistrations: [{ _id: false, entityType: String, endpointId: String, operationId: String, isActive: Boolean, at: Date }],
     lastEventAt: Date,
   },
   { timestamps: true },

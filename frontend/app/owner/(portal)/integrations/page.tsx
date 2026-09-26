@@ -3,6 +3,7 @@
 import Link from 'next/link';
 import { useQuery } from '@tanstack/react-query';
 import { ownerApi } from '@/services/api';
+import { ShaCallbacksCard } from '@/features/sha/ShaCallbacksCard';
 import { Card, ErrorText, Loading, PageHeader, StatusDot, statusTone } from '@/components/ui';
 import { ago } from '@/lib/utils';
 import type { OwnerIntegration } from './types';
@@ -14,6 +15,7 @@ export default function OwnerIntegrations() {
       <PageHeader title="Integration Settings" crumbs={['Owner', 'Platform Configuration', 'Integrations']} subtitle="Platform credentials are encrypted at rest (AES-256-GCM) and never sent to browsers. Priority: facility credential (if permitted) → platform credential → disabled." />
       {q.isLoading && <Loading />}
       <ErrorText error={q.error} />
+      {q.data?.some((i) => i.provider === 'sha' && i.enabled) && <div className="mb-5 max-w-3xl"><ShaCallbacksCard mode="owner" /></div>}
       <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-3">
         {q.data?.map((i) => (
           <Link key={i.provider} href={`/owner/integrations/${i.provider}`}>

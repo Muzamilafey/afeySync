@@ -66,11 +66,15 @@ function errorFor(provider: HieProvider, status: number, body: unknown): AppErro
     (body && typeof body === 'object' && ((body as Record<string, unknown>).message || (body as Record<string, unknown>).error_description || (body as Record<string, unknown>).detail)) ||
     undefined;
   const msg = typeof upstreamMsg === 'string' ? upstreamMsg.slice(0, 300) : undefined;
-  if (status === 400 || status === 422) return new AppError(422, `${P}_VALIDATION_ERROR`, msg ?? `${P} rejected the request as invalid`);
+  // Machine-readable reason from the HIE (e.g. subject_not_enrolled, match_already_used): passed on for callers to branch on.
+  const o = body && typeof body === 'object' ? (body as Record<string, unknown>) : {};
+  const rawCode = [o.error_code, o.code, o.reason, typeof o.error === 'string' ? o.error : undefined].find((x) => typeof x === 'string' && /^[a-z][a-z0-9_]{2,60}$/.test(x)) as string | undefined;
+  const details = { httpStatus: status, ...(rawCode ? { upstreamCode: rawCode } : {}) };
+  if (status === 400 || status === 422) return new AppError(422, `${P}_VALIDATION_ERROR`, msg ?? `${P} rejected the request as invalid`, details);
   if (status === 401 || status === 403) return new AppError(502, `${P}_AUTH_ERROR`, `${P} authentication failed. Check the integration credentials.`);
-  if (status === 404) return new AppError(404, `${P}_NOT_FOUND`, msg ?? 'No matching record found');
-  if (status === 409) return new AppError(409, `${P}_DUPLICATE`, msg ?? `${P} reports a duplicate submission`);
-  if (status === 503 || status === 504) return new AppError(503, `${P}_UNAVAILABLE`, `${P} service is temporarily unavailable. Please retry.`);
+  if (status === 404) return new AppError(404, `${P}_NOT_FOUND`, msg ?? 'No matching record found', details);
+  if (status === 409) return new AppError(409, `${P}_DUPLICATE`, msg ?? `${P} reports a duplicate submission`, details);
+  if (status === 503 || status === 504) return new AppError(503, `${P}_UNAVAILABLE`, msg ?? `${P} service is temporarily unavailable. Please retry.`, details);
   if (status === 429) return new AppError(503, `${P}_RATE_LIMITED`, `${P} is rate limiting requests. Try again shortly.`);
   return new AppError(502, `${P}_UPSTREAM_ERROR`, `${P} service returned an error (HTTP ${status})`);
 }

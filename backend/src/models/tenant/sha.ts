@@ -37,7 +37,7 @@ const shaVisitSchema = new Schema(
       },
     ],
     decision: Mixed,
-    eligibility: { checkId: ObjectId, schemes: Mixed, whitelistedForOTP: Boolean, facilityBiometricsEnforced: Boolean, pomsf: Mixed },
+    eligibility: { checkId: ObjectId, schemes: Mixed, whitelistedForOTP: Boolean, facilityBiometricsEnforced: Boolean, useSilBiometrics: Boolean, pomsf: Mixed },
     consent: {
       method: { type: String, enum: ['otp', 'biometric', 'minor_biometric'] },
       beneficiaryContactId: String,
@@ -48,10 +48,20 @@ const shaVisitSchema = new Schema(
       expiry: Date,
       verificationRequestId: String,
       verificationUrl: String,
+      /** When the biometric capture iframe stops accepting a finger (from shaVerificationRequest.embedExpiry). */
+      verificationExpiresAt: Date,
+      workstationId: String,
       authorizedAt: Date,
       authorizedBy: ObjectId,
+      /** Biometric authorizations rejected because their capture window expired (kept for audit). */
+      rejected: [{ _id: false, authGuid: String, at: Date, byName: String, reason: String }],
+      /** Minors biometrics: the fingerprint match presented as match_id when the visit starts. */
+      match: { matchId: String, jobId: ObjectId, status: String, expiresAt: Date, errorCode: String, usedAt: Date },
     },
     consentToken: { type: { ciphertext: String, keyId: String }, select: false },
+    /** Fingerprint discharge authorization (inpatient), kept apart from the visit's own consent and token. */
+    dischargeAuth: { status: String, authCode: String, authGuid: String, verificationUrl: String, verificationExpiresAt: Date, authorizedAt: Date, rejectedAt: Date },
+    dischargeToken: { type: { ciphertext: String, keyId: String }, select: false },
     dha: {
       claimId: String,
       ediClaimGuid: String,
@@ -119,4 +129,58 @@ const shaVisitSchema = new Schema(
 shaVisitSchema.index({ 'dha.claimId': 1 }, { sparse: true });
 shaVisitSchema.index({ createdAt: -1 });
 
-export const shaSchemas = { ShaVisit: shaVisitSchema };
+/**
+ * A minors-biometrics capture dispatched to a HealthID workstation: fingerprint enrollment, verification or
+ * match. The HIE answers 202 and later delivers the outcome to the facility's registered callback endpoint,
+ * which updates this record; the screen watches this record rather than polling the HIE.
+ */
+const shaBiometricJobSchema = new Schema(
+  {
+    kind: { type: String, enum: ['enrollment', 'verification', 'match'], required: true },
+    /** job_id (enrollment / verification) or match_id (match) returned by the HIE. */
+    externalId: { type: String, required: true, index: true },
+    patientId: { type: ObjectId, ref: 'Patient', required: true, index: true },
+    branchId: { type: ObjectId, ref: 'Branch', index: true },
+    shaVisitId: { type: ObjectId, ref: 'ShaVisit' },
+    beneficiaryCode: { type: String, required: true },
+    position: Number,
+    workstationId: String,
+    deviceId: String,
+    status: { type: String, enum: ['dispatched', 'pending', 'succeeded', 'failed'], default: 'dispatched', index: true },
+    /** Outcome as reported: matched / no_match / failed, verified / not_verified / max_attempts_exceeded, enrolled. */
+    outcome: String,
+    errorCode: String,
+    errorDetail: String,
+    attemptsRemaining: Number,
+    requiresReenroll: Boolean,
+    expiresAt: Date,
+    resolvedAt: Date,
+    resolvedBy: { type: String, enum: ['callback', 'reconciliation'] },
+    requestedBy: ObjectId,
+    requestedByName: String,
+  },
+  { timestamps: true },
+);
+shaBiometricJobSchema.index({ createdAt: -1 });
+
+/** A request to SHA to let a beneficiary consent by OTP (e.g. a child who cannot match, an amputee). */
+const shaOtpWhitelistSchema = new Schema(
+  {
+    patientId: { type: ObjectId, ref: 'Patient', required: true, index: true },
+    beneficiaryCrId: { type: String, required: true },
+    guid: { type: String, index: true },
+    reasonType: String,
+    reason: String,
+    biometricAttempts: Number,
+    documentIds: [ObjectId],
+    status: String,
+    reviewerNotes: [String],
+    reviewedBy: String,
+    lastSyncedAt: Date,
+    requestedBy: ObjectId,
+    requestedByName: String,
+  },
+  { timestamps: true },
+);
+
+export const shaSchemas = { ShaVisit: shaVisitSchema, ShaBiometricJob: shaBiometricJobSchema, ShaOtpWhitelist: shaOtpWhitelistSchema };

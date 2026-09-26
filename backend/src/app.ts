@@ -40,6 +40,7 @@ import dhaRoutes from './modules/dha/dha.routes';
 import shaRoutes from './modules/sha/sha.routes';
 import shaClaimsRoutes from './modules/sha/shaClaims.routes';
 import shaVisitRoutes from './modules/sha/shaVisit.routes';
+import shaBiometricsRoutes from './modules/sha/shaBiometrics.routes';
 import callbackRoutes from './modules/callbacks/callbacks.routes';
 import notificationRoutes from './modules/notifications/notifications.routes';
 import dashboardRoutes from './modules/dashboard/dashboard.routes';
@@ -147,6 +148,7 @@ export function createApp() {
   api.use('/patients', patientRoutes);
   api.use('/dha', dhaRoutes);
   api.use('/sha', shaVisitRoutes);
+  api.use('/sha', shaBiometricsRoutes);
   api.use('/sha', shaClaimsRoutes);
   api.use('/sha', shaRoutes);
   api.use('/notifications', notificationRoutes);
