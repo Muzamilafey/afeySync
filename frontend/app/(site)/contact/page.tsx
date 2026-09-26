@@ -15,7 +15,7 @@ export default function ContactPage() {
   return (
     <>
       <PageHero eyebrow="Contact" title="Let’s talk about your facility" intro="Want a demo, help choosing a plan, or support with your account? Reach us any way you like." />
-      <section className="mx-auto grid max-w-7xl gap-10 px-4 py-16 sm:px-6 lg:grid-cols-[1fr_1.4fr] lg:px-8">
+      <section className="mx-auto grid max-w-6xl gap-10 px-4 py-16 sm:px-6 lg:grid-cols-[1fr_1.4fr] lg:px-8">
         <div className="space-y-4">
           {channels.map(({ icon: Icon, label, value, href, note, external, tone }: { icon: React.ComponentType<{ className?: string }>; label: string; value: string; href: string; note: string; external?: boolean; tone?: string }) => (
             <a key={label} href={href} {...(external ? { target: '_blank', rel: 'noopener noreferrer' } : {})} className="flex items-center gap-4 rounded-2xl border border-slate-200 bg-white p-5 transition hover:border-brand-300 hover:shadow-md dark:border-slate-800 dark:bg-slate-900 dark:hover:border-brand-700">

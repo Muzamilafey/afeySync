@@ -33,6 +33,8 @@ export function toPublicConfig(doc: ConfigDoc | null, provider: Provider) {
     enabled: doc?.enabled ?? false,
     environment: doc?.environment ?? def.environments[0],
     environments: def.environments,
+    /** Official API address for each environment, used to fill the base URL box when the environment changes. */
+    defaultBaseUrls: def.defaultBaseUrls ?? {},
     settings: { ...(doc?.settings ?? {}) },
     settingFields: def.settings,
     secretFields: def.secrets.map((s) => ({ ...s, ...IntegrationSecretService.mask(secrets.get(s.key)) })),
@@ -89,6 +91,7 @@ export async function upsertConfig(scope: 'platform' | 'tenant', provider: Provi
       if (v && /url$/i.test(k)) validateUrl(v, k);
       next[k] = v.trim();
     }
+    if (provider === 'mpesa') validateMpesaSettings(next);
     doc.settings = next;
     doc.markModified('settings');
   }
@@ -102,6 +105,15 @@ export async function upsertConfig(scope: 'platform' | 'tenant', provider: Provi
     }
     doc.markModified('secrets');
   }
+  // A base URL copied from another environment (e.g. the sandbox address on a production setup) would send live
+  // payments or records to the wrong place, so it is refused rather than saved.
+  const savedBase = (doc.settings as Record<string, string> | undefined)?.baseUrl;
+  if (savedBase && def.defaultBaseUrls) {
+    const env = doc.environment ?? def.environments[0];
+    const norm = (u: string) => u.replace(/\/+$/, '').toLowerCase();
+    const other = Object.entries(def.defaultBaseUrls).find(([e, u]) => e !== env && u && norm(u) === norm(savedBase) && norm(u) !== norm(def.defaultBaseUrls?.[env as 'uat'] ?? ''));
+    if (other) throw badRequest(`The API base URL is the ${other[0]} address, but the environment is ${env}. Clear it or use the ${env} address.`, undefined, 'BASE_URL_ENVIRONMENT_MISMATCH');
+  }
   if (scope === 'platform' && update.allowTenantCredentials !== undefined) doc.allowTenantCredentials = update.allowTenantCredentials;
   if (scope === 'platform' && def.facilityCredentialsOnly) doc.allowTenantCredentials = true;
   if (def.platformOnly) {
@@ -113,7 +125,7 @@ export async function upsertConfig(scope: 'platform' | 'tenant', provider: Provi
     if (update.enabled && !(scope === 'platform' && def.facilityCredentialsOnly)) {
       const settings = { ...defaultsFor(provider, doc.environment ?? def.environments[0]), ...(doc.settings ?? {}) };
       const missing = [
-        ...def.settings.filter((s) => s.required && !settings[s.key]).map((s) => s.label),
+        ...def.settings.filter((s) => s.required && !s.hidden && (!s.showWhen || settings[s.showWhen.key] === s.showWhen.value) && !settings[s.key]).map((s) => s.label),
         ...def.secrets.filter((s) => s.required && !secretsMap(doc!).has(s.key)).map((s) => s.label),
       ];
       if (missing.length) throw badRequest(`Cannot enable ${def.label}: missing ${missing.join(', ')}`);
@@ -123,6 +135,15 @@ export async function upsertConfig(scope: 'platform' | 'tenant', provider: Provi
   if (actorId) doc.updatedBy = actorId as never;
   await doc.save();
   return { before, after: toPublicConfig(doc, provider), doc };
+}
+
+/** A facility's M-Pesa setup must say clearly where money goes: a paybill, or a till under its store number. */
+function validateMpesaSettings(s: Record<string, string>) {
+  const digits = (v: string | undefined) => !v || /^\d{5,8}$/.test(v);
+  if (s.accountType && !['paybill', 'till'].includes(s.accountType)) throw badRequest('Choose Paybill or Till number');
+  if (!digits(s.shortcode)) throw badRequest(`${s.accountType === 'till' ? 'Store number' : 'Paybill number'} must be 5 to 8 digits`);
+  if (!digits(s.till)) throw badRequest('Till number must be 5 to 8 digits');
+  if (s.accountType === 'till' && !s.till && !s.shortcode) throw badRequest('Enter the till number');
 }
 
 function defaultsFor(provider: Provider, environment: string): Record<string, string> {

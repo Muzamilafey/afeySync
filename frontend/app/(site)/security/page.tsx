@@ -19,7 +19,7 @@ export default function SecurityPage() {
   return (
     <>
       <PageHero eyebrow="Security" title="Patient data deserves serious protection" intro="AfeySync is designed so that each facility’s data stays private, every action is accountable, and only the right people see the right records." />
-      <section className="mx-auto max-w-7xl px-4 py-16 sm:px-6 lg:px-8">
+      <section className="mx-auto max-w-6xl px-4 py-16 sm:px-6 lg:px-8">
         <div className="grid gap-5 md:grid-cols-2">
           {POINTS.map(({ icon: Icon, t, d }) => (
             <div key={t} className="flex gap-4 rounded-2xl border border-slate-200 bg-white p-6 dark:border-slate-800 dark:bg-slate-900">

@@ -7,6 +7,7 @@ import { DhaConnectionCard } from '@/features/sha/DhaConnectionCard';
 import { ShaCallbacksCard } from '@/features/sha/ShaCallbacksCard';
 import { Alert, Button, Card, ErrorText, Field, Input, Loading, PageHeader, StatusDot } from '@/components/ui';
 import type { IntegrationFlag } from '@/types/api';
+import { prefillBaseUrl, SettingFields, switchEnvironment, type SettingField } from '@/features/integrations/SettingFields';
 
 interface PublicConfig {
   provider: string;
@@ -14,8 +15,9 @@ interface PublicConfig {
   enabled: boolean;
   environment: string;
   environments: string[];
+  defaultBaseUrls?: Record<string, string>;
   settings: Record<string, string>;
-  settingFields: Array<{ key: string; label: string }>;
+  settingFields: SettingField[];
   secretFields: Array<{ key: string; label: string; configured: boolean; hint?: string }>;
   useTenantConfig: boolean;
 }
@@ -24,7 +26,7 @@ const LABEL: Record<string, string> = { sha: 'SHA', dha: 'DHA', mpesa: 'M-Pesa',
 
 function FacilityConfig({ cfg }: { cfg: PublicConfig }) {
   const qc = useQueryClient();
-  const [settings, setSettings] = useState(cfg.settings);
+  const [settings, setSettings] = useState(() => prefillBaseUrl(cfg.settings, cfg.settingFields, cfg.defaultBaseUrls, cfg.environment));
   const [secrets, setSecrets] = useState<Record<string, string>>({});
   const [useTenant, setUseTenant] = useState(cfg.useTenantConfig);
   const [environment, setEnvironment] = useState(cfg.environment);
@@ -32,7 +34,7 @@ function FacilityConfig({ cfg }: { cfg: PublicConfig }) {
     mutationFn: () => api(`/admin/integrations/${cfg.provider}`, { method: 'PUT', body: { settings, secrets: Object.fromEntries(Object.entries(secrets).filter(([, v]) => v)), useTenantConfig: useTenant, environment, enabled: useTenant } }),
     onSuccess: () => { setSecrets({}); qc.invalidateQueries({ queryKey: ['admin-integrations'] }); },
   });
-  const test = useMutation({ mutationFn: async () => (await api<{ ok: boolean; latencyMs: number; error?: { message: string } }>(`/admin/integrations/${cfg.provider}/test`, { method: 'POST' })).data });
+  const test = useMutation({ mutationFn: async () => (await api<{ ok: boolean; latencyMs: number; paysInto?: string; error?: { message: string } }>(`/admin/integrations/${cfg.provider}/test`, { method: 'POST' })).data });
   return (
     <div className="mt-4 space-y-3 border-t border-[var(--border)] pt-4">
       <div className="flex gap-4 text-sm">
@@ -41,13 +43,13 @@ function FacilityConfig({ cfg }: { cfg: PublicConfig }) {
       </div>
       {useTenant && (
         <div className="grid gap-3 sm:grid-cols-2">
-          <Field label="Environment"><select className="field" value={environment} onChange={(e) => setEnvironment(e.target.value)}>{cfg.environments.map((e) => <option key={e}>{e}</option>)}</select></Field>
-          {cfg.settingFields.map((f) => <Field key={f.key} label={f.label}><Input value={settings[f.key] ?? ''} onChange={(e) => setSettings({ ...settings, [f.key]: e.target.value })} /></Field>)}
-          {cfg.secretFields.map((f) => <Field key={f.key} label={f.label} hint={f.configured ? `Configured ${f.hint ?? ''} — leave blank to keep` : 'Not set'}><Input type="password" autoComplete="off" value={secrets[f.key] ?? ''} onChange={(e) => setSecrets({ ...secrets, [f.key]: e.target.value })} /></Field>)}
+          <Field label="Environment"><select className="field" value={environment} onChange={(e) => { setEnvironment(e.target.value); setSettings(switchEnvironment(settings, cfg.settingFields, cfg.defaultBaseUrls, e.target.value)); }}>{cfg.environments.map((e) => <option key={e}>{e}</option>)}</select></Field>
+          <SettingFields fields={cfg.settingFields} values={settings} onChange={setSettings} />
+          {cfg.secretFields.map((f) => <Field key={f.key} label={f.label} hint={f.configured ? `Configured ${f.hint ?? ''} — leave blank to keep` : 'Not set'}><Input type="password" autoComplete="new-password" value={secrets[f.key] ?? ''} onChange={(e) => setSecrets({ ...secrets, [f.key]: e.target.value })} /></Field>)}
         </div>
       )}
       <ErrorText error={save.error || test.error} />
-      {test.data && <Alert tone={test.data.ok ? 'green' : 'red'}>{test.data.ok ? `Connected (${test.data.latencyMs} ms)` : test.data.error?.message}</Alert>}
+      {test.data && <Alert tone={test.data.ok ? 'green' : 'red'}>{test.data.ok ? `Connected (${test.data.latencyMs} ms)${test.data.paysInto ? `. Prompts pay into ${test.data.paysInto}.` : ''}` : test.data.error?.message}</Alert>}
       <div className="flex gap-2">
         <Button onClick={() => save.mutate()} loading={save.isPending}>Save</Button>
         {useTenant && <Button variant="outline" onClick={() => test.mutate()} loading={test.isPending}>Test connection</Button>}

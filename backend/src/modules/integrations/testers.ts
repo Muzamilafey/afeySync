@@ -5,7 +5,7 @@ import { fetchToken, hieRequestWithConfig } from '../../integrations/hie/hieClie
 import { createTransport, sendMail } from '../../integrations/smtp/smtpService';
 import { checkAccount } from '../../integrations/africastalking/smsService';
 import { checkAccount as checkTalksasa, sendSms as sendTalksasa } from '../../integrations/talksasa/smsService';
-import { darajaToken } from '../../integrations/mpesa/mpesaService';
+import { darajaToken, describeStkTarget } from '../../integrations/mpesa/mpesaService';
 import { IntegrationSecretService, type EncryptedValue } from './secretService';
 import { recordHealth, type ResolvedIntegration } from './integrationConfigService';
 import { PROVIDER_DEFINITIONS } from './providers';
@@ -88,6 +88,11 @@ export async function testIntegration(cfg: ResolvedIntegration, kind: TestKind =
         break;
       }
       case 'mpesa':
+        await darajaToken(cfg);
+        detail.token = 'VALID';
+        detail.paysInto = describeStkTarget(cfg);
+        if (!cfg.secrets.passkey) throw new AppError(400, 'MPESA_NOT_CONFIGURED', 'Credentials work, but the passkey is missing, so prompts cannot be sent');
+        break;
       case 'mpesa_billing':
         await darajaToken(cfg);
         detail.token = 'VALID';

@@ -143,7 +143,7 @@ describe('M-Pesa B2C refund payouts', () => {
   let cnId: string;
   it('is unavailable until the owner enables B2C', async () => {
     await api().put('/api/v1/owner/integrations/mpesa').set('Host', OWNER_HOST).set('Authorization', `Bearer ${owner}`)
-      .send({ environment: 'sandbox', settings: { shortcode: '174379', baseUrl: `http://127.0.0.1:${(daraja.address() as AddressInfo).port}` }, secrets: { consumerKey: 'ck', consumerSecret: 'cs', passkey: 'pk' }, enabled: true });
+      .send({ environment: 'sandbox', settings: { accountType: 'paybill', shortcode: '174379', baseUrl: `http://127.0.0.1:${(daraja.address() as AddressInfo).port}` }, secrets: { consumerKey: 'ck', consumerSecret: 'cs', passkey: 'pk' }, enabled: true });
     await api().put(`/api/v1/owner/tenants/${F.id}/integrations`).set('Host', OWNER_HOST).set('Authorization', `Bearer ${owner}`).send({ mpesa: true });
     await t(S, admin).post('/api/v1/billing/services').send({ code: 'CONS', name: 'Consultation', category: 'consultation', prices: [{ priceList: 'cash', amount: 1000 }] });
     const inv = await t(S, cashier).post('/api/v1/billing/invoices').send({ patientId, lines: [{ serviceCode: 'CONS', quantity: 1 }] });

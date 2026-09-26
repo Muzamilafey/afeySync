@@ -5,9 +5,9 @@ import { itemLabel } from '@/features/pharmacy/types';
 import Link from 'next/link';
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
-import { Minus, Plus, Printer, RotateCcw, ScanLine, ShoppingCart, Trash2, UserRound, Users } from 'lucide-react';
+import { Minus, Plus, Printer, RotateCcw, ScanLine, ShoppingCart, Smartphone, Trash2, UserRound, Users } from 'lucide-react';
 import { api, ApiError } from '@/services/api';
-import { useCan } from '@/hooks/useMe';
+import { useCan, useMe } from '@/hooks/useMe';
 import { Alert, Badge, Button, Card, ErrorText, Field, Input, Loading, Modal, PageHeader, Select, Table, Tabs, Td } from '@/components/ui';
 import { PatientPicker } from '@/features/patients/PatientPicker';
 import { cn, fmtDateTime } from '@/lib/utils';
@@ -19,6 +19,48 @@ interface Sale { _id: string; saleNumber: string; status: 'awaiting_payment' | '
 type Patient = Parameters<typeof PatientPicker>[0]['value'];
 const money = (n: number) => `KES ${n.toLocaleString('en-KE', { minimumFractionDigits: 0, maximumFractionDigits: 2 })}`;
 const newKey = () => `pos-${Date.now()}-${Math.random().toString(36).slice(2, 10)}`;
+
+interface PromptStatus { saleStatus: Sale['status']; payment: { _id: string; status: 'pending' | 'completed' | 'failed'; amount: number; phone?: string; receiptNumber?: string; mpesaReceipt?: string; resultDesc?: string } | null }
+
+/**
+ * Follows an M-Pesa prompt for a sale until Safaricom confirms it (the sale is only paid on that confirmation),
+ * and lets the prompt be sent again if the customer missed it or entered the wrong PIN.
+ */
+function MpesaPrompt({ saleId, defaultPhone, initialError }: { saleId: string; defaultPhone?: string; initialError?: string }) {
+  const qc = useQueryClient();
+  const [phone, setPhone] = useState(defaultPhone ?? '');
+  const st = useQuery({
+    queryKey: ['pos-mpesa', saleId],
+    queryFn: async () => (await api<PromptStatus>(`/pharmacy/sales/${saleId}/mpesa`, { query: { check: '1' } })).data,
+    refetchInterval: (q) => (q.state.data?.saleStatus === 'awaiting_payment' && q.state.data?.payment?.status === 'pending' ? 4000 : false),
+  });
+  const resend = useMutation({
+    mutationFn: async () => (await api(`/pharmacy/sales/${saleId}/mpesa`, { method: 'POST', body: { phone, idempotencyKey: newKey() } })).data,
+    onSuccess: () => st.refetch(),
+  });
+  const d = st.data;
+  useEffect(() => { if (d?.saleStatus === 'paid') qc.invalidateQueries({ queryKey: ['pos-sales'] }); }, [d?.saleStatus, qc]);
+  if (d?.saleStatus === 'paid') return <Alert tone="green" title="M-Pesa payment received">Receipt {d.payment?.receiptNumber ?? ''}{d.payment?.mpesaReceipt ? ` · M-Pesa ${d.payment.mpesaReceipt}` : ''}.</Alert>;
+  const pending = d?.payment?.status === 'pending';
+  return (
+    <div className="space-y-2">
+      {pending ? (
+        <Alert tone="blue" title="Waiting for the customer">Prompt sent to {d?.payment?.phone}. Ask them to enter their M-Pesa PIN. This updates on its own once Safaricom confirms.</Alert>
+      ) : d?.payment?.status === 'failed' ? (
+        <Alert tone="amber" title="The prompt was not completed">{d.payment.resultDesc ?? 'Cancelled, timed out or wrong PIN.'} Send it again, or take payment another way.</Alert>
+      ) : initialError ? (
+        <Alert tone="amber" title="The prompt could not be sent">{initialError} The sale is saved and awaiting payment.</Alert>
+      ) : null}
+      {!pending && (
+        <div className="flex gap-2">
+          <Input inputMode="tel" placeholder="07XX XXX XXX" value={phone} onChange={(e) => setPhone(e.target.value)} />
+          <Button onClick={() => resend.mutate()} loading={resend.isPending} disabled={phone.replace(/\D/g, '').length < 9}><Smartphone className="h-4 w-4" /> Send prompt</Button>
+        </div>
+      )}
+      <ErrorText error={resend.error} />
+    </div>
+  );
+}
 
 function Sell({ canPay }: { canPay: boolean }) {
   const qc = useQueryClient();
@@ -32,9 +74,11 @@ function Sell({ canPay }: { canPay: boolean }) {
   const [patient, setPatient] = useState<Patient>(null);
   const [customer, setCustomer] = useState({ name: '', phone: '' });
   const [rx, setRx] = useState({ show: false, prescriber: '', facility: '', reference: '' });
-  const [pay, setPay] = useState<{ method: 'cash' | 'mpesa' | 'card' | 'bank' | 'later'; tendered: string; reference: string }>({ method: canPay ? 'cash' : 'later', tendered: '', reference: '' });
+  const { data: me } = useMe();
+  const mpesaEnabled = !!me?.integrations?.mpesa?.enabled;
+  const [pay, setPay] = useState<{ method: 'cash' | 'stk' | 'mpesa' | 'card' | 'bank' | 'later'; tendered: string; reference: string; phone: string }>({ method: canPay ? 'cash' : 'later', tendered: '', reference: '', phone: '' });
   const [override, setOverride] = useState('');
-  const [done, setDone] = useState<{ sale: Sale; receiptNumber?: string } | null>(null);
+  const [done, setDone] = useState<{ sale: Sale; receiptNumber?: string; mpesa?: { paymentId?: string; error?: string }; phone?: string } | null>(null);
   const searchRef = useRef<HTMLInputElement>(null);
   useEffect(() => searchRef.current?.focus(), []);
 
@@ -51,7 +95,7 @@ function Sell({ canPay }: { canPay: boolean }) {
 
   const sell = useMutation({
     mutationFn: async () =>
-      (await api<{ sale: Sale; receiptNumber?: string }>('/pharmacy/sales', {
+      (await api<{ sale: Sale; receiptNumber?: string; mpesa?: { paymentId?: string; error?: string } }>('/pharmacy/sales', {
         method: 'POST',
         body: {
           locationId: loc,
@@ -61,14 +105,16 @@ function Sell({ canPay }: { canPay: boolean }) {
           externalPrescription: rx.show && (rx.prescriber || rx.facility || rx.reference) ? { prescriber: rx.prescriber, facility: rx.facility, reference: rx.reference } : undefined,
           lines: cart.map((l) => ({ itemId: l.item._id, quantity: l.quantity })),
           overrideAllergy: override ? { reason: override } : undefined,
-          payment: pay.method !== 'later' ? { method: pay.method, reference: pay.method === 'cash' ? undefined : pay.reference, idempotencyKey: newKey() } : undefined,
+          payment: pay.method !== 'later' && pay.method !== 'stk' ? { method: pay.method, reference: pay.method === 'cash' ? undefined : pay.reference, idempotencyKey: newKey() } : undefined,
+          mpesaPrompt: pay.method === 'stk' ? { phone: promptPhone, idempotencyKey: newKey() } : undefined,
         },
       })).data,
-    onSuccess: (r) => { setDone(r); setCart([]); setCustomer({ name: '', phone: '' }); setPatient(null); setRx({ show: false, prescriber: '', facility: '', reference: '' }); setOverride(''); setPay((p) => ({ ...p, tendered: '', reference: '' })); qc.invalidateQueries({ queryKey: ['pos-items'] }); qc.invalidateQueries({ queryKey: ['pos-sales'] }); },
+    onSuccess: (r) => { setDone({ ...r, phone: promptPhone }); setPay((p) => ({ ...p, phone: '' })); setCart([]); setCustomer({ name: '', phone: '' }); setPatient(null); setRx({ show: false, prescriber: '', facility: '', reference: '' }); setOverride(''); setPay((p) => ({ ...p, tendered: '', reference: '' })); qc.invalidateQueries({ queryKey: ['pos-items'] }); qc.invalidateQueries({ queryKey: ['pos-sales'] }); },
   });
+  const promptPhone = pay.phone || (who === 'walkin' ? customer.phone : (patient as { phone?: string } | null)?.phone ?? '');
   const allergyAlert = sell.error instanceof ApiError && sell.error.code === 'ALLERGY_ALERT';
   const change = pay.method === 'cash' && pay.tendered ? Number(pay.tendered) - total : null;
-  const ready = cart.length > 0 && !!loc && (who === 'walkin' ? customer.name.trim().length > 1 : !!patient) && (pay.method === 'cash' || pay.method === 'later' || pay.reference.trim().length > 3) && (change === null || change >= 0);
+  const ready = cart.length > 0 && !!loc && (who === 'walkin' ? customer.name.trim().length > 1 : !!patient) && (pay.method === 'cash' || pay.method === 'later' || (pay.method === 'stk' ? promptPhone.replace(/\D/g, '').length >= 9 : pay.reference.trim().length > 3)) && (change === null || change >= 0);
 
   return (
     <div className="grid gap-4 lg:grid-cols-[minmax(0,1.2fr)_minmax(0,1fr)]">
@@ -166,13 +212,18 @@ function Sell({ canPay }: { canPay: boolean }) {
         </Card>
 
         <Card title="Payment">
-          <div className="grid grid-cols-3 gap-2 sm:grid-cols-5">
-            {(canPay ? (['cash', 'mpesa', 'card', 'bank', 'later'] as const) : (['later'] as const)).map((m) => (
+          <div className="grid grid-cols-3 gap-2 sm:grid-cols-6">
+            {[...(canPay ? (['cash'] as const) : []), ...(mpesaEnabled ? (['stk'] as const) : []), ...(canPay ? (['mpesa', 'card', 'bank'] as const) : []), 'later' as const].map((m) => (
               <button key={m} type="button" onClick={() => setPay({ ...pay, method: m })} className={cn('rounded-lg border px-2 py-2 text-xs font-semibold', pay.method === m ? 'border-brand-600 bg-brand-600 text-white' : 'border-[var(--border)]')}>
-                {{ cash: 'Cash', mpesa: 'M-Pesa', card: 'Card', bank: 'Bank', later: 'Pay at cashier' }[m]}
+                {{ cash: 'Cash', stk: 'M-Pesa prompt', mpesa: 'M-Pesa code', card: 'Card', bank: 'Bank', later: 'Pay at cashier' }[m]}
               </button>
             ))}
           </div>
+          {pay.method === 'stk' && (
+            <Field label="Customer's M-Pesa number" hint="A payment request goes to this phone, paid into the facility's M-Pesa account. The sale is marked paid only when Safaricom confirms." className="mt-3">
+              <Input inputMode="tel" placeholder="07XX XXX XXX" value={promptPhone} onChange={(e) => setPay({ ...pay, phone: e.target.value })} />
+            </Field>
+          )}
           {pay.method === 'cash' && (
             <div className="mt-3 grid grid-cols-2 gap-2">
               <Field label="Cash received"><Input inputMode="decimal" value={pay.tendered} onChange={(e) => setPay({ ...pay, tendered: e.target.value.replace(/[^0-9.]/g, '') })} placeholder={String(total)} /></Field>
@@ -189,16 +240,17 @@ function Sell({ canPay }: { canPay: boolean }) {
           )}
           {!allergyAlert && <ErrorText error={sell.error} />}
           <Button className="mt-4 w-full py-3 text-base" onClick={() => sell.mutate()} loading={sell.isPending} disabled={!ready || (allergyAlert && override.trim().length < 5)}>
-            {pay.method === 'later' ? 'Send to cashier' : `Complete sale · ${money(total)}`}
+            {pay.method === 'later' ? 'Send to cashier' : pay.method === 'stk' ? `Send M-Pesa prompt · ${money(total)}` : `Complete sale · ${money(total)}`}
           </Button>
         </Card>
       </div>
 
-      <Modal open={!!done} onClose={() => setDone(null)} title="Sale complete">
+      <Modal open={!!done} onClose={() => setDone(null)} title={done?.mpesa ? 'M-Pesa payment' : 'Sale complete'}>
         {done && (
           <div className="space-y-3 text-sm">
             <p><strong>{done.sale.saleNumber}</strong> · {money(done.sale.total)} · {done.sale.customerName}</p>
-            {done.sale.status === 'paid' ? <Alert tone="green">Paid{done.receiptNumber ? `. Receipt ${done.receiptNumber}` : ''}.</Alert> : <Alert tone="amber">Awaiting payment at the cashier (invoice {done.sale.invoiceNumber}).</Alert>}
+            {done.mpesa ? <MpesaPrompt saleId={done.sale._id} defaultPhone={done.phone} initialError={done.mpesa.error} />
+              : done.sale.status === 'paid' ? <Alert tone="green">Paid{done.receiptNumber ? `. Receipt ${done.receiptNumber}` : ''}.</Alert> : <Alert tone="amber">Awaiting payment at the cashier (invoice {done.sale.invoiceNumber}).</Alert>}
             <div className="flex gap-2">
               <a href={`/print/pos/${done.sale._id}`} target="_blank" rel="noreferrer" className="inline-flex items-center gap-1.5 rounded-md bg-brand-600 px-4 py-2 text-sm font-medium text-white hover:bg-brand-700"><Printer className="h-4 w-4" /> Print receipt</a>
               <Button variant="outline" onClick={() => setDone(null)}>New sale</Button>
@@ -216,6 +268,10 @@ function Sales() {
   const sales = useQuery({ queryKey: ['pos-sales', date], queryFn: async () => (await api<Sale[]>('/pharmacy/sales', { query: { from: date, limit: 200 } })).data });
   const [ret, setRet] = useState<{ sale: Sale; qty: Record<string, number>; reason: string } | null>(null);
   const [msg, setMsg] = useState<string | null>(null);
+  const [prompt, setPrompt] = useState<Sale | null>(null);
+  const can = useCan();
+  const { data: me } = useMe();
+  const mpesaEnabled = !!me?.integrations?.mpesa?.enabled && can('pharmacy.sell');
   const doReturn = useMutation({
     mutationFn: async () => (await api<{ message: string }>(`/pharmacy/sales/${ret!.sale._id}/return`, { method: 'POST', body: { reason: ret!.reason, lines: Object.entries(ret!.qty).filter(([, q]) => q > 0).map(([lineId, quantity]) => ({ lineId, quantity })) } })).data,
     onSuccess: (r) => { setMsg(r.message); setRet(null); qc.invalidateQueries({ queryKey: ['pos-sales'] }); qc.invalidateQueries({ queryKey: ['pos-items'] }); },
@@ -237,6 +293,7 @@ function Sales() {
               <Td>
                 <div className="flex gap-1">
                   <a href={`/print/pos/${s._id}`} target="_blank" rel="noreferrer" className="rounded p-1.5 hover:bg-[var(--surface-2)]" aria-label="Print receipt"><Printer className="h-4 w-4" /></a>
+                  {mpesaEnabled && s.status === 'awaiting_payment' && <button type="button" className="rounded p-1.5 hover:bg-[var(--surface-2)]" onClick={() => setPrompt(s)} aria-label="Send M-Pesa prompt" title="Send M-Pesa prompt"><Smartphone className="h-4 w-4" /></button>}
                   {s.status !== 'returned' && <button type="button" className="rounded p-1.5 hover:bg-[var(--surface-2)]" onClick={() => setRet({ sale: s, qty: {}, reason: '' })} aria-label="Return items"><RotateCcw className="h-4 w-4" /></button>}
                 </div>
               </Td>
@@ -244,6 +301,14 @@ function Sales() {
           ))}
         </Table>
       )}
+      <Modal open={!!prompt} onClose={() => setPrompt(null)} title={`M-Pesa prompt · ${prompt?.saleNumber ?? ''}`}>
+        {prompt && (
+          <div className="space-y-3 text-sm">
+            <p>{money(prompt.total)} · {prompt.customerName}</p>
+            <MpesaPrompt saleId={prompt._id} defaultPhone={prompt.customerPhone} />
+          </div>
+        )}
+      </Modal>
       <Modal open={!!ret} onClose={() => setRet(null)} title={`Return items · ${ret?.sale.saleNumber ?? ''}`}>
         {ret && (
           <div className="space-y-3">

@@ -22,7 +22,7 @@ export default function UserGuideIndex() {
         </div>
       </PageHero>
 
-      <section className="mx-auto max-w-7xl px-4 py-14 sm:px-6 lg:px-8">
+      <section className="mx-auto max-w-6xl px-4 py-14 sm:px-6 lg:px-8">
         <h2 className="text-sm font-semibold tracking-wide text-brand-700 uppercase dark:text-emerald-300">New to AfeySync? Start here</h2>
         <ol className="mt-5 grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
           {quick.map((slug, i) => {

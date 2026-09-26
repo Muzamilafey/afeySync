@@ -17,6 +17,10 @@ import { assertPayable, completePayment, recalcInvoice } from './billingService'
 import { loadScoped, round2 } from '../common/helpers';
 import { logger } from '../../utils/logger';
 import { enqueueJob } from '../../jobs/queue';
+import type { TenantModels } from '../../models/tenant';
+
+type InvoiceDoc = NonNullable<Awaited<ReturnType<TenantModels['Invoice']['findOne']>>>;
+type PaymentDoc = NonNullable<Awaited<ReturnType<TenantModels['Payment']['findOne']>>>;
 
 /** Per-tenant M-Pesa callback endpoint (secret URL token, stored hashed + encrypted for URL rebuilding). */
 async function mpesaEndpoint(tenantId: string) {
@@ -70,6 +74,54 @@ mpesaRouter.post(
   }),
 );
 
+/**
+ * Sends an STK prompt for an invoice using the facility's own M-Pesa setup (its paybill or till and credentials when
+ * the facility has its own, otherwise the platform's). The payment stays pending until Safaricom's callback confirms it.
+ */
+export async function sendStkForInvoice(req: Request, inv: InvoiceDoc, input: { phone: string; amount: number; idempotencyKey: string; description?: string; notes?: string }) {
+  const m = req.tenant!.models;
+  const replay = await m.Payment.findOne({ idempotencyKey: input.idempotencyKey });
+  if (replay) return { payment: replay, replay: true as const };
+  assertPayable(inv, input.amount);
+  const phone = toMsisdn(input.phone);
+  // Duplicate protection: one in-flight STK per invoice+phone per 2 minutes.
+  if (await m.Payment.exists({ invoiceId: inv._id, 'mpesa.phone': phone, status: 'pending', createdAt: { $gte: new Date(Date.now() - 120_000) } })) {
+    throw conflict('An M-Pesa prompt was already sent to this phone for this invoice. Wait for it to complete.', undefined, 'STK_IN_PROGRESS');
+  }
+  const cfg = await resolveIntegration('mpesa', req.tenant!.id);
+  const token = await mpesaEndpoint(req.tenant!.id);
+  const r = await stkPush(cfg, { phone, amount: input.amount, accountReference: inv.invoiceNumber, description: input.description ?? 'Hospital bill', callbackUrl: `${base()}/callback/${token}` });
+  const p = await m.Payment.create({
+    invoiceId: inv._id,
+    patientId: inv.patientId,
+    branchId: inv.branchId,
+    method: 'mpesa',
+    amount: Math.ceil(input.amount),
+    idempotencyKey: input.idempotencyKey,
+    status: 'pending',
+    receivedBy: req.user!.id,
+    receivedByName: req.user!.name,
+    notes: input.notes,
+    mpesa: { checkoutRequestId: r.checkoutRequestId, merchantRequestId: r.merchantRequestId, phone },
+  });
+  await audit(req, { action: 'billing.mpesa_stk', resource: 'payment', resourceId: String(p._id), newValue: { invoice: inv.invoiceNumber, amount: input.amount } });
+  return { payment: p, message: r.customerMessage, replay: false as const };
+}
+
+/** Asks Safaricom about a pending prompt. Only a definitive failure is applied; success comes from the callback (it carries the receipt number). */
+export async function checkStk(req: Request, p: PaymentDoc) {
+  if (p.status !== 'pending' || !p.mpesa?.checkoutRequestId) return { payment: p };
+  const cfg = await resolveIntegration('mpesa', req.tenant!.id);
+  const q = await stkQuery(cfg, p.mpesa.checkoutRequestId);
+  if (q.resultCode !== undefined && q.resultCode !== 0) {
+    p.status = 'failed';
+    p.set('mpesa.resultCode', q.resultCode);
+    p.set('mpesa.resultDesc', q.resultDesc);
+    await p.save();
+  }
+  return { payment: p, query: q };
+}
+
 mpesaRouter.post(
   '/stk',
   requirePermission('billing.create'),
@@ -79,29 +131,8 @@ mpesaRouter.post(
     const replay = await m.Payment.findOne({ idempotencyKey: body.idempotencyKey }).lean();
     if (replay) return res.json({ success: true, data: replay, idempotentReplay: true });
     const inv = await loadScoped(req, m.Invoice, body.invoiceId, 'Invoice');
-    assertPayable(inv, body.amount);
-    const phone = toMsisdn(body.phone);
-    // Duplicate protection: one in-flight STK per invoice+phone per 2 minutes.
-    if (await m.Payment.exists({ invoiceId: inv._id, 'mpesa.phone': phone, status: 'pending', createdAt: { $gte: new Date(Date.now() - 120_000) } })) {
-      throw conflict('An M-Pesa prompt was already sent to this phone for this invoice. Wait for it to complete.', undefined, 'STK_IN_PROGRESS');
-    }
-    const cfg = await resolveIntegration('mpesa', req.tenant!.id);
-    const token = await mpesaEndpoint(req.tenant!.id);
-    const r = await stkPush(cfg, { phone, amount: body.amount, accountReference: inv.invoiceNumber, description: 'Hospital bill', callbackUrl: `${base()}/callback/${token}` });
-    const p = await m.Payment.create({
-      invoiceId: inv._id,
-      patientId: inv.patientId,
-      branchId: inv.branchId,
-      method: 'mpesa',
-      amount: Math.ceil(body.amount),
-      idempotencyKey: body.idempotencyKey,
-      status: 'pending',
-      receivedBy: req.user!.id,
-      receivedByName: req.user!.name,
-      mpesa: { checkoutRequestId: r.checkoutRequestId, merchantRequestId: r.merchantRequestId, phone },
-    });
-    await audit(req, { action: 'billing.mpesa_stk', resource: 'payment', resourceId: String(p._id), newValue: { invoice: inv.invoiceNumber, amount: body.amount } });
-    res.status(201).json({ success: true, data: p, message: r.customerMessage });
+    const r = await sendStkForInvoice(req, inv, body);
+    res.status(201).json({ success: true, data: r.payment, message: r.message });
   }),
 );
 
@@ -110,19 +141,9 @@ mpesaRouter.post(
   '/:paymentId/query',
   requirePermission('billing.create'),
   h(async (req, res) => {
-    const m = req.tenant!.models;
-    const p = await loadScoped(req, m.Payment, req.params.paymentId, 'Payment');
-    if (p.status !== 'pending' || !p.mpesa?.checkoutRequestId) return res.json({ success: true, data: p });
-    const cfg = await resolveIntegration('mpesa', req.tenant!.id);
-    const q = await stkQuery(cfg, p.mpesa.checkoutRequestId);
-    // Only a definitive failure is applied from a query; success is applied from the signed-off callback (it carries the receipt number).
-    if (q.resultCode !== undefined && q.resultCode !== 0) {
-      p.status = 'failed';
-      p.set('mpesa.resultCode', q.resultCode);
-      p.set('mpesa.resultDesc', q.resultDesc);
-      await p.save();
-    }
-    res.json({ success: true, data: p, query: q });
+    const p = await loadScoped(req, req.tenant!.models.Payment, req.params.paymentId, 'Payment');
+    const r = await checkStk(req, p);
+    res.json({ success: true, data: r.payment, query: r.query });
   }),
 );
 

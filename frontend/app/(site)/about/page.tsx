@@ -8,7 +8,7 @@ export default function AboutPage() {
   return (
     <>
       <PageHero eyebrow="About AfeySync" title="Software made for Kenyan healthcare" intro="AfeySync, also known as Afey HMIS, is a hospital management information system made in Kenya. We build it so that clinics and hospitals can spend less time on paperwork and follow-up calls, and more time caring for patients." />
-      <section className="mx-auto max-w-7xl px-4 py-16 sm:px-6 lg:px-8">
+      <section className="mx-auto max-w-6xl px-4 py-16 sm:px-6 lg:px-8">
         <div className="grid gap-6 md:grid-cols-3">
           {[
             { icon: Target, t: 'Our mission', d: 'Give every Kenyan facility, from a small clinic to a referral hospital, a modern and affordable system to run its work.' },

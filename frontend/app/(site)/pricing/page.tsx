@@ -30,7 +30,7 @@ export default async function PricingPage() {
   return (
     <>
       <PageHero eyebrow="Pricing" title="Simple plans that grow with your facility" intro="Pick the plan that fits today. You can move up as you add branches, staff and modules." />
-      <section className="mx-auto max-w-7xl px-4 py-16 sm:px-6 lg:px-8">
+      <section className="mx-auto max-w-6xl px-4 py-16 sm:px-6 lg:px-8">
         {plans.length === 0 ? (
           <div className="mx-auto max-w-2xl rounded-3xl border border-slate-200 p-10 text-center dark:border-slate-800">
             <h2 className="text-2xl font-bold text-slate-900 dark:text-white">Pricing tailored to your facility</h2>

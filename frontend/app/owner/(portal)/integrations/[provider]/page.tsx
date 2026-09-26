@@ -7,6 +7,7 @@ import { ownerApi } from '@/services/api';
 import { Alert, Badge, Button, Card, ErrorText, Field, Input, KV, Loading, PageHeader, Select, StatusDot, statusTone } from '@/components/ui';
 import { fmtDateTime } from '@/lib/utils';
 import type { OwnerIntegration } from '../types';
+import { prefillBaseUrl, SettingFields, switchEnvironment } from '@/features/integrations/SettingFields';
 
 interface TestResult { ok: boolean; latencyMs: number; token?: string; facility?: string; registry?: string; eligibility?: string; terminology?: string; messageId?: string; error?: { code: string; message: string } }
 
@@ -27,7 +28,7 @@ export default function ProviderConfig({ params }: { params: Promise<{ provider:
   useEffect(() => {
     if (cfg) {
       setEnvironment(cfg.environment);
-      setSettings(cfg.settings);
+      setSettings(prefillBaseUrl(cfg.settings, cfg.settingFields, cfg.defaultBaseUrls, cfg.environment));
       setAllowTenant(cfg.allowTenantCredentials);
     }
   }, [cfg]);
@@ -57,12 +58,8 @@ export default function ProviderConfig({ params }: { params: Promise<{ provider:
       <div className="grid gap-5 xl:grid-cols-[1fr_380px]">
         <Card title="Configuration" actions={<StatusDot tone={cfg.enabled ? statusTone(cfg.health.status) : 'gray'} label={cfg.enabled ? 'Enabled' : 'Disabled'} />}>
           <form className="grid gap-4 sm:grid-cols-2" onSubmit={(e) => { e.preventDefault(); save.mutate({}); }}>
-            <Field label="Environment"><Select value={environment} onChange={(e) => setEnvironment(e.target.value)}>{cfg.environments.map((env) => <option key={env} value={env}>{env.toUpperCase()}</option>)}</Select></Field>
-            {cfg.settingFields.map((f) => (
-              <Field key={f.key} label={`${f.label}${f.required ? ' *' : ''}`} hint={f.default ? `Default: ${f.default}` : undefined}>
-                <Input value={settings[f.key] ?? ''} onChange={(e) => setSettings({ ...settings, [f.key]: e.target.value })} />
-              </Field>
-            ))}
+            <Field label="Environment"><Select value={environment} onChange={(e) => { setEnvironment(e.target.value); setSettings(switchEnvironment(settings, cfg.settingFields, cfg.defaultBaseUrls, e.target.value)); }}>{cfg.environments.map((env) => <option key={env} value={env}>{env.toUpperCase()}</option>)}</Select></Field>
+            <SettingFields fields={cfg.settingFields} values={settings} onChange={setSettings} />
             {cfg.secretFields.map((f) => (
               <Field key={f.key} label={`${f.label}${f.required ? ' *' : ''}`} hint={f.configured ? `Stored encrypted ${f.hint ?? ''} · updated ${fmtDateTime(f.updatedAt)} — leave blank to keep, enter a value to rotate` : 'Not configured'}>
                 <Input type="password" autoComplete="new-password" placeholder={f.configured ? '••••••••••••' : ''} value={secrets[f.key] ?? ''} onChange={(e) => setSecrets({ ...secrets, [f.key]: e.target.value })} />

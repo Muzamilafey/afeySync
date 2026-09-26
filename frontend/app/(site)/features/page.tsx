@@ -19,7 +19,7 @@ export default function FeaturesPage() {
           ))}
         </nav>
       </PageHero>
-      <div className="mx-auto max-w-7xl space-y-20 px-4 py-20 sm:px-6 lg:px-8">
+      <div className="mx-auto max-w-6xl space-y-20 px-4 py-20 sm:px-6 lg:px-8">
         {FEATURE_GROUPS.map((g) => (
           <section key={g.id} id={g.id} className="scroll-mt-24 grid gap-10 lg:grid-cols-[1fr_2fr]">
             <div>

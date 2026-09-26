@@ -8,6 +8,9 @@ BRANCH=claude/afeysync-hmis-platform-cgawwj
 step() { printf '\n\033[1;36m==> %s\033[0m\n' "$*"; }
 fail() { printf '\n\033[1;31mSTOPPED: %s\033[0m\n' "$*"; exit 1; }
 trap 'fail "the step above failed (see the error just above this line)"' ERR
+# Where the website's server-side pages reach the API (blog articles on the home page, pricing). Used by the build and
+# picked up by the web process on reload (--update-env).
+export API_INTERNAL_URL="${API_INTERNAL_URL:-http://127.0.0.1:9000}"
 
 step "1/6 Code: $(pwd)"
 if [ -n "$(git status --porcelain --untracked-files=no)" ]; then
@@ -41,5 +44,5 @@ pm2 status afeysync-api afeysync-worker afeysync-web
 step "6/6 Check"
 echo "API:     $(curl -s http://127.0.0.1:9000/health | head -c 80)"
 echo "Website: $(curl -s -H 'Host: afey.co.ke' http://127.0.0.1:10000/ | grep -o '<title>[^<]*</title>')"
-echo "Blog:    HTTP $(curl -s -o /dev/null -w '%{http_code}' -H 'Host: afey.co.ke' http://127.0.0.1:10000/blog)"
+echo "Blog:    HTTP $(curl -s -o /dev/null -w '%{http_code}' -H 'Host: afey.co.ke' http://127.0.0.1:10000/blog), $(curl -s http://127.0.0.1:9000/api/v1/blog/posts?limit=1 | grep -o '"total":[0-9]*' | head -1 | cut -d: -f2) published article(s)"
 printf '\n\033[1;32mDone. Now open https://afey.co.ke in a private window (or press Ctrl+Shift+R).\033[0m\n'

@@ -31,7 +31,8 @@ module.exports = {
       // Web on 10000 (3000 is often taken by other Node apps on a shared VPS).
       args: 'start -p 10000',
       instances: 1,
-      env_production: { NODE_ENV: 'production' },
+      // Server-side pages (home-page articles, blog, pricing) read the API directly on its local port.
+      env_production: { NODE_ENV: 'production', API_INTERNAL_URL: 'http://127.0.0.1:9000' },
     },
   ],
 };

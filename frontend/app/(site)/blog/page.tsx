@@ -42,7 +42,7 @@ export default async function BlogPage({ searchParams }: { searchParams: Search 
           <button className="rounded-xl bg-brand-600 px-5 text-sm font-semibold text-white hover:bg-brand-700">Search</button>
         </form>
       </PageHero>
-      <section className="mx-auto max-w-7xl px-4 py-12 sm:px-6 lg:px-8">
+      <section className="mx-auto max-w-6xl px-4 py-12 sm:px-6 lg:px-8">
         {categories.length > 0 && (
           <nav aria-label="Categories" className="mb-10 flex flex-wrap gap-2">
             <Link href="/blog" className={cn('rounded-full px-4 py-1.5 text-sm font-medium ring-1', !category ? 'bg-brand-600 text-white ring-brand-600' : 'text-slate-700 ring-slate-200 hover:bg-slate-50 dark:text-slate-200 dark:ring-slate-700 dark:hover:bg-slate-900')}>All</Link>
@@ -58,7 +58,7 @@ export default async function BlogPage({ searchParams }: { searchParams: Search 
             <p className="mt-2 text-slate-600 dark:text-slate-400">{filtered ? 'Try another search or category.' : 'Check back soon for news and guides from the AfeySync team.'}</p>
           </div>
         ) : (
-          <div className="grid gap-6 md:grid-cols-2 lg:grid-cols-3">
+          <div className="grid gap-x-8 gap-y-14 md:grid-cols-2 lg:grid-cols-3">
             {first && <PostCard post={first} featured={page === 1 && !filtered} />}
             {rest.map((p) => <PostCard key={p.id} post={p} />)}
           </div>

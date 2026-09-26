@@ -39,7 +39,7 @@ beforeAll(async () => {
   daraja = await startDaraja();
   const owner = await ownerToken();
   await api().put('/api/v1/owner/integrations/mpesa').set('Host', OWNER_HOST).set('Authorization', `Bearer ${owner}`)
-    .send({ environment: 'sandbox', settings: { shortcode: '174379', baseUrl: daraja.url }, secrets: { consumerKey: 'ck', consumerSecret: 'cs', passkey: 'pk' }, enabled: true });
+    .send({ environment: 'sandbox', settings: { accountType: 'paybill', shortcode: '174379', baseUrl: daraja.url }, secrets: { consumerKey: 'ck', consumerSecret: 'cs', passkey: 'pk' }, enabled: true });
   F = await createFacility(owner, S);
   await api().put(`/api/v1/owner/tenants/${F.id}/integrations`).set('Host', OWNER_HOST).set('Authorization', `Bearer ${owner}`).send({ mpesa: true });
   admin = (await tenantLogin(S, F.admin.email)).token;

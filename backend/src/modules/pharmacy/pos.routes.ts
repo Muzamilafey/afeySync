@@ -14,6 +14,9 @@ import { allocateFefo } from './stockService';
 import { allergyConflicts } from './allergyCheck';
 import { billingCodeOf } from './itemPrices';
 import type { TenantModels } from '../../models/tenant';
+import { checkStk, sendStkForInvoice } from '../billing/mpesa.routes';
+import { resolveIntegration } from '../integrations/integrationConfigService';
+import { toMsisdn } from '../../integrations/mpesa/mpesaService';
 
 /**
  * Pharmacy point of sale: counter sales to walk-in customers and patients bringing an outside
@@ -48,7 +51,21 @@ const saleSchema = z.object({
   payment: z
     .object({ method: z.enum(['cash', 'card', 'bank', 'mpesa']), reference: z.string().trim().max(80).optional(), idempotencyKey: z.string().min(8).max(100) })
     .optional(),
+  /** Send an M-Pesa prompt to the customer's phone instead of taking payment at the counter. */
+  mpesaPrompt: z.object({ phone: z.string().trim().min(9).max(20), idempotencyKey: z.string().min(8).max(100) }).optional(),
 });
+
+const promptSchema = z.object({ phone: z.string().trim().min(9).max(20), idempotencyKey: z.string().min(8).max(100) });
+
+/** Sends the prompt for a sale's balance; a failure to reach Safaricom leaves the sale awaiting payment, never paid. */
+async function promptForSale(req: Request, m: TenantModels, sale: { saleNumber?: string | null; invoiceId?: unknown; paymentMethod?: string | null; save: () => Promise<unknown> }, input: z.infer<typeof promptSchema>) {
+  const inv = await m.Invoice.findById(sale.invoiceId);
+  if (!inv) throw notFound('Invoice not found');
+  const r = await sendStkForInvoice(req, inv, { phone: input.phone, amount: inv.totals?.balance ?? 0, idempotencyKey: input.idempotencyKey, description: 'Pharmacy', notes: `Pharmacy sale ${sale.saleNumber}` });
+  sale.paymentMethod = 'mpesa';
+  await sale.save();
+  return r;
+}
 
 router.post(
   '/sales',
@@ -58,6 +75,12 @@ router.post(
     const body = parse(saleSchema, req.body);
     const m = req.tenant!.models;
     if (body.payment && !req.user!.permissions.has('billing.create')) throw forbidden('You can make the sale, but payment must be taken at the cashier (Billing & Cashier).');
+    if (body.payment && body.mpesaPrompt) throw badRequest('Choose one way to pay');
+    // Checked before any stock moves: the facility must have M-Pesa set up, and the number must be a Safaricom line.
+    if (body.mpesaPrompt) {
+      toMsisdn(body.mpesaPrompt.phone);
+      await resolveIntegration('mpesa', req.tenant!.id);
+    }
     const loc = await loadScoped(req, m.StockLocation, body.locationId, 'Stock location');
     const codes = [...new Set(body.lines.map((l) => l.itemId))];
     if (codes.length !== body.lines.length) throw badRequest('Each item can appear only once; change its quantity instead');
@@ -122,8 +145,18 @@ router.post(
       sale.paymentMethod = body.payment.method;
       await sale.save();
     }
+    let mpesa: { paymentId?: string; message?: string; error?: string } | undefined;
+    if (body.mpesaPrompt && (fresh.totals?.balance ?? 0) > 0) {
+      try {
+        const r = await promptForSale(req, m, sale, body.mpesaPrompt);
+        mpesa = { paymentId: String(r.payment._id), message: r.message };
+      } catch (err) {
+        // The sale stands (stock has left the shelf); the prompt can be sent again or the customer can pay another way.
+        mpesa = { error: (err as Error).message };
+      }
+    }
     await audit(req, { action: 'pharmacy.pos_sale', resource: 'pharmacy_sale', resourceId: String(sale._id), newValue: { saleNumber, total: sale.total, lines: lines.map((l) => ({ item: l.name, qty: l.quantity })), external: body.externalPrescription, allergyOverride: body.overrideAllergy?.reason } });
-    res.status(201).json({ success: true, data: { sale, receiptNumber: receipt } });
+    res.status(201).json({ success: true, data: { sale, receiptNumber: receipt, mpesa } });
   }),
 );
 
@@ -166,6 +199,35 @@ router.get(
       m.StockLocation.findById(sale.locationId).select('name').lean(),
     ]);
     res.json({ success: true, data: { sale, invoice, payments, location } });
+  }),
+);
+
+/** Sends (or re-sends) an M-Pesa prompt for a sale that is still awaiting payment. */
+router.post(
+  '/sales/:id/mpesa',
+  requirePermission('pharmacy.sell'),
+  h(async (req, res) => {
+    const body = parse(promptSchema, req.body);
+    const m = req.tenant!.models;
+    const sale = await loadScoped(req, m.PharmacySale, req.params.id, 'Sale');
+    await refreshPaid(m, [sale]);
+    if (sale.status !== 'awaiting_payment') throw conflict(sale.status === 'paid' ? 'This sale is already paid' : 'This sale can no longer be paid', undefined, 'SALE_NOT_PAYABLE');
+    const r = await promptForSale(req, m, sale, body);
+    res.status(r.replay ? 200 : 201).json({ success: true, data: { paymentId: String(r.payment._id), payment: r.payment }, message: r.message });
+  }),
+);
+
+/** Where the sale's latest M-Pesa prompt stands. With ?check=1 a still-pending prompt is looked up with Safaricom. */
+router.get(
+  '/sales/:id/mpesa',
+  requireAnyPermission('pharmacy.sell', 'billing.view'),
+  h(async (req, res) => {
+    const m = req.tenant!.models;
+    const sale = await loadScoped(req, m.PharmacySale, req.params.id, 'Sale');
+    let p = await m.Payment.findOne({ invoiceId: sale.invoiceId, 'mpesa.checkoutRequestId': { $exists: true } }).sort({ createdAt: -1 });
+    if (p && req.query.check === '1' && p.status === 'pending' && Date.now() - p.createdAt!.getTime() > 20_000) p = (await checkStk(req, p)).payment;
+    await refreshPaid(m, [sale]);
+    res.json({ success: true, data: { saleStatus: sale.status, payment: p && { _id: p._id, status: p.status, amount: p.amount, phone: p.mpesa?.phone ? `***${p.mpesa.phone.slice(-3)}` : undefined, receiptNumber: p.receiptNumber, mpesaReceipt: p.mpesa?.receiptNumber, resultDesc: p.mpesa?.resultDesc } } });
   }),
 );
 

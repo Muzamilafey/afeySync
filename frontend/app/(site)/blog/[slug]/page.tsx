@@ -95,9 +95,9 @@ export default async function ArticlePage({ params }: { params: Params }) {
       </article>
       {post.related && post.related.length > 0 && (
         <section className="bg-slate-50 py-16 dark:bg-slate-900/40">
-          <div className="mx-auto max-w-7xl px-4 sm:px-6 lg:px-8">
+          <div className="mx-auto max-w-6xl px-4 sm:px-6 lg:px-8">
             <h2 className="text-2xl font-bold tracking-tight text-slate-900 dark:text-white">Keep reading</h2>
-            <div className="mt-8 grid gap-6 md:grid-cols-3">{post.related.map((p) => <PostCard key={p.id} post={p} />)}</div>
+            <div className="mt-8 grid gap-x-8 gap-y-12 md:grid-cols-3">{post.related.map((p) => <PostCard key={p.id} post={p} />)}</div>
           </div>
         </section>
       )}

@@ -30,11 +30,39 @@ export const darajaTimestamp = (d = new Date()) => {
   return eat.toISOString().replace(/[-:TZ]/g, '').slice(0, 14);
 };
 
+/**
+ * Where the facility is paid, from its own M-Pesa setup:
+ * - Paybill: CustomerPayBillOnline to the paybill (the shortcode), with the invoice number as the account number.
+ * - Till: CustomerBuyGoodsOnline to the till, signed with the store (head office) number the passkey belongs to.
+ * Configurations saved before the Paybill/Till choice existed are read from their transaction type or, failing that,
+ * from which number was filled in.
+ */
+export function stkTarget(cfg: ResolvedIntegration) {
+  const s = cfg.settings;
+  const mode = s.accountType === 'till' || s.accountType === 'paybill'
+    ? s.accountType
+    : s.transactionType === 'CustomerBuyGoodsOnline' ? 'till' : s.transactionType === 'CustomerPayBillOnline' ? 'paybill' : s.till && !s.paybill ? 'till' : 'paybill';
+  if (mode === 'till') {
+    const till = s.till || s.shortcode;
+    const businessShortCode = s.shortcode || s.till;
+    if (!till) throw new AppError(503, 'MPESA_NOT_CONFIGURED', 'M-Pesa is set to a till but no till number is saved. Add it under Administration → Integrations → M-Pesa.');
+    return { mode, transactionType: 'CustomerBuyGoodsOnline', businessShortCode, partyB: till } as const;
+  }
+  if (!s.shortcode) throw new AppError(503, 'MPESA_NOT_CONFIGURED', 'M-Pesa has no paybill number saved. Add it under Administration → Integrations → M-Pesa.');
+  return { mode, transactionType: 'CustomerPayBillOnline', businessShortCode: s.shortcode, partyB: s.shortcode } as const;
+}
+
+/** Plain description of where prompts pay into, for the connection test. */
+export const describeStkTarget = (cfg: ResolvedIntegration) => {
+  const t = stkTarget(cfg);
+  return t.mode === 'till' ? `Till ${t.partyB} (Buy Goods${t.businessShortCode !== t.partyB ? `, store ${t.businessShortCode}` : ''})` : `Paybill ${t.partyB}`;
+};
+
 /** STK Push: POST /mpesa/stkpush/v1/processrequest */
 export async function stkPush(cfg: ResolvedIntegration, input: { phone: string; amount: number; accountReference: string; description: string; callbackUrl: string }) {
   const token = await darajaToken(cfg);
   const timestamp = darajaTimestamp();
-  const shortcode = cfg.settings.shortcode;
+  const { transactionType, businessShortCode: shortcode, partyB } = stkTarget(cfg);
   const res = await fetch(`${baseUrl(cfg)}/mpesa/stkpush/v1/processrequest`, {
     method: 'POST',
     headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' },
@@ -42,10 +70,10 @@ export async function stkPush(cfg: ResolvedIntegration, input: { phone: string; 
       BusinessShortCode: shortcode,
       Password: stkPassword(shortcode, cfg.secrets.passkey, timestamp),
       Timestamp: timestamp,
-      TransactionType: cfg.settings.transactionType || 'CustomerPayBillOnline',
+      TransactionType: transactionType,
       Amount: Math.ceil(input.amount),
       PartyA: input.phone,
-      PartyB: cfg.settings.till || shortcode,
+      PartyB: partyB,
       PhoneNumber: input.phone,
       CallBackURL: input.callbackUrl,
       AccountReference: input.accountReference.slice(0, 12),
@@ -65,7 +93,7 @@ export async function stkQuery(cfg: ResolvedIntegration, checkoutRequestId: stri
   const res = await fetch(`${baseUrl(cfg)}/mpesa/stkpushquery/v1/query`, {
     method: 'POST',
     headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' },
-    body: JSON.stringify({ BusinessShortCode: cfg.settings.shortcode, Password: stkPassword(cfg.settings.shortcode, cfg.secrets.passkey, timestamp), Timestamp: timestamp, CheckoutRequestID: checkoutRequestId }),
+    body: JSON.stringify({ BusinessShortCode: stkTarget(cfg).businessShortCode, Password: stkPassword(stkTarget(cfg).businessShortCode, cfg.secrets.passkey, timestamp), Timestamp: timestamp, CheckoutRequestID: checkoutRequestId }),
     signal: AbortSignal.timeout(30_000),
   });
   const data = (await res.json().catch(() => ({}))) as Record<string, string>;

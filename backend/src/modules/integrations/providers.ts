@@ -2,7 +2,20 @@ import type { Provider } from '../../models/meta';
 
 export interface ProviderDefinition {
   label: string;
-  settings: Array<{ key: string; label: string; required?: boolean; default?: string }>;
+  settings: Array<{
+    key: string;
+    label: string;
+    required?: boolean;
+    default?: string;
+    /** Shown as a drop-down instead of a text box. */
+    options?: Array<{ value: string; label: string }>;
+    /** A line of guidance under the field. */
+    help?: string;
+    /** Only shown while another setting has this value (e.g. the till number only for a till). */
+    showWhen?: { key: string; value: string };
+    /** Kept so older saved values still load and save, but no longer shown. */
+    hidden?: boolean;
+  }>;
   secrets: Array<{ key: string; label: string; required?: boolean }>;
   environments: Array<'sandbox' | 'uat' | 'production'>;
   defaultBaseUrls?: Partial<Record<'sandbox' | 'uat' | 'production', string>>;
@@ -56,11 +69,18 @@ export const PROVIDER_DEFINITIONS: Record<Provider, ProviderDefinition> = {
     environments: ['sandbox', 'production'],
     defaultBaseUrls: { sandbox: 'https://sandbox.safaricom.co.ke', production: 'https://api.safaricom.co.ke' },
     settings: [
-      { key: 'shortcode', label: 'Shortcode', required: true },
-      { key: 'till', label: 'Till Number' },
-      { key: 'paybill', label: 'Paybill Number' },
-      { key: 'transactionType', label: 'STK Transaction Type', default: 'CustomerPayBillOnline' },
-      { key: 'baseUrl', label: 'API base URL (defaults per environment)' },
+      {
+        key: 'accountType',
+        label: 'Customers pay into',
+        required: true,
+        options: [{ value: 'paybill', label: 'Paybill (the invoice number is the account number)' }, { value: 'till', label: 'Till number (Buy Goods)' }],
+      },
+      { key: 'shortcode', label: 'Paybill number', required: true, showWhen: { key: 'accountType', value: 'paybill' }, help: 'The paybill your Daraja Go-Live app was approved for. The passkey below must belong to this paybill.' },
+      { key: 'shortcode', label: 'Store number (head office number)', required: true, showWhen: { key: 'accountType', value: 'till' }, help: 'For a till, Safaricom issues the passkey against the store (head office) number, not the till. It is on your Go-Live approval email. If you only have the till, enter the till here too.' },
+      { key: 'till', label: 'Till number', showWhen: { key: 'accountType', value: 'till' }, help: 'The Buy Goods till customers pay into; its name appears on the customer\'s prompt.' },
+      { key: 'paybill', label: 'Paybill number', hidden: true },
+      { key: 'transactionType', label: 'STK transaction type', hidden: true },
+      { key: 'baseUrl', label: 'API base URL', help: 'Filled in for the environment you choose (sandbox.safaricom.co.ke or api.safaricom.co.ke). Change it only if Safaricom gives you a different address.' },
       { key: 'b2cEnabled', label: 'B2C refund payouts enabled (true/false)', default: 'false' },
       { key: 'b2cShortcode', label: 'B2C shortcode (disbursement account)' },
       { key: 'b2cInitiatorName', label: 'B2C initiator username' },
